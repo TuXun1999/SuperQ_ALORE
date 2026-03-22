@@ -1,10 +1,14 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
+# Copyright (c) 2024 Robotics and AI Institute LLC dba RAI Institute. All rights reserved.
 
-"""This sub-module contains the functions that are specific to the environment."""
+"""Contains the functions that are specific to the locomotion environments."""
 
-from isaaclab.envs.mdp import *  # noqa: F401, F403
+from isaaclab.envs.mdp import *  # noqa: F403
 
-from .rewards import *  # noqa: F401, F403
+from .curriculums import *  # noqa: F403
+from .rewards import *  # noqa: F403
+from .event import *  # noqa: F403
+from .commands.arm_command import *  # noqa: F403
+from .commands.commands_cfg import *  # noqa: F403
+from .actions import *  # noqa: F403
+from .terminations import *  # noqa: F403
+from .observations import *  # noqa: F403

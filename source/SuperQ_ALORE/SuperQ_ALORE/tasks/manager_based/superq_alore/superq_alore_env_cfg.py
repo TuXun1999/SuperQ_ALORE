@@ -19,12 +19,15 @@ from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
 from isaaclab.terrains import TerrainImporterCfg
 from . import mdp
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
+
+import isaaclab_tasks.manager_based.locomotion.velocity.mdp as isaac_mdp
 
 ##
 # Pre-defined configs
 ##
 from SuperQ_ALORE.assets.spot.spot import SPOT_ARM_CFG  # isort: skip
-
+from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES, FEET_NAMES
 ##
 # Scene definition
 ##
@@ -39,6 +42,7 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
     #     prim_path="/World/ground",
     #     spawn=sim_utils.GroundPlaneCfg(size=(100.0, 100.0)),
     # )
+    # TODO: adopt the previous style of grid ground
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="plane",
@@ -52,14 +56,11 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
         ),
         debug_vis=False,
     )
-    # robot
-    
-    # self.scene.robot.spawn.joint_drive.gains.stiffness = None
-    robot: ArticulationCfg = MISSING
 
     # robots
     robot: ArticulationCfg = MISSING
-    # sensors
+    # contact sensors
+    # TODO: are they really... helpful?
     contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True
     )
@@ -85,59 +86,182 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 ##
 # MDP settings
 ##
-
+@configclass
+class CommandsCfg:
+    """Command specifications for the MDP."""
+    # TODO: modify it into the correct sampled command
+    object_velocity = isaac_mdp.UniformVelocityCommandCfg(
+        asset_name="robot",
+        resampling_time_range=(10.0, 10.0),
+        rel_standing_envs=0.05,
+        rel_heading_envs=1.0,
+        heading_command=True,
+        heading_control_stiffness=0.5,
+        debug_vis=True,
+        ranges=isaac_mdp.UniformVelocityCommandCfg.Ranges(
+            lin_vel_x=(-1.0, 1.0),
+            lin_vel_y=(-1.0, 1.0),
+            ang_vel_z=(-1.0, 1.0),
+            heading=(-math.pi, math.pi),
+        ),
+    )
 
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
-
-    # joint_effort = mdp.JointEffortActionCfg(asset_name="robot", joint_names=["slider_to_cart"], scale=100.0)
-
+    
+    ## Execute actions predicted from the high-level controller / agent
+    """
+    Actions: input to the sim environment, output from the agent
+    In our design, the raw output from the high-level controller will be 
+    a_{high} = (arm joints, base pose, base velocities)
+    This is going to be the low-level command to track
+    
+    Our low-level controller, ReLIC, is originally trained to track the command
+    c_{low} = (arm joints, base pose, base velocities)
+    as long as all four legs are used and no leg joint tracking is enabled
+    The output from ReLIC will be
+    a_{low} = (arm joints, leg joints)
+    
+    So, we need to create an input for the low-level actor from obs & actions
+    I.e. substitute the previous command obs in ReLIC with the action from high-level controller
+    NOTE: Order is important!!
+    
+    
+    TODO: ALORE says that arm joints can be obtained from ee-pose implicitly through IK
+    So, actually, the original raw output from ALORE will be
+    a_{high} = (ee pose displacement, base velocities)
+    It includes two differences:
+    1. No base pose change
+    2. We need add an IK module to convert the ee pose displacement into arm joint changes
+    
+    """
+    joint_pos = mdp.MixedPDArmMultiLegJointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["[fh].*"],
+        command_name="arm_leg_joint_base_pose",
+        arm_joint_names=ARM_JOINT_NAMES,
+        leg_joint_names=LEG_JOINT_NAMES,
+        scale=0.2,
+    )
 
 @configclass
 class ObservationsCfg:
     """Observation specifications for the MDP."""
-
     @configclass
     class PolicyCfg(ObsGroup):
-        """Observations for policy group."""
+        # TODO: Add the other observations
+        """Proprioceptive Data from robot"""
+        arm_joint_pos_rel = ObsTerm(
+            func=mdp.arm_joint_pos_rel,
+            params={"joint_names": tuple(ARM_JOINT_NAMES[:6])},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        )
+        base_lin_vel = ObsTerm(
+            func=isaac_mdp.base_lin_vel, noise=Unoise(n_min=-0.01, n_max=0.01)
+        )
+        base_ang_vel = ObsTerm(
+            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2)
+        )
+        arm_joint_vel = ObsTerm(
+            func=mdp.arm_joint_vel,
+            params={"joint_names": tuple(ARM_JOINT_NAMES[:6])},
+            noise=Unoise(n_min=-0.5, n_max=0.5),
+        )
+        projected_gravity = ObsTerm(
+            func=isaac_mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05)
+        )
+        
 
-        # observation terms (order preserved)
-        joint_pos_rel = ObsTerm(func=mdp.joint_pos_rel)
-        joint_vel_rel = ObsTerm(func=mdp.joint_vel_rel)
 
-        def __post_init__(self) -> None:
-            self.enable_corruption = False
+
+    @configclass
+    class LocomotionPolicyCfg(ObsGroup):
+        """
+        Observations for locomotion policy.
+        
+        This function summarizes all the observation inputs to ReLIC, so 
+        that this low-level controller can perform normally
+        
+        """
+        base_lin_vel = ObsTerm(
+            func=isaac_mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1)
+        )
+        base_ang_vel = ObsTerm(
+            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2)
+        )
+        projected_gravity = ObsTerm(
+            func=isaac_mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+        
+        # NOTE: the commands used to train ReLIC are no longer commands for
+        # high-level controller. We need to obtain the base velocity & joint pose
+        # to track from the predicted action from the high-level agent
+        # velocity_commands = ObsTerm(
+        #     func=isaac_mdp.generated_commands, params={"command_name": "base_velocity"}
+        # )
+        # commands = ObsTerm(
+        #     func=isaac_mdp.generated_commands,
+        #     params={"command_name": "arm_leg_joint_base_pose"},
+        # )
+        joint_pos = ObsTerm(
+            func=isaac_mdp.joint_pos_rel, noise=Unoise(n_min=-0.05, n_max=0.05)
+        )
+        joint_vel = ObsTerm(
+            func=isaac_mdp.joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5)
+        )
+        actions = ObsTerm(func=isaac_mdp.last_action)
+
+        def __post_init__(self):
+            self.enable_corruption = True
             self.concatenate_terms = True
 
-    # observation groups
     policy: PolicyCfg = PolicyCfg()
-
+    # TODO: Define these configurations by borrowing codes from previous works
+    # Now, remove them temporarily...
+    # policy_deployable: PolicyDeployableCfg = PolicyDeployableCfg()
+    # critic: CriticCfg = CriticCfg()
+    # adapt_teacher: AdaptTeacherCfg = AdaptTeacherCfg()
+    # adapt_student: AdaptStudentCfg = AdaptStudentCfg()
+    locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
 
 @configclass
 class EventCfg:
     """Configuration for events."""
 
     # reset
-    # reset_cart_position = EventTerm(
-    #     func=mdp.reset_joints_by_offset,
-    #     mode="reset",
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]),
-    #         "position_range": (-1.0, 1.0),
-    #         "velocity_range": (-0.5, 0.5),
-    #     },
-    # )
+    # TODO: Reset the robot pose behind the target object
+    reset_base = EventTerm(
+        func=isaac_mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {
+                "x": (-0.5, 0.5),
+                "y": (-0.5, 0.5),
+                "roll": (-0.5, 0.5),
+                "pitch": (-0.5, 0.5),
+                "yaw": (-3.14, 3.14),
+            },
+            "velocity_range": {
+                "x": (-0.5, 0.5),
+                "y": (-0.5, 0.5),
+                "z": (-0.5, 0.5),
+                "roll": (-0.5, 0.5),
+                "pitch": (-0.5, 0.5),
+                "yaw": (-0.5, 0.5),
+            },
+        },
+    )
 
-    # reset_pole_position = EventTerm(
-    #     func=mdp.reset_joints_by_offset,
-    #     mode="reset",
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"]),
-    #         "position_range": (-0.25 * math.pi, 0.25 * math.pi),
-    #         "velocity_range": (-0.25 * math.pi, 0.25 * math.pi),
-    #     },
-    # )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_around_default,
+        mode="reset",
+        params={
+            "position_range": (-0.2, 0.2),
+            "velocity_range": (-2.5, 2.5),
+        },
+    )
 
 
 @configclass
