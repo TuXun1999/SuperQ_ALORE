@@ -57,8 +57,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
                     "..",
                     "assets",
                     "spot",
-                    "pretrained",
-                    "policy.pt",
+                    "low-level-controller.pt",
                 )
             )
         self._locomotion_policy = load_torchscript_model(policy_path, device=self.device)
@@ -100,6 +99,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         Now: actions are commands for ReLIC to track (arm joints, base pose, base velocities)
         Order (following the convention in CommandCfg, no leg joint tracking):
         base velocity, arm joints, base pose
+        (3 + 7 + 3)
         
         The program consists of several steps
         1. Load the pretrained weights
@@ -113,19 +113,54 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             # The environmental policy observations
             policy_env_obs = self._env.observation_manager.compute_group(
                 self.cfg._locomotion_obs_group, update_history=False
-            ) # TODO: update_history??
-            
+            ) # update_history: recommended to be set false
+            print("Checking the env obs shape")
+            print(policy_env_obs.shape)
+            input("Press any key to continue")
 
-            # TODO: insert the commands into the policy obs
+            # Insert the commands into the policy obs
             """
             Locomotion policy obs: 
             base_lin_vel, base_ang_vel, projected_gravity, 
             (velocity commands, commands),
             joint_pos, joint_vel, actions
-            """
             
+            velocity commands: base velocity from command (dim: 3)
+            commands: arm leg joint & base pose from command (dim: 22)
+            """
+            # TODO: check out actions shape...
+            base_velocity = actions[:, :3]
+            arm_joints = actions[:, 3:10]
+            base_pose = actions[:, -3:]
+            
+            # The following commands from ReLIC indicate that if 
+            # the legs are not the commanded ones, just set up the 
+            # leg_joint_command to be zero to de-activate the leg tracking 
+            # functionality
+            # self.leg_joint_start[~self.command_leg] = 0.0
+            # self.leg_joint_sub_goal[~self.command_leg] = 0.0
+            # self.leg_joint_goal[~self.command_leg] = 0.0
+            leg_joints = torch.zeros(arm_joints.shape[0], 12).to(arm_joints.device)
+            arm_leg_joint_base_pose = torch.cat(
+                [
+                    arm_joints,
+                    leg_joints,
+                    base_pose,
+                ],
+                dim=1,
+            ) # dim: 22
 
-            # Step 3: predict leg actions
+            # the input to low-level controller consists of everything
+            # TODO: check out the obs dim in ReLIC
+            policy_env_obs = torch.cat(
+                [
+                    policy_env_obs[:, :12],
+                    base_velocity, 
+                    arm_leg_joint_base_pose, 
+                    policy_env_obs[:, 9:]
+                ]
+            )
+            ## Step 3: predict leg actions
             leg_actions = self._locomotion_policy(policy_env_obs)
 
         
@@ -136,10 +171,11 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         
         # Step 4: extract the raw actions
         # store the raw arm actions, which is the target joint pos
-        # TODO: extract it from the input actions
-        arm_actions = 
-        # TODO: linear interpolation
-        self._arm_raw_actions[:] = 
+        
+        # Extract it from the input actions
+        arm_actions = actions[:, 3:10]
+        # Execute the action directly (according to ALORE)
+        self._arm_raw_actions[:] = arm_actions
         self._arm_processed_actions[:] = self._arm_raw_actions.clone()
 
         # TODO: understand the actions in ReLIC ==> seems confusing between 
