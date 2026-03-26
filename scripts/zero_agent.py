@@ -56,6 +56,13 @@ def main():
         with torch.inference_mode():
             # compute zero actions
             actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
+            """
+            actions: base velocity (3) + arm joint (7) + base pose (3: roll, pitch, height)
+            """
+            # Hard-coded gripper pose & body pose
+            actions[:, 0:3] = torch.tensor([0.5, 0, 0])
+            actions[:, 3:10] = torch.tensor([-0.1132, -0.9997,  1.7310, -0.1282, -0.7852, -0.1023, -1.4842,]) #actions[:, 3:10]
+            actions[:, -3:] = torch.tensor([-0.0, -0.0,  0.6]) #
             # apply actions
             env.step(actions)
 

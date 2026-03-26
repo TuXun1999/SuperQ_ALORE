@@ -137,9 +137,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             # Extract the "command" for the low-level controller
             base_velocity = actions[:, :3]
             arm_joints = actions[:, 3:10]
-            arm_joints[:] = torch.tensor([-0.1132, -0.9997,  1.7310, -0.1282, -0.7852, -0.1023, -1.4842,]) #actions[:, 3:10]
             base_pose = actions[:, -3:]
-            base_pose[:] = torch.tensor([-0.0, -0.0,  0.6]) #
             
             # The following commands from ReLIC indicate that if 
             # the legs are not the commanded ones, just set up the 
