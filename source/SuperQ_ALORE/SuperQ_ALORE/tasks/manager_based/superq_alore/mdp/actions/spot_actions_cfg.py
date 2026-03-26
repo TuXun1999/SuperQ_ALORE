@@ -14,76 +14,6 @@ from . import spot_joint_actions
 
 
 @configclass
-class PDArmJointPositionActionCfg(JointActionCfg):
-    """Configuration for the joint position action term.
-
-    See :class:`JointPositionAction` for more details.
-    """
-
-    class_type: type[ActionTerm] = spot_joint_actions.PDArmJointPositionAction
-
-    arm_joint_names: tuple[str, ...] = MISSING
-
-    arm_command_name: str = MISSING
-
-    use_default_offset: bool = True
-    """Whether to use default joint positions configured in the articulation asset as offset.
-    Defaults to True.
-
-    If True, this flag results in overwriting the values of :attr:`offset` to the default joint positions
-    from the articulation asset.
-    """
-
-
-@configclass
-class PDArmLegJointPositionActionCfg(JointActionCfg):
-    """Configuration for the joint position action term.
-
-    See :class:`JointPositionAction` for more details.
-    """
-
-    class_type: type[ActionTerm] = spot_joint_actions.PDArmLegJointPositionAction
-
-    arm_joint_names: tuple[str, ...] = MISSING
-    leg_joint_names: tuple[str, ...] = MISSING
-
-    arm_command_name: str = MISSING
-    leg_command_name: str = MISSING
-
-    use_default_offset: bool = True
-    """Whether to use default joint positions configured in the articulation asset as offset.
-    Defaults to True.
-
-    If True, this flag results in overwriting the values of :attr:`offset` to the default joint positions
-    from the articulation asset.
-    """
-
-
-@configclass
-class PDArmMultiLegJointPositionActionCfg(JointActionCfg):
-    """Configuration for the joint position action term.
-
-    See :class:`JointPositionAction` for more details.
-    """
-
-    class_type: type[ActionTerm] = spot_joint_actions.PDArmMultiLegJointPositionAction
-
-    arm_joint_names: tuple[str, ...] = MISSING
-    leg_joint_names: dict = MISSING
-
-    arm_command_name: str = MISSING
-    leg_command_name: dict = MISSING
-
-    use_default_offset: bool = True
-    """Whether to use default joint positions configured in the articulation asset as offset.
-    Defaults to True.
-
-    If True, this flag results in overwriting the values of :attr:`offset` to the default joint positions
-    from the articulation asset.
-    """
-
-
-@configclass
 class MixedPDArmMultiLegJointPositionActionCfg(JointActionCfg):
     """Configuration for the joint position action term.
 
@@ -101,7 +31,7 @@ class MixedPDArmMultiLegJointPositionActionCfg(JointActionCfg):
 
     use_default_offset: bool = True
     
-    locomotion_policy_path = "./SuperQ_ALORE/assets/low-level-control.pt"
+    locomotion_policy_path = "./source/SuperQ_ALORE/SuperQ_ALORE/assets/spot/pretrained/policy.pt"
     locomotion_obs_group: str = "locomotion_policy"
 
     """Whether to use default joint positions configured in the articulation asset as offset.
@@ -110,3 +40,79 @@ class MixedPDArmMultiLegJointPositionActionCfg(JointActionCfg):
     If True, this flag results in overwriting the values of :attr:`offset` to the default joint positions
     from the articulation asset.
     """
+
+
+
+"""
+(DEPRECATED)
+Not used by the system, only kept here for programming 
+debugging purpose
+"""
+# @configclass
+# class PDArmJointPositionActionCfg(JointActionCfg):
+#     """Configuration for the joint position action term.
+
+#     See :class:`JointPositionAction` for more details.
+#     """
+
+#     class_type: type[ActionTerm] = spot_joint_actions.PDArmJointPositionAction
+
+#     arm_joint_names: tuple[str, ...] = MISSING
+
+#     arm_command_name: str = MISSING
+
+#     use_default_offset: bool = True
+#     """Whether to use default joint positions configured in the articulation asset as offset.
+#     Defaults to True.
+
+#     If True, this flag results in overwriting the values of :attr:`offset` to the default joint positions
+#     from the articulation asset.
+#     """
+
+
+# @configclass
+# class PDArmLegJointPositionActionCfg(JointActionCfg):
+#     """Configuration for the joint position action term.
+
+#     See :class:`JointPositionAction` for more details.
+#     """
+
+#     class_type: type[ActionTerm] = spot_joint_actions.PDArmLegJointPositionAction
+
+#     arm_joint_names: tuple[str, ...] = MISSING
+#     leg_joint_names: tuple[str, ...] = MISSING
+
+#     arm_command_name: str = MISSING
+#     leg_command_name: str = MISSING
+
+#     use_default_offset: bool = True
+#     """Whether to use default joint positions configured in the articulation asset as offset.
+#     Defaults to True.
+
+#     If True, this flag results in overwriting the values of :attr:`offset` to the default joint positions
+#     from the articulation asset.
+#     """
+
+
+# @configclass
+# class PDArmMultiLegJointPositionActionCfg(JointActionCfg):
+#     """Configuration for the joint position action term.
+
+#     See :class:`JointPositionAction` for more details.
+#     """
+
+#     class_type: type[ActionTerm] = spot_joint_actions.PDArmMultiLegJointPositionAction
+
+#     arm_joint_names: tuple[str, ...] = MISSING
+#     leg_joint_names: dict = MISSING
+
+#     arm_command_name: str = MISSING
+#     leg_command_name: dict = MISSING
+
+#     use_default_offset: bool = True
+#     """Whether to use default joint positions configured in the articulation asset as offset.
+#     Defaults to True.
+
+#     If True, this flag results in overwriting the values of :attr:`offset` to the default joint positions
+#     from the articulation asset.
+#     """

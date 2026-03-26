@@ -54,6 +54,11 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
             dynamic_friction=1.0,
             restitution=0.0,
         ),
+        visual_material=sim_utils.MdlFileCfg(
+            mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
+            project_uvw=True,
+            texture_scale=(0.25, 0.25),
+        ),
         debug_vis=False,
     )
 
@@ -127,16 +132,10 @@ class ActionsCfg:
     I.e. substitute the previous command obs in ReLIC with the action from high-level controller
     NOTE: Order is important!!
     
-    
-    TODO: ALORE says that arm joints can be obtained from ee-pose implicitly through IK
-    So, actually, the original raw output from ALORE will be
-    a_{high} = (ee pose displacement, base velocities)
-    It includes two differences:
-    1. No base pose change
-    2. We need add an IK module to convert the ee pose displacement into arm joint changes
-    
     """
-    joint_pos = mdp.MixedPDArmMultiLegJointPositionActionCfg(
+    # This configuration `high_level_action` is defining an action specification for the MDP (Markov
+    # Decision Process).
+    high_level_action = mdp.MixedPDArmMultiLegJointPositionActionCfg(
         asset_name="robot",
         joint_names=["[fh].*"],
         command_name="arm_leg_joint_base_pose",
@@ -152,25 +151,19 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         # TODO: Add the other observations
         """Proprioceptive Data from robot"""
-        arm_joint_pos_rel = ObsTerm(
-            func=mdp.arm_joint_pos_rel,
-            params={"joint_names": tuple(ARM_JOINT_NAMES[:6])},
-            noise=Unoise(n_min=-0.01, n_max=0.01),
-        )
         base_lin_vel = ObsTerm(
             func=isaac_mdp.base_lin_vel, noise=Unoise(n_min=-0.01, n_max=0.01)
         )
         base_ang_vel = ObsTerm(
             func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2)
         )
-        arm_joint_vel = ObsTerm(
-            func=mdp.arm_joint_vel,
-            params={"joint_names": tuple(ARM_JOINT_NAMES[:6])},
-            noise=Unoise(n_min=-0.5, n_max=0.5),
-        )
         projected_gravity = ObsTerm(
             func=isaac_mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05)
         )
+        
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
         
 
 
@@ -211,7 +204,7 @@ class ObservationsCfg:
         joint_vel = ObsTerm(
             func=isaac_mdp.joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5)
         )
-        actions = ObsTerm(func=isaac_mdp.last_action)
+        actions = ObsTerm(func=mdp.last_leg_action, params={"action_term_name": "high_level_action"})
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -226,42 +219,44 @@ class ObservationsCfg:
     # adapt_student: AdaptStudentCfg = AdaptStudentCfg()
     locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
 
+
 @configclass
 class EventCfg:
     """Configuration for events."""
 
     # reset
     # TODO: Reset the robot pose behind the target object
-    reset_base = EventTerm(
-        func=isaac_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-3.14, 3.14),
-            },
-            "velocity_range": {
-                "x": (-0.5, 0.5),
-                "y": (-0.5, 0.5),
-                "z": (-0.5, 0.5),
-                "roll": (-0.5, 0.5),
-                "pitch": (-0.5, 0.5),
-                "yaw": (-0.5, 0.5),
-            },
-        },
-    )
+    # reset
+    # reset_base = EventTerm(
+    #     func=isaac_mdp.reset_root_state_uniform,
+    #     mode="reset",
+    #     params={
+    #         "pose_range": {
+    #             "x": (-0.5, 0.5),
+    #             "y": (-0.5, 0.5),
+    #             "roll": (-0.5, 0.5),
+    #             "pitch": (-0.5, 0.5),
+    #             "yaw": (-3.14, 3.14),
+    #         },
+    #         "velocity_range": {
+    #             "x": (-0.5, 0.5),
+    #             "y": (-0.5, 0.5),
+    #             "z": (-0.5, 0.5),
+    #             "roll": (-0.5, 0.5),
+    #             "pitch": (-0.5, 0.5),
+    #             "yaw": (-0.5, 0.5),
+    #         },
+    #     },
+    # )
 
-    reset_robot_joints = EventTerm(
-        func=mdp.reset_joints_around_default,
-        mode="reset",
-        params={
-            "position_range": (-0.2, 0.2),
-            "velocity_range": (-2.5, 2.5),
-        },
-    )
+    # reset_robot_joints = EventTerm(
+    #     func=mdp.reset_joints_around_default,
+    #     mode="reset",
+    #     params={
+    #         "position_range": (-0.2, 0.2),
+    #         "velocity_range": (-2.5, 2.5),
+    #     },
+    # )
 
 
 @configclass

@@ -48,3 +48,19 @@ def gait_phase(env: ManagerBasedRLEnv) -> torch.Tensor:
             phase, torch.zeros_like(max_length), max_length
         )
         return phase.view(-1, 1)
+    
+def last_leg_action(
+    env: ManagerBasedRLEnv,
+    action_term_name: str = "high_level_action",
+    clip_limit: float = 100.0,
+) -> torch.Tensor:
+    """Previous leg joint action vector (12)."""
+    high_level_action_term = env.action_manager.get_term(action_term_name)
+    
+    leg_act = getattr(high_level_action_term, "_raw_actions", None)
+    # input("Press any key to continue")
+    if leg_act is None:
+        leg_act = torch.zeros((env.num_envs, 12), device=env.device)
+    
+
+    return torch.clamp(leg_act, min=-clip_limit, max=clip_limit)

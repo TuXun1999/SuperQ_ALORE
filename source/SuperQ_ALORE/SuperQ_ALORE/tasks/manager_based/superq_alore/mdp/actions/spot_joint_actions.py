@@ -14,9 +14,9 @@ if TYPE_CHECKING:
 
     from . import spot_actions_cfg
 
-# TODO: Modify it into the version that takes the
-# input high-level controller action, and process it
-# into low-level control actions
+# Input: high-level controller action
+# Output: process it
+# into low-level joint control actions
 class MixedPDArmMultiLegJointPositionAction(JointAction):
     """Joint action term that applies the processed actions to the articulation's joints as position commands."""
 
@@ -60,7 +60,8 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
                     "low-level-controller.pt",
                 )
             )
-        self._locomotion_policy = load_torchscript_model(policy_path, device=self.device)
+        # Load the pretrained policy as the low-level controller
+        self._locomotion_policy = load_torchscript_model(self.policy_path, device=self.device)
         self._locomotion_policy.eval()
 
         # Joint-level actions
@@ -80,6 +81,8 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
     def apply_actions(self):
         """Apply the actions."""
         # set position targets
+        # (The reference of zero should be the ones in software when importing the robot
+        # not the physical ones)
         self._asset.set_joint_position_target(
             self.processed_actions, joint_ids=self._joint_ids
         )
@@ -90,7 +93,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
     def process_actions(self, actions: torch.Tensor):
         """Process the actions."""
         """
-        Originally: actions are leg joint actions
+        Originally: actions are leg joint actions (dim: 12, verified)
         The arm actions are directly following the commands using linear interpolation
         The leg joint actions are split into two groups:
             a) commanded leg: directly follow the commands using linear interpolation
@@ -112,36 +115,47 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         with torch.inference_mode():
             # The environmental policy observations
             policy_env_obs = self._env.observation_manager.compute_group(
-                self.cfg._locomotion_obs_group, update_history=False
+                self.cfg.locomotion_obs_group, update_history=False
             ) # update_history: recommended to be set false
-            print("Checking the env obs shape")
-            print(policy_env_obs.shape)
-            input("Press any key to continue")
 
             # Insert the commands into the policy obs
             """
-            Locomotion policy obs: 
-            base_lin_vel, base_ang_vel, projected_gravity, 
-            (velocity commands, commands),
-            joint_pos, joint_vel, actions
+            Locomotion policy obs: (dim: 84, verified) 
+            base_lin_vel (3), base_ang_vel (3), projected_gravity (3), 
+            (velocity commands (3), commands (22)),
+            joint_pos (19), joint_vel (19)
+            (last_actions (12))
             
             velocity commands: base velocity from command (dim: 3)
-            commands: arm leg joint & base pose from command (dim: 22)
+            commands: arm leg joint & base pose from command (dim: 7 + 12 + 3 = 22, verified)
+            last_actions:
+            For ReLIC, last_action are the leg joint actions predicted (12) by the agent
+            and applied to the environment
+            However, now the agent doesn't predict the leg joint actions directly...
+            So, we need to extract last_action manually in observations.py
             """
-            # TODO: check out actions shape...
+            # Extract the "command" for the low-level controller
             base_velocity = actions[:, :3]
             arm_joints = actions[:, 3:10]
+            arm_joints[:] = torch.tensor([-0.1132, -0.9997,  1.7310, -0.1282, -0.7852, -0.1023, -1.4842,]) #actions[:, 3:10]
             base_pose = actions[:, -3:]
+            base_pose[:] = torch.tensor([-0.0, -0.0,  0.6]) #
             
             # The following commands from ReLIC indicate that if 
             # the legs are not the commanded ones, just set up the 
             # leg_joint_command to be zero to de-activate the leg tracking 
             # functionality
+            # It also indicates that the output from its agent may be 
+            # joint displacement, rather than an absolute value
+            
+            
             # self.leg_joint_start[~self.command_leg] = 0.0
             # self.leg_joint_sub_goal[~self.command_leg] = 0.0
             # self.leg_joint_goal[~self.command_leg] = 0.0
             leg_joints = torch.zeros(arm_joints.shape[0], 12).to(arm_joints.device)
-            arm_leg_joint_base_pose = torch.cat(
+            
+            # Construct the "command" to track used in ReLIC
+            arm_leg_joint_base_pose_command = torch.cat(
                 [
                     arm_joints,
                     leg_joints,
@@ -149,20 +163,21 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
                 ],
                 dim=1,
             ) # dim: 22
+            assert arm_leg_joint_base_pose_command.shape[1] == 22, "Whole-body pose shape incorrect"
 
-            # the input to low-level controller consists of everything
-            # TODO: check out the obs dim in ReLIC
+            # The input to low-level controller consists of everything
             policy_env_obs = torch.cat(
                 [
-                    policy_env_obs[:, :12],
+                    policy_env_obs[:, :9],
                     base_velocity, 
-                    arm_leg_joint_base_pose, 
+                    arm_leg_joint_base_pose_command, 
                     policy_env_obs[:, 9:]
-                ]
+                ],
+                dim = 1
             )
+            
             ## Step 3: predict leg actions
             leg_actions = self._locomotion_policy(policy_env_obs)
-
         
         
         self._raw_actions[:] = leg_actions
@@ -173,13 +188,11 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         # store the raw arm actions, which is the target joint pos
         
         # Extract it from the input actions
-        arm_actions = actions[:, 3:10]
+        arm_actions = actions[:, 3:10] # dim: 7
         # Execute the action directly (according to ALORE)
+        # TODO: A scheme for robot to complete grasping at first
         self._arm_raw_actions[:] = arm_actions
         self._arm_processed_actions[:] = self._arm_raw_actions.clone()
-
-        # TODO: understand the actions in ReLIC ==> seems confusing between 
-        # leg actions & arm actions
 
     @property
     def arm_raw_actions(self) -> torch.Tensor:
