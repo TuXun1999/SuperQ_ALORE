@@ -50,6 +50,7 @@ def main():
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     env.reset()
+
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
@@ -57,12 +58,13 @@ def main():
             # compute zero actions
             actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
             """
-            actions: base velocity (3) + arm joint (7) + base pose (3: roll, pitch, height)
+            actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
+            (Forced to match 12D action space of the pretrained locomotion policy)
             """
             # Hard-coded gripper pose & body pose
-            actions[:, 0:3] = torch.tensor([0.5, 0, 0])
-            actions[:, 3:10] = torch.tensor([-0.1132, -0.9997,  1.7310, -0.1282, -0.7852, -0.1023, -1.4842,]) #actions[:, 3:10]
-            actions[:, -3:] = torch.tensor([-0.0, -0.0,  0.6]) #
+            actions[:, 0:3] = torch.tensor([0.0, 0, 0])
+            actions[:, 3:10] = torch.tensor([-0.1132, -1.6097,  1.7310, -0.1282, 0.7852, 0.0, -1.5]) #actions[:, 3:10]
+            actions[:, -2:] = torch.tensor([-0.0,  0.6]) #
             # apply actions
             env.step(actions)
 

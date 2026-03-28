@@ -22,12 +22,13 @@ from . import mdp
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as isaac_mdp
-
+from isaaclab.actuators import ActuatorNetMLPCfg, DCMotorCfg, ImplicitActuatorCfg
 ##
 # Pre-defined configs
 ##
 from SuperQ_ALORE.assets.spot.spot import SPOT_ARM_CFG  # isort: skip
 from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES, FEET_NAMES
+import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 ##
 # Scene definition
 ##
@@ -64,6 +65,9 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 
     # robots
     robot: ArticulationCfg = MISSING
+    
+    # target objects to manipulate
+    target_object = scene.CHAIR_RIGID_CFG
     # contact sensors
     # TODO: are they really... helpful?
     contact_forces = ContactSensorCfg(
@@ -227,28 +231,36 @@ class EventCfg:
     # reset
     # TODO: Reset the robot pose behind the target object
     # reset
-    # reset_base = EventTerm(
-    #     func=isaac_mdp.reset_root_state_uniform,
-    #     mode="reset",
-    #     params={
-    #         "pose_range": {
-    #             "x": (-0.5, 0.5),
-    #             "y": (-0.5, 0.5),
-    #             "roll": (-0.5, 0.5),
-    #             "pitch": (-0.5, 0.5),
-    #             "yaw": (-3.14, 3.14),
-    #         },
-    #         "velocity_range": {
-    #             "x": (-0.5, 0.5),
-    #             "y": (-0.5, 0.5),
-    #             "z": (-0.5, 0.5),
-    #             "roll": (-0.5, 0.5),
-    #             "pitch": (-0.5, 0.5),
-    #             "yaw": (-0.5, 0.5),
-    #         },
-    #     },
-    # )
-
+    reset_base = EventTerm(
+        func=isaac_mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "pose_range": {
+                "x": (0.0, 0.0),
+                "y": (-0.0, 0.0),
+                "z": (-0.0, -0.0),
+                "roll": (-0.0, 0.0),
+                "pitch": (-0.0, 0.0),
+                "yaw": (0.0, 0.0),
+            },
+            "velocity_range": {
+                "x": (-0.0, 0.0),
+                "y": (-0.0, 0.0),
+                "z": (-0.0, 0.0),
+                "roll": (-0.0, 0.0),
+                "pitch": (-0.0, 0.0),
+                "yaw": (-0.0, 0.0),
+            },
+        },
+    )
+    reset_object = EventTerm(
+        func=mdp.reset_target_object_position,
+        mode="reset",
+        params = {
+            "asset_name": "target_object",
+            "offset": (0.0, 0.0)
+        }
+    )
     # reset_robot_joints = EventTerm(
     #     func=mdp.reset_joints_around_default,
     #     mode="reset",
@@ -258,6 +270,14 @@ class EventCfg:
     #     },
     # )
 
+    
+    # Move the object closer after a delay
+    # move_object_delayed = EventTerm(
+    #     func=mdp.move_target_object_closer,
+    #     mode="interval",
+    #     interval_range_s=(1.0, 0.0),
+    #     params = {"asset_name": "target_object"},
+    # )
 
 @configclass
 class RewardsCfg:
@@ -329,5 +349,19 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1 / 120
         self.sim.render_interval = self.decimation
         
+        # Import the robot (behind the chair)
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None
+
+        # Set up the initial state of robot
+        # default_root_state = self.scene.robot.data.default_root_state.clone()
+        
+        # # Set robot positions
+        # default_root_state[:, 0] = -0.5
+        # default_root_state[:, 1] = 0.0
+        # default_root_state[:, 2] = -0.2
+
+        # self.scene.robot.write_root_state_to_sim(default_root_state)
+
+        # TODO: Find a way to set up the robot's arm right at the time of initialization
+        # (Or it can be achieved by a command from agent)

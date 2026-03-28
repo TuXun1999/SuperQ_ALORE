@@ -2,8 +2,8 @@
 # path source/relic/relic/assets/spot/constants.py
 """Constant data for Boston Dynamics Spot robot."""
 
-SPOT_DEFAULT_POS: tuple[float, float, float] = (0.0, 0.0, 0.65)
-
+# SPOT_DEFAULT_POS: tuple[float, float, float] = (0.0, 0.0, 0.65)
+SPOT_DEFAULT_POS: tuple[float, float, float] = (0.0, 0.0, 0.35)
 ARM_JOINT_NAMES = [
     "arm_sh0",
     "arm_sh1",

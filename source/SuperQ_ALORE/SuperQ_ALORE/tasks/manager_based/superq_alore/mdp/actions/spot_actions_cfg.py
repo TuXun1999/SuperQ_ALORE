@@ -31,7 +31,7 @@ class MixedPDArmMultiLegJointPositionActionCfg(JointActionCfg):
 
     use_default_offset: bool = True
     
-    locomotion_policy_path = "./source/SuperQ_ALORE/SuperQ_ALORE/assets/spot/pretrained/policy.pt"
+    locomotion_policy_path = "./source/SuperQ_ALORE/SuperQ_ALORE/assets/spot/pretrained_relic/policy.pt"
     locomotion_obs_group: str = "locomotion_policy"
 
     """Whether to use default joint positions configured in the articulation asset as offset.

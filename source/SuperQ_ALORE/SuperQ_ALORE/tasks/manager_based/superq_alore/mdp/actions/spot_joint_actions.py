@@ -101,7 +101,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             
         Now: actions are commands for ReLIC to track (arm joints, base pose, base velocities)
         Order (following the convention in CommandCfg, no leg joint tracking):
-        base velocity, arm joints, base pose
+        base velocity, arm joints, base pose (input is pitch + height, roll is set to be zero)
         (3 + 7 + 3)
         
         The program consists of several steps
@@ -137,7 +137,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             # Extract the "command" for the low-level controller
             base_velocity = actions[:, :3]
             arm_joints = actions[:, 3:10]
-            base_pose = actions[:, -3:]
+            base_pose = actions[:, -2:]
             
             # The following commands from ReLIC indicate that if 
             # the legs are not the commanded ones, just set up the 
@@ -152,11 +152,14 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             # self.leg_joint_goal[~self.command_leg] = 0.0
             leg_joints = torch.zeros(arm_joints.shape[0], 12).to(arm_joints.device)
             
+            # We don't want a roll operation
+            roll_target = torch.zeros(arm_joints.shape[0], 1).to(arm_joints.device)
             # Construct the "command" to track used in ReLIC
             arm_leg_joint_base_pose_command = torch.cat(
                 [
                     arm_joints,
                     leg_joints,
+                    roll_target,
                     base_pose,
                 ],
                 dim=1,
@@ -187,6 +190,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         
         # Extract it from the input actions
         arm_actions = actions[:, 3:10] # dim: 7
+
         # Execute the action directly (according to ALORE)
         # TODO: A scheme for robot to complete grasping at first
         self._arm_raw_actions[:] = arm_actions

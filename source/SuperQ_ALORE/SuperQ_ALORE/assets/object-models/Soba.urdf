@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="Soba">
+  <link name="World">
+    <visual>
+      <origin xyz="-18.568348 -27.826382 0.2566619" rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/txramsey/RL/SuperQ_ALORE/source/SuperQ_ALORE/SuperQ_ALORE/assets/object-models/meshes/paint.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-18.568348 -27.826382 0.2566619" rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/txramsey/RL/SuperQ_ALORE/source/SuperQ_ALORE/SuperQ_ALORE/assets/object-models/meshes/leather.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-18.568348 -27.826382 0.2566619" rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/txramsey/RL/SuperQ_ALORE/source/SuperQ_ALORE/SuperQ_ALORE/assets/object-models/meshes/metal.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+    <visual>
+      <origin xyz="-18.568348 -27.826382 0.2566619" rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/txramsey/RL/SuperQ_ALORE/source/SuperQ_ALORE/SuperQ_ALORE/assets/object-models/meshes/chrome.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+  </link>
+</robot>

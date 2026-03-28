@@ -31,6 +31,38 @@ from SuperQ_ALORE.assets.spot.constants import (
 # Configuration
 ##
 
+# TODO: Determine SPOT's configuration from SuperQ-GRASP
+def spot_initial_pos():
+    return (-1.0, 0.0, 0.45)
+def spot_initial_joint_pos(spot_initial_joint_pos_ref):
+    spot_initial_joint_pos = {}
+    # Arm joints 
+    # A "safe" initial pos from experiments;
+    # [-0.1132, -2.4997,  1.7310, -0.1282, -0.7852, -0.1023, -1.4842,]
+    spot_initial_joint_pos["arm_sh0"] = 1.0
+    spot_initial_joint_pos["arm_sh1"] = -2.5
+    spot_initial_joint_pos["arm_el0"] = 1.73
+    spot_initial_joint_pos["arm_el1"] = -0.1282
+    spot_initial_joint_pos["arm_wr0"] = -0.7852
+    spot_initial_joint_pos["arm_wr1"] = -0.1023
+    spot_initial_joint_pos["arm_f1x"] = -1.45
+
+    # Leg joints
+    spot_initial_joint_pos["fl_hx"] = spot_initial_joint_pos_ref["fl_hx"]
+    spot_initial_joint_pos["fr_hx"] = spot_initial_joint_pos_ref["fr_hx"]
+    spot_initial_joint_pos["hl_hx"] = spot_initial_joint_pos_ref["hl_hx"]
+    spot_initial_joint_pos["hr_hx"] = spot_initial_joint_pos_ref["hr_hx"]
+    spot_initial_joint_pos["fl_hy"] = spot_initial_joint_pos_ref["fl_hy"]
+    spot_initial_joint_pos["fr_hy"] = spot_initial_joint_pos_ref["fr_hy"]
+    spot_initial_joint_pos["hl_hy"] = spot_initial_joint_pos_ref["hl_hy"]
+    spot_initial_joint_pos["hr_hy"] = spot_initial_joint_pos_ref["hr_hy"]
+    spot_initial_joint_pos["fl_kn"] = spot_initial_joint_pos_ref["fl_kn"]
+    spot_initial_joint_pos["fr_kn"] = spot_initial_joint_pos_ref["fr_kn"]
+    spot_initial_joint_pos["hl_kn"] = spot_initial_joint_pos_ref["hl_kn"]
+    spot_initial_joint_pos["hr_kn"] = spot_initial_joint_pos_ref["hr_kn"]
+    return spot_initial_joint_pos
+
+    
 SPOT_ARM_CFG = ArticulationCfg(
     spawn=sim_utils.UrdfFileCfg(
         fix_base=False,
@@ -55,8 +87,10 @@ SPOT_ARM_CFG = ArticulationCfg(
         ),
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=SPOT_DEFAULT_POS,
-        joint_pos=SPOT_DEFAULT_JOINT_POS,
+        pos=spot_initial_pos(),
+        # NOTE: I don't know why, but if I enable this, the robot starts to ... rotate!!!
+        # joint_pos=spot_initial_joint_pos(SPOT_DEFAULT_JOINT_POS),
+        joint_pos = SPOT_DEFAULT_JOINT_POS,
         joint_vel={".*": 0.0},
     ),
     actuators={

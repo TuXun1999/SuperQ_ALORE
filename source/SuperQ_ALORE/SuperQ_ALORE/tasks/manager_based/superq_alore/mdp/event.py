@@ -58,3 +58,32 @@ def reset_joints_around_default(
     )
     # set into the physics simulation
     asset.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
+
+
+def reset_target_object_position(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    asset_name: str = "target_object",
+    offset: tuple[float, float] = (0.0, 0.0),
+):
+    # target objects to manipulate
+    target_object = env.scene[asset_name]
+    target_object_state = env.scene[asset_name].data.default_root_state[env_ids].clone()
+    origins = env.scene.env_origins[env_ids]
+    target_object_state[:, 0] = origins[:, 0] + offset[0]
+    target_object_state[:, 1] = origins[:, 1] + offset[1]
+    target_object.write_root_state_to_sim(target_object_state, env_ids=env_ids)
+
+
+def move_target_object_closer(
+    env: ManagerBasedEnv,
+    interval_range_s, 
+    asset_name: str,
+):
+    # target objects to manipulate
+    target_object = env.scene[asset_name]
+    target_object_state = env.scene[asset_name].data.default_root_state.clone()
+    origins = env.scene.env_origins
+    target_object_state[:, 0:2] = origins[:, 0:2]
+    target_object.write_root_state_to_sim(target_object_state)
+
