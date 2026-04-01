@@ -179,7 +179,15 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             
             ## Step 3: predict leg actions
             leg_actions = self._locomotion_policy(policy_env_obs)
-        
+            
+            # print("Predicted leg actions from the low-level controller:", leg_actions[0])
+            # leg_joint = self._asset.data.joint_pos[0, self._joint_ids]
+            # print("Current leg joint positions:", leg_joint)
+            # print("Current arm joint positions:", self._asset.data.joint_pos[0, self._arm_joint_ids])
+            # print("Obs to low level controller (joint pos rel): ", policy_env_obs[0][9:28])
+            # print("Default joint pos: ", self._asset.data.default_joint_pos[0, self._joint_ids])
+            # print("Default arm joint pos: ", self._asset.data.default_joint_pos[0, self._arm_joint_ids])
+            # exit(1)
         
         self._raw_actions[:] = leg_actions
         # apply the affine transformations
@@ -188,13 +196,15 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         # Step 4: extract the raw actions
         # store the raw arm actions, which is the target joint pos
         
-        # Extract it from the input actions
+        # Extract it from the input actions (& linear interpolation)
         arm_actions = actions[:, 3:10] # dim: 7
-
+        
         # Execute the action directly (according to ALORE)
         # TODO: A scheme for robot to complete grasping at first
+        arm_current_joint_positions = self._asset.data.joint_pos[:, self._arm_joint_ids]
         self._arm_raw_actions[:] = arm_actions
         self._arm_processed_actions[:] = self._arm_raw_actions.clone()
+
 
     @property
     def arm_raw_actions(self) -> torch.Tensor:

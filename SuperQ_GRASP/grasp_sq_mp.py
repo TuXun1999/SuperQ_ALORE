@@ -5,13 +5,12 @@ import os
 import sys
 sys.path.append(os.getcwd())
 
-import trimesh
+import json
 import open3d as o3d
 
 import argparse
 from SuperQ_GRASP.superquadrics import *
 from utils.mesh_process import *
-from utils.image_process import *
 
 from scipy.spatial.transform import Rotation as R
 
@@ -248,7 +247,9 @@ def predict_grasp_pose_sq(mesh, csv_filename, \
     hull_ls = o3d.geometry.LineSet.create_from_triangle_mesh(hull)
     hull_ls.paint_uniform_color((1, 0, 0))
     sq_associated = []
-    
+    bbox_cands_all = []
+    grasp_cands_all = []
+    grasp_poses_world_all = []
     # Iteratively find the grasp poses on the iterated superquadrics
     for idx in hull_indices:
         # NOTE: Originally, SuperQ_GRASP only finds grasp poses on the 
@@ -265,13 +266,20 @@ def predict_grasp_pose_sq(mesh, csv_filename, \
         # Part II: Determine the grasp candidates on the selected sq and visualize them
         #######
         # Predict grasp poses around the target superquadric in LOCAL frame
-        grasp_poses = grasp_pose_predict_sq_closest(sq_closest, gripper_attr, sample_number=50)
+        grasp_poses = grasp_pose_predict_sq_closest(sq_closest, gripper_attr, sample_number=4)
         # Evaluate the grasp poses w.r.t. the target mesh in WORLD frame
         bbox_cands, grasp_cands, grasp_poses_world = \
             grasp_pose_eval_gripper(mesh, sq_closest, grasp_poses, gripper_attr, \
                                     csv_filename, args.visualization)
+        bbox_cands_all += bbox_cands
+        grasp_cands_all += grasp_cands
+        grasp_poses_world_all += grasp_poses_world
         if args.visualization:
-            sq_associated.append(sq_closest["points"])
+            pcd_associated = o3d.geometry.PointCloud()
+            pcd_associated.points = o3d.utility.Vector3dVector(sq_closest["points"])
+            pcd_associated.paint_uniform_color((0, 0, 1))
+            sq_associated.append(pcd_associated)
+
         
     ## Postlogue - Visualization
     if args.visualization:
@@ -299,13 +307,13 @@ def predict_grasp_pose_sq(mesh, csv_filename, \
         for pcd_associated in sq_associated:
             vis.add_geometry(pcd_associated) 
 
-        # vis.add_geometry(frame)
+        vis.add_geometry(frame)
 
         vis.add_geometry(hull_ls)
         
-        for grasp_cand in grasp_cands:
+        for grasp_cand in grasp_cands_all:
             vis.add_geometry(grasp_cand)
-        for bbox_cand in bbox_cands:
+        for bbox_cand in bbox_cands_all:
             vis.add_geometry(bbox_cand)
 
         vis.run()
@@ -317,10 +325,10 @@ def predict_grasp_pose_sq(mesh, csv_filename, \
         print("*******************")
         print("** Grasp pose Prediction Result: ")
         print("Selected Point in Space: ")
-        print("Number of valid grasp poses predicted: " + str(len(grasp_poses_world)))
+        print("Number of valid grasp poses predicted: " + str(len(grasp_poses_world_all)))
         print("*******************")
 
-    return np.array(grasp_poses_world)
+    return np.array(grasp_poses_world_all)
 
 
 if __name__ == "__main__":
@@ -363,7 +371,8 @@ if __name__ == "__main__":
     
     # Visualization in open3d
     parser.add_argument(
-        '--visualization', action = 'store_true', help="Whether to visualize the grasp poses"
+        '-v', '--visualization', action = 'store_true', 
+        help="Whether to visualize the grasp poses"
     )
     add_mp_parameters(parser)
     parser.set_defaults(normalize=False)
@@ -388,12 +397,12 @@ if __name__ == "__main__":
     if not os.path.isfile(csv_filename):
         print("Converting mesh into SDF...")
         # If the csv file has not been generated, generate one
-        _ = mesh2sdf_csv(mesh_filename, options = parser.parse_args())
+        _ = mesh2sdf_csv(mesh_filename, args = parser.parse_args())
     
     # Read the pre-stored decomposition results (if any)
     stored_stats_filename = "./SuperQ_GRASP/Marching_Primitives/sq_data/" + suffix + ".p"
     if not os.path.isfile(stored_stats_filename) or parser.parse_args().decompose:
-        stored_stats_filename = preprocess_mesh(mesh, csv_filename)
+        stored_stats_filename = preprocess_mesh(mesh_filename, csv_filename, options = parser.parse_args())
 
 
     # The normalization is never used in SuperQ_GRASP, so just set it at the default value
@@ -411,9 +420,15 @@ if __name__ == "__main__":
                     "Length": gripper_length,
                     "Width": gripper_width, 
                     "Thickness": gripper_thickness}
-        
-    predict_grasp_pose_sq(mesh, csv_filename, \
+    
+    # Predict grasp poses using SuperQ_GRASP (represented in object's frame)
+    grasp_poses_obj_frame = predict_grasp_pose_sq(mesh, csv_filename, \
                           normalize_stats, 
                           stored_stats_filename, 
                           gripper_attr, 
                           parser.parse_args())
+    json.dump(grasp_poses_obj_frame.tolist(), open("./SuperQ_GRASP/grasp_poses.json", "w"))
+    
+    
+    
+    

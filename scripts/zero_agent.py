@@ -50,7 +50,14 @@ def main():
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     env.reset()
+    dt = env.unwrapped.step_dt
+    steps = env.unwrapped.max_episode_length
 
+    timestep = 0
+    arm_target = torch.tensor([0.0099, -1.3287, 1.7197,-0.0031, 0.9530, -0.0154, -1.1852])
+    arm_default = torch.tensor([0.0, -0.9, 1.8, 0.0, -0.9, 0.0, -1.54]) # obtained from the initial joint state of the robot in the simulation (also the default joint position configured in the asset)
+
+    chair_reset_timestep = (int)(1.8 / dt) # The chair will be reset after 2s, so we want to complete the grasping before that
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
@@ -61,12 +68,19 @@ def main():
             actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
             (Forced to match 12D action space of the pretrained locomotion policy)
             """
-            # Hard-coded gripper pose & body pose
-            actions[:, 0:3] = torch.tensor([0.0, 0, 0])
-            actions[:, 3:10] = torch.tensor([-0.1132, -1.6097,  1.7310, -0.1282, 0.7852, 0.0, -1.5]) #actions[:, 3:10]
-            actions[:, -2:] = torch.tensor([-0.0,  0.6]) #
-            # apply actions
+            # if timestep <= chair_reset_timestep: # The chair will be reset after 2s, so we want to complete the grasping before that
+            #     actions[:, 3:10] = torch.lerp(arm_default, arm_target, timestep / chair_reset_timestep) # linear interpolation from default to target joint positions
+            # else:
+            #     actions[:, 3:10] = arm_target # directly command the target joint positions after chair reset, to bypass the disturbance from chair reset and keep the grasping pose stable
+            actions[:, 3:10] = arm_target
+            # Only command the base to be at a suitable height & pitch 
+            # (roll action not desired)
+            actions[:, :3] = torch.tensor([0.0, 0.0, 0.0], device=env.unwrapped.device) # zero base velocity
+            actions[:, -2:] = torch.tensor([-0.0,  0.515], device=env.unwrapped.device) #
             env.step(actions)
+            timestep += 1
+            
+            timestep = timestep % steps
 
     # close the simulator
     env.close()

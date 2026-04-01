@@ -11,8 +11,6 @@ from isaaclab.utils.math import sample_uniform
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
-
-
 def reset_joints_around_default(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
@@ -56,6 +54,68 @@ def reset_joints_around_default(
     joint_vel = sample_uniform(
         joint_min_vel, joint_max_vel, joint_min_vel.shape, joint_min_vel.device
     )
+    # set into the physics simulation
+    asset.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
+""" 
+Reset the robot joints at the pre-defined initial position obtained 
+from SuperQ-GRASP & Inverse Kinematics, with some small random noise added to them.
+"""
+# TODO: reset the robot joint at the pre-defined initial position
+# TODO: reset the robot at different initial conditions based on different grasp poses
+def reset_joints_around_grasp_pose(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    position_range: tuple[float, float],
+    velocity_range: tuple[float, float],
+    joint_position_ref: dict[str, float],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+):
+    """Reset the robot joints in the pre-defined positions obtained from SuperQ-GRASP & Inverse Kinematics,
+    with some small random noise added to them
+    
+    
+    The ranges are clipped to fit inside the soft joint limits. The sampled values are then set into the physics
+    simulation.
+    """
+    # extract the used quantities (to enable type-hinting)
+    asset: Articulation = env.scene[asset_cfg.name]
+    # get default joint state
+    joint_default_pos = asset.data.default_joint_pos[env_ids]
+    
+    # Find the joint ids corresponding to the joint names in the reference joint position dictionary
+    joint_ids, joint_names = asset.find_joints(joint_position_ref.keys())
+    joint_grasp_pose_pos = joint_default_pos.clone()
+    # Set the joint positions in the reference joint position dictionary to the corresponding joint ids
+    for joint_name, joint_pos in joint_position_ref.items():
+        joint_id = joint_ids[joint_names.index(joint_name)]
+        joint_grasp_pose_pos[:, joint_id] = joint_pos
+    
+    # Sample a small noise around the reference joint positions
+    joint_min_pos = joint_grasp_pose_pos + position_range[0]
+    joint_max_pos = joint_grasp_pose_pos + position_range[1]
+    
+    # clip pos to range
+    joint_pos_limits = asset.data.soft_joint_pos_limits[env_ids, ...]
+    joint_min_pos = torch.clamp(
+        joint_min_pos, min=joint_pos_limits[..., 0], max=joint_pos_limits[..., 1]
+    )
+    joint_max_pos = torch.clamp(
+        joint_max_pos, min=joint_pos_limits[..., 0], max=joint_pos_limits[..., 1]
+    )
+    
+    # sample these values randomly
+    joint_pos = sample_uniform(
+        joint_min_pos, joint_max_pos, joint_min_pos.shape, joint_min_pos.device
+    )
+    
+    # Add some random sampling in velocity as well
+    joint_vel_default = torch.zeros_like(joint_pos)
+    joint_min_vel = joint_vel_default + velocity_range[0]
+    joint_max_vel = joint_vel_default + velocity_range[1]
+    joint_vel = sample_uniform(
+        joint_min_vel, joint_max_vel, joint_min_vel.shape, joint_min_vel.device
+    )
+
     # set into the physics simulation
     asset.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
 

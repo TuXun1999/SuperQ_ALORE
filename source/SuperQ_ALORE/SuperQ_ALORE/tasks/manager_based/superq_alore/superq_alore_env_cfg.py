@@ -28,6 +28,7 @@ from isaaclab.actuators import ActuatorNetMLPCfg, DCMotorCfg, ImplicitActuatorCf
 ##
 from SuperQ_ALORE.assets.spot.spot import SPOT_ARM_CFG  # isort: skip
 from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES, FEET_NAMES
+from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
 import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 ##
 # Scene definition
@@ -253,29 +254,38 @@ class EventCfg:
             },
         },
     )
-    reset_object = EventTerm(
-        func=mdp.reset_target_object_position,
-        mode="reset",
-        params = {
-            "asset_name": "target_object",
-            "offset": (0.0, 0.0)
-        }
-    )
-    # reset_robot_joints = EventTerm(
-    #     func=mdp.reset_joints_around_default,
+    # reset_object = EventTerm(
+    #     func=mdp.reset_target_object_position,
     #     mode="reset",
-    #     params={
-    #         "position_range": (-0.2, 0.2),
-    #         "velocity_range": (-2.5, 2.5),
-    #     },
+    #     params = {
+    #         "asset_name": "target_object",
+    #         "offset": (2.0, 0.0)
+    #     }
     # )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_around_grasp_pose,
+        mode="reset",
+        params={
+            "position_range": (-0.0, 0.0),
+            "velocity_range": (-0.0, 0.0),
+            "joint_position_ref": GRASP_POSE_1_JOINT_POS,
+        },
+    )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_around_default,
+        mode="reset",
+        params={
+            "position_range": (-0.0, 0.0),
+            "velocity_range": (-0.0, 0.0),
+        },
+    )
 
     
     # Move the object closer after a delay
     # move_object_delayed = EventTerm(
     #     func=mdp.move_target_object_closer,
     #     mode="interval",
-    #     interval_range_s=(1.0, 0.0),
+    #     interval_range_s=(2.0, 0.0),
     #     params = {"asset_name": "target_object"},
     # )
 
@@ -341,12 +351,12 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         """Post initialization."""
         # general settings
-        self.decimation = 2
+        self.decimation = 4
         self.episode_length_s = 5
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings
-        self.sim.dt = 1 / 120
+        self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation
         
         # Import the robot (behind the chair)

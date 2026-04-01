@@ -2,7 +2,7 @@ import numpy as np
 import sys
 import open3d as o3d
 import csv
-from grasp_pose_prediction.Marching_Primitives.MPS import MPS, eul2rotm, parseInputArgs
+from SuperQ_GRASP.Marching_Primitives.MPS import MPS, eul2rotm, parseInputArgs
 import scipy.io
 def create_superellipsoids(e1, e2, a1, a2, a3):
     pc_shape = 50

@@ -107,7 +107,7 @@ def collision_test(mesh, gripper_points, threshold):
     
     # Method 2: use ray casting functionality from open3d 
     mesh_tri = o3d.t.geometry.TriangleMesh.from_legacy(mesh)
-    mesh_tri.triangle = o3d.utility.Vector3iVector(mesh_tri.triangle)
+    
     # Create a scene and add the triangle mesh
     scene = o3d.t.geometry.RaycastingScene()
     _ = scene.add_triangles(mesh_tri)  # we do not need the geometry ID for mesh
