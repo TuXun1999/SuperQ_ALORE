@@ -375,3 +375,5 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
 
         # TODO: Find a way to set up the robot's arm right at the time of initialization
         # (Or it can be achieved by a command from agent)
+        
+        # How dy!!!
