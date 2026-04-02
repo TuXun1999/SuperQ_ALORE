@@ -137,18 +137,13 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         if start_moving_mask.any():
             # Obtain the Pre-calculated joint positions for the grasp pose
             arm_joint_names = [joint_name for joint_name in GRASP_POSE_1_JOINT_POS.keys() if joint_name.startswith("arm")]
-            leg_joint_names = ["fl_hx", "fr_hx", "hl_hx", "hr_hx", "fl_hy", "fr_hy", "hl_hy", "hr_hy", "fl_kn", "fr_kn", "hl_kn", "hr_kn"]
+            # leg_joint_names = ["fl_hx", "fr_hx", "hl_hx", "hr_hx", "fl_hy", "fr_hy", "hl_hy", "hr_hy", "fl_kn", "fr_kn", "hl_kn", "hr_kn"]
             arm_grasp_pose_by_default = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in arm_joint_names], device=self._env.unwrapped.device)
-            leg_grasp_pose_by_default = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in leg_joint_names], device=self._env.unwrapped.device)
+            # leg_grasp_pose_by_default = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in leg_joint_names], device=self._env.unwrapped.device)
 
             arm_actions[start_moving_mask] = arm_grasp_pose_by_default
-            leg_actions[start_moving_mask] = leg_grasp_pose_by_default
+            # leg_actions[start_moving_mask] = leg_grasp_pose_by_default
             
-            # Temporarily increase stiffness to keep the robot stable
-            # self._asset.actuators["spot_hip"].stiffness = 140.0
-            # self._asset.actuators["spot_hip"].damping = 4.0
-            # self._asset.actuators["spot_knee"].stiffness = 200.0
-            # self._asset.actuators["spot_knee"].damping = 4.0
 
 
         """
@@ -161,12 +156,6 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         #     arm_joint_current_pos = arm_joint_current_pos[~start_moving_mask]
         #     arm_actions[~start_moving_mask] = arm_actions[~start_moving_mask]
             
-        #     # Restore the desired stiffness for the legs after the robot starts moving
-        #     self._asset.actuators["spot_hip"].stiffness = HIP_STIFFNESS
-        #     self._asset.actuators["spot_hip"].damping = HIP_DAMPING
-        #     self._asset.actuators["spot_knee"].stiffness = KNEE_STIFFNESS
-        #     self._asset.actuators["spot_knee"].damping = KNEE_DAMPING
-        # Calculate the leg joint actions from the low-level controller
         with torch.inference_mode():
             # The environmental policy observations
             policy_env_obs = self._env.observation_manager.compute_group(

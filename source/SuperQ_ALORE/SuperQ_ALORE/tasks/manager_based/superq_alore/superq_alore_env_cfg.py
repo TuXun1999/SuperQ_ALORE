@@ -218,6 +218,7 @@ class ObservationsCfg:
     policy: PolicyCfg = PolicyCfg()
     # TODO: Define these configurations by borrowing codes from previous works
     # Now, remove them temporarily...
+    
     # policy_deployable: PolicyDeployableCfg = PolicyDeployableCfg()
     # critic: CriticCfg = CriticCfg()
     # adapt_teacher: AdaptTeacherCfg = AdaptTeacherCfg()
@@ -375,5 +376,3 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
 
         # TODO: Find a way to set up the robot's arm right at the time of initialization
         # (Or it can be achieved by a command from agent)
-        
-        # How dy!!!
