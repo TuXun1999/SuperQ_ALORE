@@ -34,7 +34,7 @@ import isaaclab_tasks  # noqa: F401
 import SuperQ_ALORE.tasks  # noqa: F401
 import torch
 from isaaclab_tasks.utils import parse_env_cfg
-
+from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
 
 def main():
     """Zero actions agent with Isaac Lab environment."""
@@ -54,10 +54,14 @@ def main():
     steps = env.unwrapped.max_episode_length
 
     timestep = 0
-    arm_target = torch.tensor([0.0099, -1.3287, 1.7197,-0.0031, 0.9530, -0.0154, -1.1852])
+    
+    # Find all the arm joints names in the dict starting with "arm" and get their indices in the joint state
+    arm_joint_names = [joint_name for joint_name in GRASP_POSE_1_JOINT_POS.keys() if joint_name.startswith("arm")]
+    arm_target = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in arm_joint_names], device=env.unwrapped.device)
+    # arm_target = torch.tensor([0.0099, -1.3287, 1.7197,-0.0031, 0.9530, -0.0154, -1.1852])
     arm_default = torch.tensor([0.0, -0.9, 1.8, 0.0, -0.9, 0.0, -1.54]) # obtained from the initial joint state of the robot in the simulation (also the default joint position configured in the asset)
 
-    chair_reset_timestep = (int)(1.8 / dt) # The chair will be reset after 2s, so we want to complete the grasping before that
+    chair_reset_timestep = (int)(2.2 / dt) # The chair will be reset after 2s, so we want to complete the grasping before that
     # simulate environment
     while simulation_app.is_running():
         # run everything in inference mode
@@ -75,11 +79,14 @@ def main():
             actions[:, 3:10] = arm_target
             # Only command the base to be at a suitable height & pitch 
             # (roll action not desired)
-            actions[:, :3] = torch.tensor([0.0, 0.0, 0.0], device=env.unwrapped.device) # zero base velocity
-            actions[:, -2:] = torch.tensor([-0.0,  0.515], device=env.unwrapped.device) #
+            if timestep <= chair_reset_timestep:
+                actions[:, :3] = torch.tensor([0.0, 0.0, 0.0], device=env.unwrapped.device) # zero base velocity
+            else:
+                actions[:, :3] = torch.tensor([-0.2, 0.0, 0.0], device=env.unwrapped.device) # command a base velocity to move forward after chair reset, to avoid the disturbance from chair reset and keep the grasping pose stable
+            actions[:, -2:] = torch.tensor([-0.0,  0.55], device=env.unwrapped.device) #
             env.step(actions)
             timestep += 1
-            
+
             timestep = timestep % steps
 
     # close the simulator

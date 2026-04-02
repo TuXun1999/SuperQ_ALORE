@@ -254,14 +254,14 @@ class EventCfg:
             },
         },
     )
-    # reset_object = EventTerm(
-    #     func=mdp.reset_target_object_position,
-    #     mode="reset",
-    #     params = {
-    #         "asset_name": "target_object",
-    #         "offset": (2.0, 0.0)
-    #     }
-    # )
+    reset_object = EventTerm(
+        func=mdp.reset_target_object_position,
+        mode="reset",
+        params = {
+            "asset_name": "target_object",
+            "offset": (0.0, 0.0)
+        }
+    )
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_around_grasp_pose,
         mode="reset",
@@ -271,21 +271,21 @@ class EventCfg:
             "joint_position_ref": GRASP_POSE_1_JOINT_POS,
         },
     )
-    reset_robot_joints = EventTerm(
-        func=mdp.reset_joints_around_default,
-        mode="reset",
-        params={
-            "position_range": (-0.0, 0.0),
-            "velocity_range": (-0.0, 0.0),
-        },
-    )
+    # reset_robot_joints = EventTerm(
+    #     func=mdp.reset_joints_around_default,
+    #     mode="reset",
+    #     params={
+    #         "position_range": (-0.0, 0.0),
+    #         "velocity_range": (-0.0, 0.0),
+    #     },
+    # )
 
     
     # Move the object closer after a delay
     # move_object_delayed = EventTerm(
     #     func=mdp.move_target_object_closer,
     #     mode="interval",
-    #     interval_range_s=(2.0, 0.0),
+    #     interval_range_s=(1.0, 1.0),
     #     params = {"asset_name": "target_object"},
     # )
 
@@ -352,7 +352,7 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 4
-        self.episode_length_s = 5
+        self.episode_length_s = 20
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings

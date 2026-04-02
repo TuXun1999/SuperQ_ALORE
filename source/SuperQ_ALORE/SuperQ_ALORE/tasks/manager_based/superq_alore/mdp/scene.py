@@ -49,6 +49,6 @@ CHAIR_RIGID_CFG = RigidObjectCfg(
         mass_props=sim_utils.MassPropertiesCfg(mass=2.0),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(1.0, 0.0, 0.0),
+        pos=(0.0, 0.0, 0.0),
         rot=(0.707, 0.0, 0.0, 0.707)),
 )

@@ -57,12 +57,16 @@ KNEE_STIFFNESS: float = 60.0
 KNEE_DAMPING: float = 1.5
 KNEE_FRICTION: float = 0.180
 
+
 ARM_EFFORT_LIMIT: tuple[float, ...] = (90.9, 181.8, 90.9, 30.3, 30.3, 30.3, 15.32)
 
-ARM_STIFFNESS: tuple[float, ...] = (120.0, 120.0, 120.0, 100.0, 100.0, 100.0, 16.0)
+# ARM_STIFFNESS: tuple[float, ...] = (120.0, 120.0, 120.0, 100.0, 100.0, 100.0, 16.0)
 
-ARM_DAMPING: tuple[float, ...] = (2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.32)
+# ARM_DAMPING: tuple[float, ...] = (2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.32)
 
+ARM_STIFFNESS: tuple[float, ...] = (250.0, 250.0, 300.0, 300.0, 100.0, 100.0, 16.0)
+
+ARM_DAMPING: tuple[float, ...] = (5.0, 5.0, 6.0, 6.0, 2.0, 2.0, 0.32)
 ARM_ARMATURE: tuple[float, ...] = (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.001)
 
 """The lookup table for the knee joint parameters of the Boston Dynamics Spot robot.
@@ -190,13 +194,13 @@ NEG_TORQUE_SPEED_LIMIT: list[list[float]] = [
 # Pre-calculated joint positions for SPOT at the first grasp pose
 GRASP_POSE_1_JOINT_POS: dict[str, float] = {
     # Arm joints
-    "arm_sh0": 0.0099,
-    "arm_sh1": -1.3287,
-    "arm_el0": 1.7197,
-    "arm_el1": -0.0031,
-    "arm_wr0": 0.9530,
-    "arm_wr1": -0.0154,
-    "arm_f1x": -0.1852,
+    "arm_sh0": 0.00,
+    "arm_sh1": -1.3206,
+    "arm_el0": 1.5866,
+    "arm_el1": -0.0032,
+    "arm_wr0": 1.0781,
+    "arm_wr1": -0.0163,
+    "arm_f1x": -0.9,
     # SPOT's default leg joint positions in experiments
     "fl_hx": 0.10925053060054779, 
     "fl_hy": 0.66980540752410889,

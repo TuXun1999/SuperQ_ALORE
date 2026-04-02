@@ -139,9 +139,12 @@ def move_target_object_closer(
     env: ManagerBasedEnv,
     interval_range_s, 
     asset_name: str,
+    robot_asset_name: str = "robot",
 ):
     # target objects to manipulate
     target_object = env.scene[asset_name]
+    target_robot = env.scene[robot_asset_name]
+    target_robot_state = target_robot.data.root_state_w.clone()
     target_object_state = env.scene[asset_name].data.default_root_state.clone()
     origins = env.scene.env_origins
     target_object_state[:, 0:2] = origins[:, 0:2]
