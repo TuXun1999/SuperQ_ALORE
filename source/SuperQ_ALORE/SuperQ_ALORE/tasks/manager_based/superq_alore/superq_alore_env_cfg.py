@@ -154,8 +154,31 @@ class ObservationsCfg:
     """Observation specifications for the MDP."""
     @configclass
     class PolicyCfg(ObsGroup):
-        # TODO: Add the other observations
+        ## Observation inputs in several groups
         """Proprioceptive Data from robot"""
+        joint_pos = ObsTerm(
+            func=isaac_mdp.joint_pos_rel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 1.0
+        )
+        joint_vel = ObsTerm(
+            func=isaac_mdp.joint_vel_rel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 0.05
+        )
+        # Body orientation data
+        
+        # Root angular velocity
+        
+        # Last action (x, y, omega, \delta arm joints)
+        
+        # Commands 
+        
+        # End-effector in robot frame
+        
+        # Object pose in robot frame
+        
+        # Category code? (TODO: Clarify this... it's constant zero in ALORE)
+        
+        
         base_lin_vel = ObsTerm(
             func=isaac_mdp.base_lin_vel, noise=Unoise(n_min=-0.01, n_max=0.01)
         )
@@ -167,7 +190,8 @@ class ObservationsCfg:
         )
         
         def __post_init__(self):
-            self.enable_corruption = True
+            self.enable_corruption = False
+            self.history_length = 3
             self.concatenate_terms = True
         
 

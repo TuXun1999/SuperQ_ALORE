@@ -230,6 +230,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         
         
         # Execute the action directly (according to ALORE)
+        # TODO: modify it into relative pose execution
         self._arm_raw_actions[:] = arm_actions
         self._arm_processed_actions[:] = self._arm_raw_actions.clone()
 
