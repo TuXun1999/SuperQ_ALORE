@@ -117,6 +117,8 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         """
         # Extract the arm actions from the input actions
         arm_actions = actions[:, 3:10] # dim: 7
+        # Extract the "command" for the low-level controller
+        base_velocity = actions[:, :3]
         leg_actions = torch.zeros(actions.shape[0], 12).to(actions.device) # dim: 12
         
         
@@ -124,7 +126,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         gripper_closing_mask = self._env.episode_length_buf > 1 
         if gripper_closing_mask.any(): 
             arm_actions[gripper_closing_mask, -1] = torch.clamp(
-                -0.9 + self._env.episode_length_buf[gripper_closing_mask]* self.gripper_vel, max= -0.05
+                -0.9 + self._env.episode_length_buf[gripper_closing_mask]* self.gripper_vel, max= -0.15
             )
             
         start_moving_mask = self._env.episode_length_buf < self.gripper_closing_steps
@@ -144,6 +146,9 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             arm_actions[start_moving_mask] = arm_grasp_pose_by_default
             # leg_actions[start_moving_mask] = leg_grasp_pose_by_default
             
+            # Also, force the robot to stand
+            base_velocity[start_moving_mask] = torch.zeros(3, device=base_velocity.device) # zero base velocity
+            
 
 
         """
@@ -152,9 +157,9 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         Leg joint: use the predicted actions from the low-level controller
         """
         # if (~start_moving_mask).any():
-        #     arm_joint_current_pos = self._asset.data.joint_pos[:, self._arm_joint_ids]
-        #     arm_joint_current_pos = arm_joint_current_pos[~start_moving_mask]
-        #     arm_actions[~start_moving_mask] = arm_actions[~start_moving_mask]
+            #     arm_joint_current_pos = self._asset.data.joint_pos[:, self._arm_joint_ids]
+            #     arm_joint_current_pos = arm_joint_current_pos[~start_moving_mask]
+            #     arm_actions[~start_moving_mask] = arm_actions[~start_moving_mask]
             
         with torch.inference_mode():
             # The environmental policy observations
@@ -178,8 +183,6 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             However, now the agent doesn't predict the leg joint actions directly...
             So, we need to extract last_action manually in observations.py
             """
-            # Extract the "command" for the low-level controller
-            base_velocity = actions[:, :3]
             arm_joints = arm_actions # dim: 7
             base_pose = actions[:, -2:]
 
@@ -231,6 +234,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         
         # Execute the action directly (according to ALORE)
         # TODO: modify it into relative pose execution
+        # arm_current = self._asset.data.joint_pos[:, self._arm_joint_ids]
         self._arm_raw_actions[:] = arm_actions
         self._arm_processed_actions[:] = self._arm_raw_actions.clone()
 

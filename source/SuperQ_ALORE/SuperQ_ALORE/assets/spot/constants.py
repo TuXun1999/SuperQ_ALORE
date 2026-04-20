@@ -4,6 +4,17 @@
 
 # SPOT_DEFAULT_POS: tuple[float, float, float] = (0.0, 0.0, 0.65)
 SPOT_DEFAULT_POS: tuple[float, float, float] = (0.0, 0.0, 0.35)
+SPOT_BODY_LINKS = [
+    "body",
+    "fl_uleg",
+    "fl_lleg",
+    "fr_uleg",
+    "fr_lleg",
+    "hl_uleg",
+    "hl_lleg",
+    "hr_uleg",
+    "hr_lleg",
+]
 ARM_JOINT_NAMES = [
     "arm_sh0",
     "arm_sh1",

@@ -76,7 +76,9 @@ def main():
             #     actions[:, 3:10] = torch.lerp(arm_default, arm_target, timestep / chair_reset_timestep) # linear interpolation from default to target joint positions
             # else:
             #     actions[:, 3:10] = arm_target # directly command the target joint positions after chair reset, to bypass the disturbance from chair reset and keep the grasping pose stable
-            actions[:, 3:10] = arm_target
+            # arm_idx = [0, 5, 10, 15, 16, 17]
+            # arm_current = obs["critic"][:, arm_idx]
+            actions[:, 3:10] = arm_target# directly command the delta to the target joint positions
             # Only command the base to be at a suitable height & pitch 
             # (roll action not desired)
             if timestep <= chair_reset_timestep:
@@ -84,7 +86,8 @@ def main():
             else:
                 actions[:, :3] = torch.tensor([-0.2, 0.0, 0.0], device=env.unwrapped.device) # command a base velocity to move forward after chair reset, to avoid the disturbance from chair reset and keep the grasping pose stable
             actions[:, -2:] = torch.tensor([-0.0,  0.55], device=env.unwrapped.device) #
-            env.step(actions)
+            obs, _, _, _, _ = env.step(actions)
+            
             timestep += 1
 
             timestep = timestep % steps

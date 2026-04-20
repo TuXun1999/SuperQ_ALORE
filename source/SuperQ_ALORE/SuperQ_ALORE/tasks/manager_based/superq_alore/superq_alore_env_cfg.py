@@ -5,6 +5,8 @@
 
 import math
 from dataclasses import MISSING
+
+import torch
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -27,7 +29,7 @@ from isaaclab.actuators import ActuatorNetMLPCfg, DCMotorCfg, ImplicitActuatorCf
 # Pre-defined configs
 ##
 from SuperQ_ALORE.assets.spot.spot import SPOT_ARM_CFG  # isort: skip
-from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES, FEET_NAMES
+from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES, FEET_NAMES, SPOT_BODY_LINKS
 from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
 import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 ##
@@ -72,11 +74,12 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
     # contact sensors
     # TODO: are they really... helpful?
     contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True
+        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
     )
     robot_to_ground_contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*",
         history_length=3,
+        update_period=0.005,
         track_air_time=True,
         filter_prim_paths_expr=["/World/ground/terrain/mesh"],
     )
@@ -99,20 +102,19 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP."""
-    # TODO: modify it into the correct sampled command
     object_velocity = isaac_mdp.UniformVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.05,
-        rel_heading_envs=1.0,
-        heading_command=True,
-        heading_control_stiffness=0.5,
+        resampling_time_range=(100.0, 100.0), # No need to change the command
+        rel_standing_envs=0.0,
+        rel_heading_envs=0.0,
+        heading_command=False,
+        heading_control_stiffness=1.0,
         debug_vis=True,
         ranges=isaac_mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-1.0, 1.0),
-            lin_vel_y=(-1.0, 1.0),
-            ang_vel_z=(-1.0, 1.0),
-            heading=(-math.pi, math.pi),
+            lin_vel_x=(-0.5, 0.5),
+            lin_vel_y=(0.0, 0.0),
+            ang_vel_z=(-0.5, 0.5),
+            heading=(-math.pi, math.pi), # Not used if heading_command = False
         ),
     )
 
@@ -154,49 +156,171 @@ class ObservationsCfg:
     """Observation specifications for the MDP."""
     @configclass
     class PolicyCfg(ObsGroup):
-        ## Observation inputs in several groups
-        """Proprioceptive Data from robot"""
+        """Observations for the Actor / Policy agent of the high-level controller"""
+        # Joint velocities & positions
         joint_pos = ObsTerm(
-            func=isaac_mdp.joint_pos_rel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.0, n_max=0.0),
             scale = 1.0
-        )
+        ) # dim: 18 (12 legs + 7 arm joints - 1 redundant joint) --- relative joint positions to the default pose
         joint_vel = ObsTerm(
-            func=isaac_mdp.joint_vel_rel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            func=mdp.joint_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
             scale = 0.05
-        )
+        ) # dim: 18
+        
         # Body orientation data
+        body_orientation = ObsTerm(
+            func = mdp.get_body_orientation,
+            scale = 1.0
+        ) # dim: 2 (no yaw information)
         
         # Root angular velocity
+        base_ang_vel = ObsTerm(
+            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 0.25
+        ) # dim: 3, base_ang_vel is in robot's root frame
         
         # Last action (x, y, omega, \delta arm joints)
+        last_action = ObsTerm(
+            func = mdp.last_high_level_action, params={"clip_limit": 100}
+        ) # dim: 9
         
-        # Commands 
+        # Commands (x, y, omega)
+        # commands = ObsTerm(
+        #     func=isaac_mdp.generated_commands,
+        #     params={"command_name": "object_velocity"},
+        # ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
         
         # End-effector in robot frame
+        ee_pose_in_robot_frame = ObsTerm(
+            func = mdp.ee_pose_in_robot_frame,
+            params = {"end_effector_link_name": "arm_link_jaw"},
+            scale = 1.0,
+        ) # dim: 7 (position + quat) for the end-effector link
         
         # Object pose in robot frame
+        obj_pose_in_robot_frame = ObsTerm(
+            func = mdp.obj_pose_in_robot_frame,
+            scale = 1.0,
+        ) # dim: 7 (position + quat) for the target object
         
         # Category code? (TODO: Clarify this... it's constant zero in ALORE)
-        
-        
-        base_lin_vel = ObsTerm(
-            func=isaac_mdp.base_lin_vel, noise=Unoise(n_min=-0.01, n_max=0.01)
-        )
-        base_ang_vel = ObsTerm(
-            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2)
-        )
-        projected_gravity = ObsTerm(
-            func=isaac_mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05)
-        )
-        
+        category_encode = ObsTerm(
+            func = mdp.category_encode,
+            scale = 1.0,
+        ) # dim 3, one-hot encoding for object category, not used in ALORE so just return zeros
+
         def __post_init__(self):
             self.enable_corruption = False
-            self.history_length = 3
+            self.history_length = 10
             self.concatenate_terms = True
         
 
 
-
+    @configclass
+    class CriticCfg(ObsGroup):
+        """Observations for critic."""
+        # Joint velocities & positions
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 1.0
+        ) # dim: 18
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 0.05
+        ) # dim: 18
+        
+        # Default joint positions
+        default_joint_pos = ObsTerm(
+            func=mdp.default_joint_pos, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale=1.0
+        ) # dim: 18
+        # Robot joint positions (absolute, not relative to default pose)
+        joint_pos_abs = ObsTerm(
+            func = mdp.joint_pos, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale=1.0
+        ) # dim: 18
+        
+        # Robot base orientation
+        body_orientation = ObsTerm(
+            func = mdp.get_body_orientation,
+            scale = 1.0
+        ) # dim: 2 (no yaw information)
+        
+        
+        # Robot base angular velocity
+        base_ang_vel = ObsTerm(
+            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 0.25
+        ) # dim: 3, base_ang_vel is in robot's root frame
+        
+        # Last action (x, y, omega, \delta arm joints)
+        last_action = ObsTerm(
+            func = mdp.last_high_level_action, params={"clip_limit": 100.0}
+        ) # dim: 9
+        
+        # Commands
+        # commands = ObsTerm(
+        #     func=isaac_mdp.generated_commands,
+        #     params={"command_name": "object_velocity"},
+        # ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
+        
+        # Link pose in robot frame
+        link_pose_in_robot_frame = ObsTerm(
+            func = mdp.link_pose_in_robot_frame,
+            params = {"link_names": 
+                        ["arm_link_sh0",
+                        "arm_link_sh1",
+                        "arm_link_el0",
+                        "arm_link_el1",
+                        "arm_link_wr0",
+                        "arm_link_wr1",
+                        "arm_link_fngr",
+                        "arm_link_jaw"]
+                    },
+            scale = 1.0,
+        ) # dim: 8 *  7 (position + quat) for the arm links
+         
+        # End-effector contact state
+        ee_contact_state = ObsTerm(
+            func = mdp.ee_contact_state,
+            params = {"contact_sensor_name": "contact_forces"},
+            scale = 1.0,
+        ) # dim: 1, binary contact state for the end-effector
+        
+        # Object pose in robot frame
+        obj_pose_in_robot_frame = ObsTerm(
+            func = mdp.obj_pose_in_robot_frame,
+            scale = 1.0,
+        ) # dim: 7 (position + quat) for the target object
+        
+        # Robot base velocity
+        base_lin_vel = ObsTerm(
+            func=isaac_mdp.base_lin_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 2.0,
+        ) # dim: 3
+        
+       # Object velocity in robot frame
+        obj_lin_vel_in_robot_frame = ObsTerm(
+            func = mdp.obj_lin_vel_in_robot_frame,
+            scale = 2.0,
+        ) # dim: 3
+        
+        # Object angular velocity in robot frame
+        obj_ang_vel_in_robot_frame = ObsTerm(
+            func = mdp.obj_ang_vel_in_robot_frame,
+            scale = 0.25,
+        ) # dim: 3
+        
+        # Object physical properties (Static fric, mass, dynamic fric)
+        obj_physical_properties = ObsTerm(
+            func = mdp.obj_physical_properties,
+            params={"object_name": "target_object"},
+            scale = 1.0,
+        ) # dim: 3
+        
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
     @configclass
     class LocomotionPolicyCfg(ObsGroup):
         """
@@ -207,15 +331,15 @@ class ObservationsCfg:
         
         """
         base_lin_vel = ObsTerm(
-            func=isaac_mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1)
-        )
+            func=isaac_mdp.base_lin_vel, noise=Unoise(n_min=-0.0, n_max=0.0)
+        ) # dim: 3
         base_ang_vel = ObsTerm(
-            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2)
-        )
+            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.0, n_max=0.0)
+        ) # dim: 3, base_ang_vel is in robot's root frame
         projected_gravity = ObsTerm(
             func=isaac_mdp.projected_gravity,
-            noise=Unoise(n_min=-0.05, n_max=0.05),
-        )
+            noise=Unoise(n_min=-0.0, n_max=0.0),
+        ) # dim: 3, projected gravity in robot's root frame
         
         # NOTE: the commands used to train ReLIC are no longer commands for
         # high-level controller. We need to obtain the base velocity & joint pose
@@ -228,23 +352,21 @@ class ObservationsCfg:
         #     params={"command_name": "arm_leg_joint_base_pose"},
         # )
         joint_pos = ObsTerm(
-            func=isaac_mdp.joint_pos_rel, noise=Unoise(n_min=-0.05, n_max=0.05)
-        )
+            func=isaac_mdp.joint_pos_rel, noise=Unoise(n_min=-0.0, n_max=0.0)
+        ) # dim: 19
         joint_vel = ObsTerm(
-            func=isaac_mdp.joint_vel_rel, noise=Unoise(n_min=-0.5, n_max=0.5)
-        )
+            func=isaac_mdp.joint_vel_rel, noise=Unoise(n_min=-0.0, n_max=0.0)
+        ) # dim: 19
         actions = ObsTerm(func=mdp.last_leg_action, params={"action_term_name": "high_level_action"})
-
+        # dim: 12
         def __post_init__(self):
-            self.enable_corruption = True
+            self.enable_corruption = False
             self.concatenate_terms = True
 
     policy: PolicyCfg = PolicyCfg()
-    # TODO: Define these configurations by borrowing codes from previous works
-    # Now, remove them temporarily...
     
     # policy_deployable: PolicyDeployableCfg = PolicyDeployableCfg()
-    # critic: CriticCfg = CriticCfg()
+    critic: CriticCfg = CriticCfg()
     # adapt_teacher: AdaptTeacherCfg = AdaptTeacherCfg()
     # adapt_student: AdaptStudentCfg = AdaptStudentCfg()
     locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
@@ -287,6 +409,8 @@ class EventCfg:
             "offset": (0.0, 0.0)
         }
     )
+    
+    # TODO: figure out how to reset the initial grasp poses at different locations
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_around_grasp_pose,
         mode="reset",
@@ -318,42 +442,167 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # # (1) Constant running reward
-    # alive = RewTerm(func=mdp.is_alive, weight=1.0)
-    # # (2) Failure penalty
-    # terminating = RewTerm(func=mdp.is_terminated, weight=-2.0)
-    # # (3) Primary task: keep pole upright
-    # pole_pos = RewTerm(
-    #     func=mdp.joint_pos_target_l2,
-    #     weight=-1.0,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"]), "target": 0.0},
-    # )
-    # # (4) Shaping tasks: lower cart velocity
-    # cart_vel = RewTerm(
-    #     func=mdp.joint_vel_l1,
-    #     weight=-0.01,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"])},
-    # )
-    # # (5) Shaping tasks: lower pole angular velocity
-    # pole_vel = RewTerm(
-    #     func=mdp.joint_vel_l1,
-    #     weight=-0.005,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["cart_to_pole"])},
-    # )
+    ## (1) Group 1: Object related rewards (primary task)
+    # TODO: UUNCOMMENT THEM!!
+    # track_lin_vel_xy_exp = RewTerm(
+    #     func=mdp.track_lin_vel_xy_exp,
+    #     weight=5.0,
+    #     params={"command_name": "object_velocity"},
+    # ) # Track the xy linear velocity of th object according to the command
+    
+    # track_ang_vel_yaw_exp = RewTerm(
+    #     func=mdp.track_ang_vel_yaw_exp,
+    #     weight=5.0,
+    #     params={"command_name": "object_velocity"},
+    # ) # Track the yaw angular velocity of the object according to the command
+    
+    is_alive = RewTerm(func=mdp.is_alive, weight=1.0) # The manipulation process should be alive
+    
+    
+    ## Smooth movement of the object
+    yaw_alignment = RewTerm(
+        func=mdp.yaw_alignment_reward, 
+        weight=5.0,
+        params={
+            "asset_name": "target_object",
+            "robot_name": "robot",
+        },
+    ) # Align the yaw of the object with the desired direction (if applicable)
+    
+    lin_vel_z_l2 = RewTerm(
+        func=mdp.lin_vel_z_l2,
+        weight=2.0,
+        params = {"asset_name": "target_object"}
+    ) # Penalize the vertical velocity of the object to encourage it to stay on the ground
+    
+    ang_vel_xy_l2 = RewTerm(
+        func=mdp.ang_vel_xy_l2,
+        weight=0.05,
+        params = {"asset_name": "target_object"}
+    ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
+    
+    flat_orientation_l2 = RewTerm(
+        func=mdp.flat_orientation_l2,
+        weight=10.0,
+        params = {"asset_name": "target_object"}
+    ) # Encourage the object to maintain a flat orientation (if applicable)
 
-
+    # TODO: UNCOMMENT THEM!!
+    # lin_vel_change_penalty = RewTerm(
+    #     func=mdp.lin_vel_change_penalty,
+    #     weight=2.0,
+    #     params = {"asset_name": "target_object"}
+    # ) # Penalize the change in linear velocity of the object to encourage smooth motion
+    
+    # ang_vel_change_penalty = RewTerm(
+    #     func=mdp.ang_vel_change_penalty,
+    #     weight=2.0,
+    #     params = {"asset_name": "target_object"}
+    # ) # Penalize the change in angular velocity of the object to encourage smooth motion
+    
+    distance_penalty = RewTerm(
+        func=mdp.distance_penalty,
+        weight=10.0,
+        params={
+            "robot_name": "robot",
+            "end_effector_link_name": "arm_link_jaw",
+            "distance_threshold": 0.6,
+        },
+    ) # Penalize the distance between the end-effector and the robot
+    
+    ## Group 2: Robot related rewards (auxiliary task, to encourage better robot behavior)
+    # TODO: UNCOMMENT THEM!!
+    # action_rate_l2 = RewTerm(
+    #     func=mdp.action_rate_l2,
+    #     weight=0.01,
+    # ) # Penalize large instantaneous changes in the action output to encourage smoother motion
+    # action_rate2_l2 = RewTerm(
+    #     func=mdp.action_rate2_l2,
+    #     weight=0.002,
+    # ) # Penalize large instantaneous changes in the action changes to encourage smoother motion
+    
+    joint_torques = RewTerm(
+        func=mdp.joint_torques,
+        weight=2.5e-7,
+        params={"arm_joint_names": ARM_JOINT_NAMES, "robot_name": "robot"},
+    ) # Penalize the torques in the arm joints to encourage energy-efficient motion
+    
+    joint_accel = RewTerm(
+        func=mdp.joint_accel,
+        weight=2.5e-7,
+        params={"arm_joint_names": ARM_JOINT_NAMES, "robot_name": "robot"},
+    ) # Penalize the acceleration in the arm joints to encourage smoother motion
+    
+    joint_positions_wrt_reference = RewTerm(
+        func=mdp.joint_positions_wrt_reference,
+        weight=5.0,
+        params={
+            "arm_joint_names": [
+                "arm_sh0",
+                "arm_sh1",
+                "arm_el0",
+                "arm_el1",
+                "arm_wr0",
+                "arm_wr1",], 
+            "robot_name": "robot",
+            # TODO: Adapt it to multiple grasp poses
+            "reference_joint_positions": GRASP_POSE_1_JOINT_POS
+        },
+    ) # Penalize the deviation of joint positions from the reference initial grasp pose to encourage a more natural pose
+    
+    undesired_contact_penalty = RewTerm(
+        func=mdp.undesired_contact_penalty,
+        weight=5.0,
+        params={
+            "undesired_contact_body_names": SPOT_BODY_LINKS,  # Replace with actual body names
+            "contact_sensor_name": "contact_forces",
+            "undesired_contact_threshold": 1.0,
+        },
+    ) # Penalize undesired contacts between the robot and the ground to encourage the robot to
 @configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
 
     # (1) Time out
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # # (2) Cart out of bounds
-    # cart_out_of_bounds = DoneTerm(
-    #     func=mdp.joint_pos_out_of_manual_limit,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=["slider_to_cart"]), "bounds": (-3.0, 3.0)},
-    # )
+    
+    # (2) Terminate if illegal contact happens
+    # Reset the environment if too large action / velocities are detected
+    physics_explosion = DoneTerm(
+        func=mdp.outlier_detected,
+        params={"threshold": 1000.0} 
+    )
+    base_contact = DoneTerm(
+        func=isaac_mdp.illegal_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["body"]),
+            "threshold": 1.0,
+        },
+    )
+    undesired_ground_contact = DoneTerm(
+        func=mdp.illegal_ground_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "robot_to_ground_contact_forces", body_names=[".*leg"]
+            ),
+            "threshold": 1.0,
+        },
+    )
+    
+    # Terminate if any joint velocity exceeds 50.0 rad/s
+    aggressive_joint_velocity = DoneTerm(
+        func=mdp.joint_velocity_limits,
+        params={"max_vel": 30.0},
+    )
 
+    # (3) Terminate if the object falls off the gripper
+    object_slide_off = DoneTerm(
+        func=mdp.object_slide_off,
+        params={
+            "contact_sensor_name": "contact_forces",
+            "gripper_links_names": ["arm_link_fngr", "arm_link_jaw"],
+        },
+    )
 
 ##
 # Environment configuration
@@ -387,16 +636,18 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         # Import the robot (behind the chair)
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None
-
-        # Set up the initial state of robot
-        # default_root_state = self.scene.robot.data.default_root_state.clone()
         
-        # # Set robot positions
-        # default_root_state[:, 0] = -0.5
-        # default_root_state[:, 1] = 0.0
-        # default_root_state[:, 2] = -0.2
+        
+    # Create a new buffer to store the previous object velocities & actions
+    def _pre_physics_step(self, action):
+        # Cache the current velocity before it gets updated
+        prev_obj_lin_vel = self.scene["target_object"].data.root_lin_vel_b.clone()[:, :2]
+        prev_obj_ang_vel = self.scene["target_object"].data.root_ang_vel_b.clone()[:, 2]
+        self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
+    
+    # After the physics step, update prev_action and prev_prev_action for the next step
+    def _post_physics_step(self, action):
+        # Update the observed actions as well
+        self.prev_prev_action = getattr(self, "prev_action", torch.zeros_like(action))
+        self.prev_action = action.clone()
 
-        # self.scene.robot.write_root_state_to_sim(default_root_state)
-
-        # TODO: Find a way to set up the robot's arm right at the time of initialization
-        # (Or it can be achieved by a command from agent)
