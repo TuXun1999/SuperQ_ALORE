@@ -250,6 +250,7 @@ def predict_grasp_pose_sq(mesh, csv_filename, \
     bbox_cands_all = []
     grasp_cands_all = []
     grasp_poses_world_all = []
+    print(len(hull_indices))
     # Iteratively find the grasp poses on the iterated superquadrics
     for idx in hull_indices:
         # NOTE: Originally, SuperQ_GRASP only finds grasp poses on the 
@@ -280,7 +281,7 @@ def predict_grasp_pose_sq(mesh, csv_filename, \
             pcd_associated.paint_uniform_color((0, 0, 1))
             sq_associated.append(pcd_associated)
 
-        
+    print(len(sq_associated))
     ## Postlogue - Visualization
     if args.visualization:
         
@@ -303,6 +304,7 @@ def predict_grasp_pose_sq(mesh, csv_filename, \
         
         vis.add_geometry(mesh)
         vis.add_geometry(pcd)
+        
         
         for pcd_associated in sq_associated:
             vis.add_geometry(pcd_associated) 

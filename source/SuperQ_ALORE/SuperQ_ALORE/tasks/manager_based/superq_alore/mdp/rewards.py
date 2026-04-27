@@ -155,21 +155,29 @@ def lin_vel_change_penalty(
     asset_name: str = "target_object"
 ) -> torch.Tensor:
     """Penalize change in linear velocity."""
+    # asset: RigidObject = env.scene[asset_name]
+    # current_lin_vel = asset.data.root_lin_vel_b[:, :2]  # (vx, vy)
+    
+    # # Calculate the penalty
+    # lin_vel_change_penalty = torch.norm(current_lin_vel - env.prev_obj_vel[:, :2], dim=-1)
+
+    # return -lin_vel_change_penalty
     asset: RigidObject = env.scene[asset_name]
     current_lin_vel = asset.data.root_lin_vel_b[:, :2]  # (vx, vy)
-    
-    # Calculate the penalty
-    lin_vel_change_penalty = torch.norm(current_lin_vel - env.prev_obj_vel[:, :2], dim=-1)
-
+    prev_lin_vel = env.observation_manager.compute_group("reward_calculation")["object_velocity"][:, 0, :2]  # (vx, vy)
+    lin_vel_change_penalty = torch.norm(current_lin_vel - prev_lin_vel, dim=-1)
     return -lin_vel_change_penalty
+
+
 def ang_vel_change_penalty(
     env: ManagerBasedRLEnv,
     asset_name: str = "target_object"
 ) -> torch.Tensor:
     """Penalize change in angular velocity."""
     asset: RigidObject = env.scene[asset_name]
-    current_ang_vel = asset.data.root_ang_vel_b[:, 2:3]  # omega
-    ang_vel_change_penalty = torch.abs(current_ang_vel.squeeze(-1) - env.prev_obj_vel[:, 2])
+    current_ang_vel = asset.data.root_ang_vel_b[:, 2]  # yaw velocity
+    prev_ang_vel = env.observation_manager.compute_group("reward_calculation")["object_velocity"][:, 0, 2]  # yaw velocity
+    ang_vel_change_penalty = torch.abs(current_ang_vel - prev_ang_vel)
     return -ang_vel_change_penalty
 
 # Distance penalty (to encourage the robot to place the object at a fixed distance away)
@@ -209,13 +217,17 @@ def distance_penalty(
 ## (1) Action rates
 def action_rate_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Penalize large instantaneous changes in the network action output."""
-    return -torch.linalg.norm(
-        (env.action_manager.action[:, :9] - env.prev_action[:, :9]), dim=1
-    )
+    current_action = env.action_manager.action[:, :9] 
+    prev_action = env.observation_manager.compute_group("reward_calculation")["applied_actions"][:, -1, :9]  
+    return -torch.linalg.norm(current_action - prev_action, dim=1)
+
 def action_rate2_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Penalize large instantaneous changes in the network action output."""
+    current_action = env.action_manager.action[:, :9]  
+    prev_action = env.observation_manager.compute_group("reward_calculation")["applied_actions"][:, -1, :9]  
+    prev_prev_action = env.observation_manager.compute_group("reward_calculation")["applied_actions"][:, 0, :9] 
     return -torch.linalg.norm(
-        (env.action_manager.action[:, :9] - 2 * env.prev_action[:, :9] + env.prev_prev_action[:, :9]), dim=1
+        (current_action - 2 * prev_action + prev_prev_action), dim=1
     )
 ## (2) Joint movements
 # The torques in the joints

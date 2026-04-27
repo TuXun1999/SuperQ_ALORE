@@ -15,3 +15,11 @@ for grasp_pose in grasp_poses:
         x_norm = abs(grasp_pose[0, 3])
         selected_grasp_pose = grasp_pose
 print("Selected grasp pose: " + str(selected_grasp_pose))
+
+# Select the one on one arm rest of the chair
+y_norm = 10000
+for grasp_pose in grasp_poses:
+    if abs(grasp_pose[1, 3]) < y_norm:
+        y_norm = abs(grasp_pose[1, 3])
+        selected_grasp_pose = grasp_pose
+print("Selected grasp pose: " + str(selected_grasp_pose))

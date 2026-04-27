@@ -223,6 +223,15 @@ def default_joint_pos(
     default_joint_pos = robot.data.default_joint_pos[:,:-1]  # shape (num_envs, 18)
     return default_joint_pos
 
+def object_velocity(
+    env: ManagerBasedRLEnv,
+    asset_name: str = "target_object",
+) -> torch.Tensor:
+    obj = env.scene[asset_name]
+    obj_lin_vel = obj.data.root_lin_vel_b[:, :2]  # shape (N_envs, 2)
+    obj_ang_vel = obj.data.root_ang_vel_b[:, 2:]  # shape (N_envs, 1)
+    return torch.cat([obj_lin_vel, obj_ang_vel], dim=-1).to(env.device)  # shape (N_envs, 3)
+
 def last_high_level_action(
     env: ManagerBasedRLEnv,
     clip_limit: float = 100.0,

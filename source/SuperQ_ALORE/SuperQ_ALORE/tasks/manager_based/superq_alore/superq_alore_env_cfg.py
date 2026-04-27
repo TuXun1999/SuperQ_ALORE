@@ -362,7 +362,28 @@ class ObservationsCfg:
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = True
-
+    @configclass
+    class RewardCalculationCfg(ObsGroup):
+        """
+        Observations for the reward calculations.
+        This is going to be used by reward functions
+        
+        """
+        object_velocity = ObsTerm(
+            func=mdp.object_velocity,
+            history_length = 2,
+            flatten_history_dim = False,
+            params={"asset_name": "target_object"},
+        ) # dim: 3
+        applied_actions = ObsTerm(
+            func = mdp.last_high_level_action, 
+            history_length = 2,
+            flatten_history_dim = False,
+            params={"clip_limit": 100.0},
+        ) # dim: 9
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = False
     policy: PolicyCfg = PolicyCfg()
     
     # policy_deployable: PolicyDeployableCfg = PolicyDeployableCfg()
@@ -370,6 +391,9 @@ class ObservationsCfg:
     # adapt_teacher: AdaptTeacherCfg = AdaptTeacherCfg()
     # adapt_student: AdaptStudentCfg = AdaptStudentCfg()
     locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
+    reward_calculation: RewardCalculationCfg = RewardCalculationCfg()
+    
+    
 
 
 @configclass
@@ -487,19 +511,19 @@ class RewardsCfg:
         params = {"asset_name": "target_object"}
     ) # Encourage the object to maintain a flat orientation (if applicable)
 
-    # TODO: UNCOMMENT THEM!!
-    # lin_vel_change_penalty = RewTerm(
-    #     func=mdp.lin_vel_change_penalty,
-    #     weight=2.0,
-    #     params = {"asset_name": "target_object"}
-    # ) # Penalize the change in linear velocity of the object to encourage smooth motion
+    lin_vel_change_penalty = RewTerm(
+        func=mdp.lin_vel_change_penalty,
+        weight=2.0,
+        params = {"asset_name": "target_object"}
+    ) # Penalize the change in linear velocity of the object to encourage smooth motion
     
-    # ang_vel_change_penalty = RewTerm(
-    #     func=mdp.ang_vel_change_penalty,
-    #     weight=2.0,
-    #     params = {"asset_name": "target_object"}
-    # ) # Penalize the change in angular velocity of the object to encourage smooth motion
+    ang_vel_change_penalty = RewTerm(
+        func=mdp.ang_vel_change_penalty,
+        weight=2.0,
+        params = {"asset_name": "target_object"}
+    ) # Penalize the change in angular velocity of the object to encourage smooth motion
     
+    # TODO: the distance may be tricky
     distance_penalty = RewTerm(
         func=mdp.distance_penalty,
         weight=10.0,
@@ -511,15 +535,14 @@ class RewardsCfg:
     ) # Penalize the distance between the end-effector and the robot
     
     ## Group 2: Robot related rewards (auxiliary task, to encourage better robot behavior)
-    # TODO: UNCOMMENT THEM!!
-    # action_rate_l2 = RewTerm(
-    #     func=mdp.action_rate_l2,
-    #     weight=0.01,
-    # ) # Penalize large instantaneous changes in the action output to encourage smoother motion
-    # action_rate2_l2 = RewTerm(
-    #     func=mdp.action_rate2_l2,
-    #     weight=0.002,
-    # ) # Penalize large instantaneous changes in the action changes to encourage smoother motion
+    action_rate_l2 = RewTerm(
+        func=mdp.action_rate_l2,
+        weight=0.01,
+    ) # Penalize large instantaneous changes in the action output to encourage smoother motion
+    action_rate2_l2 = RewTerm(
+        func=mdp.action_rate2_l2,
+        weight=0.002,
+    ) # Penalize large instantaneous changes in the action changes to encourage smoother motion
     
     joint_torques = RewTerm(
         func=mdp.joint_torques,

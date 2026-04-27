@@ -208,10 +208,11 @@ GRASP_POSE_1_JOINT_POS: dict[str, float] = {
     "arm_sh0": 0.00,
     "arm_sh1": -1.3206,
     "arm_el0": 1.5866,
-    "arm_el1": -0.0032,
+    "arm_el1": -0.00,
     "arm_wr0": 1.0781,
-    "arm_wr1": -0.0163,
+    "arm_wr1": -0.00,
     "arm_f1x": -0.9,
+    
     # SPOT's default leg joint positions in experiments
     "fl_hx": 0.10925053060054779, 
     "fl_hy": 0.66980540752410889,
