@@ -119,6 +119,10 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         arm_actions = actions[:, 3:10] # dim: 7
         # Extract the "command" for the low-level controller
         base_velocity = actions[:, :3]
+        # Extract the base pose command (pitch and height, roll is set to be zero)
+        base_pose = actions[:, 10:12] # dim: 2 (pitch, height)
+        base_pose[:, 0] = 0.0 # zero roll command, which is not desired for the task
+        base_pose[:, 1] = 0.55 # force the height
         leg_actions = torch.zeros(actions.shape[0], 12).to(actions.device) # dim: 12
         
         
@@ -183,8 +187,7 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             However, now the agent doesn't predict the leg joint actions directly...
             So, we need to extract last_action manually in observations.py
             """
-            arm_joints = arm_actions # dim: 7
-            base_pose = actions[:, -2:]
+            arm_joints = arm_actions # dim: 7]
 
             # In ReLIC indicate that if 
             # the legs are not the commanded ones, just set up the 

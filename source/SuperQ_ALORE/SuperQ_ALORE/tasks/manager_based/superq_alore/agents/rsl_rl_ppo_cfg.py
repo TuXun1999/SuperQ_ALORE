@@ -19,14 +19,14 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = "SuperQ_ALORE_no_GNN"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
-        class_name = "SuperQAloreActorCritic",
+        # class_name = "SuperQAloreActorCritic", TODO: adapt it to our own design
         init_noise_std=1.0,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(
-        class_name = "SuperQAlorePPO",
+        # class_name = "SuperQAlorePPO", TODO: adapt it to our own design
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,

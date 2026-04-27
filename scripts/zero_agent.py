@@ -82,7 +82,7 @@ def main():
             # Only command the base to be at a suitable height & pitch 
             # (roll action not desired)
             actions[:, :3] = torch.tensor([-0.2, 0.0, 0.0], device=env.unwrapped.device) # command a base velocity to move forward after chair reset, to avoid the disturbance from chair reset and keep the grasping pose stable
-            actions[:, -2:] = torch.tensor([-0.0,  0.55], device=env.unwrapped.device) #
+            # actions[:, -2:] = torch.tensor([-0.0,  0.55], device=env.unwrapped.device) #
             obs, _, _, _, _ = env.step(actions)
             
             timestep += 1

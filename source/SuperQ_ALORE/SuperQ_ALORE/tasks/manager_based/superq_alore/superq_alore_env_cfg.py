@@ -103,16 +103,18 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
     object_velocity = isaac_mdp.UniformVelocityCommandCfg(
-        asset_name="robot",
+        asset_name="target_object",
         resampling_time_range=(100.0, 100.0), # No need to change the command
         rel_standing_envs=0.0,
         rel_heading_envs=0.0,
         heading_command=False,
         heading_control_stiffness=1.0,
         debug_vis=True,
+        # TODO: for objects of different frame conventions, we 
+        # might need to consider different command ranges
         ranges=isaac_mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.5, 0.5),
-            lin_vel_y=(0.0, 0.0),
+            lin_vel_x=(-0.0, 0.0),
+            lin_vel_y=(-0.0, 0.5),
             ang_vel_z=(-0.5, 0.5),
             heading=(-math.pi, math.pi), # Not used if heading_command = False
         ),
@@ -185,10 +187,10 @@ class ObservationsCfg:
         ) # dim: 9
         
         # Commands (x, y, omega)
-        # commands = ObsTerm(
-        #     func=isaac_mdp.generated_commands,
-        #     params={"command_name": "object_velocity"},
-        # ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
+        commands = ObsTerm(
+            func=isaac_mdp.generated_commands,
+            params={"command_name": "object_velocity"},
+        ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
         
         # End-effector in robot frame
         ee_pose_in_robot_frame = ObsTerm(
@@ -259,10 +261,10 @@ class ObservationsCfg:
         ) # dim: 9
         
         # Commands
-        # commands = ObsTerm(
-        #     func=isaac_mdp.generated_commands,
-        #     params={"command_name": "object_velocity"},
-        # ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
+        commands = ObsTerm(
+            func=isaac_mdp.generated_commands,
+            params={"command_name": "object_velocity"},
+        ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
         
         # Link pose in robot frame
         link_pose_in_robot_frame = ObsTerm(
@@ -401,8 +403,6 @@ class EventCfg:
     """Configuration for events."""
 
     # reset
-    # TODO: Reset the robot pose behind the target object
-    # reset
     reset_base = EventTerm(
         func=isaac_mdp.reset_root_state_uniform,
         mode="reset",
@@ -468,17 +468,17 @@ class RewardsCfg:
 
     ## (1) Group 1: Object related rewards (primary task)
     # TODO: UUNCOMMENT THEM!!
-    # track_lin_vel_xy_exp = RewTerm(
-    #     func=mdp.track_lin_vel_xy_exp,
-    #     weight=5.0,
-    #     params={"command_name": "object_velocity"},
-    # ) # Track the xy linear velocity of th object according to the command
+    track_lin_vel_xy_exp = RewTerm(
+        func=mdp.track_lin_vel_xy_exp,
+        weight=5.0,
+        params={"command_name": "object_velocity"},
+    ) # Track the xy linear velocity of th object according to the command
     
-    # track_ang_vel_yaw_exp = RewTerm(
-    #     func=mdp.track_ang_vel_yaw_exp,
-    #     weight=5.0,
-    #     params={"command_name": "object_velocity"},
-    # ) # Track the yaw angular velocity of the object according to the command
+    track_ang_vel_yaw_exp = RewTerm(
+        func=mdp.track_ang_vel_yaw_exp,
+        weight=5.0,
+        params={"command_name": "object_velocity"},
+    ) # Track the yaw angular velocity of the object according to the command
     
     is_alive = RewTerm(func=mdp.is_alive, weight=1.0) # The manipulation process should be alive
     
@@ -599,7 +599,7 @@ class TerminationsCfg:
         func=isaac_mdp.illegal_contact,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["body"]),
-            "threshold": 1.0,
+            "threshold": 2.0,
         },
     )
     undesired_ground_contact = DoneTerm(
@@ -641,6 +641,7 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
     actions: ActionsCfg = ActionsCfg()
     events: EventCfg = EventCfg()
     # MDP settings
+    commands: CommandsCfg = CommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
 
