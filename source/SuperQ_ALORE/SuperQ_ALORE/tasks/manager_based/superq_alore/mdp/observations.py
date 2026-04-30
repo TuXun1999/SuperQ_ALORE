@@ -5,7 +5,7 @@
 import torch
 
 import isaaclab.utils.math as math_utils
-from isaaclab.utils.math import quat_rotate, quat_mul
+from isaaclab.utils.math import quat_apply, quat_mul
 from isaaclab.envs import ManagerBasedRLEnv
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as isaac_mdp
 
@@ -123,7 +123,7 @@ def ee_pose_in_robot_frame(
 
     # Calculate the relative displacement
     ee_pos_relative = ee_pos_w - robot_base_pos  # (num_envs, 3)
-    ee_pos_in_robot_frame = quat_rotate(robot_quat_inv, ee_pos_relative)  # (num_envs, 3)
+    ee_pos_in_robot_frame = quat_apply(robot_quat_inv, ee_pos_relative)  # (num_envs, 3)
     ee_quat_in_robot_frame = quat_mul(robot_quat_inv, ee_quat_w)  # (num_envs, 4)
 
     return torch.cat([ee_pos_in_robot_frame, ee_quat_in_robot_frame], dim=-1).to(env.device)  # (num_envs, 7)
@@ -146,7 +146,7 @@ def obj_pose_in_robot_frame(
 
     # Calculate the relative displacement
     obj_pos_relative = obj_pos_w - robot_base_pos  # (num_envs, 3)
-    obj_pos_in_robot_frame = quat_rotate(robot_quat_inv, obj_pos_relative)  # (num_envs, 3)
+    obj_pos_in_robot_frame = quat_apply(robot_quat_inv, obj_pos_relative)  # (num_envs, 3)
     obj_quat_in_robot_frame = quat_mul(robot_quat_inv, obj_quat_w)  # (num_envs, 4)
 
     return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)  # (num_envs, 7)
@@ -174,7 +174,7 @@ def link_pose_in_robot_frame(
     robot_quat_inv_expanded = robot_quat_inv.unsqueeze(1).expand(-1, len(link_names), -1)  # (num_envs, num_links, 4)
 
     link_pos_relative = link_pos_w - robot_base_pos_expanded  # (num_envs, num_links, 3)
-    link_pos_in_robot_frame = quat_rotate(robot_quat_inv_expanded, link_pos_relative)  # (num_envs, num_links, 3)
+    link_pos_in_robot_frame = quat_apply(robot_quat_inv_expanded, link_pos_relative)  # (num_envs, num_links, 3)
     link_quat_in_robot_frame = quat_mul(robot_quat_inv_expanded, link_quat_w)  # (num_envs, num_links, 4)
     num_envs = link_pos_w.shape[0]
 
