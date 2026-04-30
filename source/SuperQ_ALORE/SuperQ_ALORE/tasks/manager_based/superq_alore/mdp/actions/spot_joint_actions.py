@@ -127,31 +127,31 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         
         
         # Grip the object in the beginning, and maintain the gripper pose after that
-        gripper_closing_mask = self._env.episode_length_buf > 1 
-        if gripper_closing_mask.any(): 
-            arm_actions[gripper_closing_mask, -1] = torch.clamp(
-                -0.9 + self._env.episode_length_buf[gripper_closing_mask]* self.gripper_vel, max= -0.15
-            )
+        # gripper_closing_mask = self._env.episode_length_buf > 1 
+        # if gripper_closing_mask.any(): 
+        #     arm_actions[gripper_closing_mask, -1] = torch.clamp(
+        #         -0.9 + self._env.episode_length_buf[gripper_closing_mask]* self.gripper_vel, max= -0.15
+        #     )
             
         start_moving_mask = self._env.episode_length_buf < self.gripper_closing_steps
         
-        """
-        Section I: For the robot that are still closing the gripper
-        Arm joint: use the default ones read from the pre-calculated files
-        (FAILED) Leg joint: use the PD controller to force the robot to stand still
-        """
-        if start_moving_mask.any():
-            # Obtain the Pre-calculated joint positions for the grasp pose
-            arm_joint_names = [joint_name for joint_name in GRASP_POSE_1_JOINT_POS.keys() if joint_name.startswith("arm")]
-            # leg_joint_names = ["fl_hx", "fr_hx", "hl_hx", "hr_hx", "fl_hy", "fr_hy", "hl_hy", "hr_hy", "fl_kn", "fr_kn", "hl_kn", "hr_kn"]
-            arm_grasp_pose_by_default = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in arm_joint_names], device=self._env.unwrapped.device)
-            # leg_grasp_pose_by_default = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in leg_joint_names], device=self._env.unwrapped.device)
+        # """
+        # Section I: For the robot that are still closing the gripper
+        # Arm joint: use the default ones read from the pre-calculated files
+        # (FAILED) Leg joint: use the PD controller to force the robot to stand still
+        # """
+        # if start_moving_mask.any():
+        #     # Obtain the Pre-calculated joint positions for the grasp pose
+        #     arm_joint_names = [joint_name for joint_name in GRASP_POSE_1_JOINT_POS.keys() if joint_name.startswith("arm")]
+        #     # leg_joint_names = ["fl_hx", "fr_hx", "hl_hx", "hr_hx", "fl_hy", "fr_hy", "hl_hy", "hr_hy", "fl_kn", "fr_kn", "hl_kn", "hr_kn"]
+        #     arm_grasp_pose_by_default = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in arm_joint_names], device=self._env.unwrapped.device)
+        #     # leg_grasp_pose_by_default = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in leg_joint_names], device=self._env.unwrapped.device)
 
-            arm_actions[start_moving_mask] = arm_grasp_pose_by_default
-            # leg_actions[start_moving_mask] = leg_grasp_pose_by_default
+        #     arm_actions[start_moving_mask] = arm_grasp_pose_by_default
+        #     # leg_actions[start_moving_mask] = leg_grasp_pose_by_default
             
-            # Also, force the robot to stand
-            base_velocity[start_moving_mask] = torch.zeros(3, device=base_velocity.device) # zero base velocity
+        #     # Also, force the robot to stand
+        #     base_velocity[start_moving_mask] = torch.zeros(3, device=base_velocity.device) # zero base velocity
             
 
 

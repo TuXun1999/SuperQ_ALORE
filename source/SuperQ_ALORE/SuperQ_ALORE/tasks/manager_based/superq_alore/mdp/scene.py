@@ -38,7 +38,10 @@ GROUND_PATCH_CFG = RigidObjectCfg(
 )
 
 # The chair
-CHAIR_USD_PATH = ASSET_DIR + "/object-models/armchair_with_contact_sensor.usda"
+# CHAIR_USD_PATH = ASSET_DIR + "/object-models/meshes/shorter_office_chair/Shorter_Office_Chair.usd"
+# CHAIR_USD_PATH = ASSET_DIR + "/object-models/armchair_with_contact_sensor.usda"
+# CHAIR_USD_PATH = ASSET_DIR + "/object-models/configured_chairs/meramic_chair/meramic_chair_with_contact_sensor.usd"
+CHAIR_USD_PATH = ASSET_DIR + "/object-models/meshes/shorter_office_chair/new_shorter_office_chair.usd"
 
 CHAIR_RIGID_CFG = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Pushable",
@@ -46,9 +49,9 @@ CHAIR_RIGID_CFG = RigidObjectCfg(
         usd_path=CHAIR_USD_PATH,
         rigid_props=DEFAULT_RIGID_PROPS,
         collision_props=DEFAULT_COLLISION_PROPS,
-        mass_props=sim_utils.MassPropertiesCfg(mass=2.0),
+        mass_props=sim_utils.MassPropertiesCfg(mass=0.5),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.0),
-        rot=(0.707, 0.0, 0.0, 0.707)),
+        pos=(0.7, 0.0, 0.0),
+        rot=(1, 0.0, 0.0, 0)),
 )

@@ -206,10 +206,10 @@ NEG_TORQUE_SPEED_LIMIT: list[list[float]] = [
 GRASP_POSE_1_JOINT_POS: dict[str, float] = {
     # Arm joints
     "arm_sh0": 0.00,
-    "arm_sh1": -1.3206,
-    "arm_el0": 1.5866,
+    "arm_sh1": -1.70,
+    "arm_el0": 1.4366,
     "arm_el1": -0.00,
-    "arm_wr0": 1.0781,
+    "arm_wr0": 1.4281,
     "arm_wr1": -0.00,
     "arm_f1x": -0.9,
     
