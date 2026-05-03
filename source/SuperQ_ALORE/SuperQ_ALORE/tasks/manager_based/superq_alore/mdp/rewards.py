@@ -10,7 +10,7 @@ from isaaclab.sensors import ContactSensor
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import RewardTermCfg
 from isaaclab.envs import ManagerBasedRLEnv
-from isaaclab.utils.math import quat_rotate, quat_mul
+from isaaclab.utils.math import quat_apply, quat_mul
 
 
 """
@@ -206,7 +206,7 @@ def distance_penalty(
 
     # Calculate the relative displacement
     ee_pos_relative = ee_pos_w - robot_base_pos  # (num_envs, 3)
-    ee_pos_in_robot_frame = quat_rotate(robot_quat_inv, ee_pos_relative)  # (num_envs, 3)
+    ee_pos_in_robot_frame = quat_apply(robot_quat_inv, ee_pos_relative)  # (num_envs, 3)
     distance_ee2base_x = ee_pos_in_robot_frame[:, 0]
 
     # Calculate the penalty
