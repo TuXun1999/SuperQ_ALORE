@@ -5,7 +5,7 @@
 
 """Keyboard teleoperation for Spot arm joints with optional base motion mode.
 
-Controls (Windows terminal):
+Controls (Linux terminal):
 - 1..7: select arm joint index
 - a: increase selected joint angle by +step_size (arm mode)
 - d: decrease selected joint angle by -step_size (arm mode)
@@ -20,7 +20,11 @@ The script keeps non-arm action components fixed, so only Spot arm joint targets
 
 import argparse
 import math
-import msvcrt
+import select
+import sys
+import termios
+import tty
+from contextlib import contextmanager
 
 from isaaclab.app import AppLauncher
 
@@ -120,6 +124,35 @@ def _print_help(arm_joint_names: list[str], selected_idx: int, targets: torch.Te
         print(f"  {i}: {name:>12s} = {value:+.4f}")
 
 
+@contextmanager
+def _keyboard_mode():
+    """Enable non-blocking single-character reads for Linux terminals."""
+    if not sys.stdin.isatty():
+        yield False
+        return
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        yield True
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def _kbhit() -> bool:
+    """Return True if a keypress is available on stdin."""
+    if not sys.stdin.isatty():
+        return False
+    readable, _, _ = select.select([sys.stdin], [], [], 0.0)
+    return bool(readable)
+
+
+def _getwch() -> str:
+    """Read one character from stdin (caller must ensure availability)."""
+    return sys.stdin.read(1)
+
+
 def main():
     """Run keyboard teleoperation for arm joints only."""
     env_cfg = parse_env_cfg(
@@ -172,104 +205,108 @@ def main():
             f"{arm_targets[joint_idx].item():+.4f} rad"
         )
 
-    while simulation_app.is_running():
-        with torch.inference_mode():
-            # Consume all pending key presses (non-blocking).
-            while msvcrt.kbhit():
-                key = msvcrt.getwch().lower()
+    with _keyboard_mode() as keyboard_ready:
+        if not keyboard_ready:
+            print("[WARN] stdin is not a TTY. Keyboard teleoperation input is disabled.")
 
-                if key.isdigit():
-                    joint_num = int(key)
-                    if 1 <= joint_num <= len(arm_joint_names):
-                        selected_joint_idx = joint_num - 1
+        while simulation_app.is_running():
+            with torch.inference_mode():
+                # Consume all pending key presses (non-blocking).
+                while keyboard_ready and _kbhit():
+                    key = _getwch().lower()
 
-                        # Support compact combo control like: 1a, 1d, 5a, 5d.
-                        if (not motion_mode) and msvcrt.kbhit():
-                            maybe_dir = msvcrt.getwch().lower()
-                            if maybe_dir in ("a", "d"):
-                                _apply_delta(selected_joint_idx, maybe_dir)
+                    if key.isdigit():
+                        joint_num = int(key)
+                        if 1 <= joint_num <= len(arm_joint_names):
+                            selected_joint_idx = joint_num - 1
+
+                            # Support compact combo control like: 1a, 1d, 5a, 5d.
+                            if (not motion_mode) and _kbhit():
+                                maybe_dir = _getwch().lower()
+                                if maybe_dir in ("a", "d"):
+                                    _apply_delta(selected_joint_idx, maybe_dir)
+                                else:
+                                    print(
+                                        f"[TELEOP] selected joint {joint_num}: {arm_joint_names[selected_joint_idx]} "
+                                        f"(current {arm_targets[selected_joint_idx].item():+.4f} rad)"
+                                    )
                             else:
                                 print(
                                     f"[TELEOP] selected joint {joint_num}: {arm_joint_names[selected_joint_idx]} "
                                     f"(current {arm_targets[selected_joint_idx].item():+.4f} rad)"
                                 )
                         else:
+                            print(f"[TELEOP] invalid joint index '{joint_num}', expected 1..{len(arm_joint_names)}")
+
+                    elif key == "a":
+                        if motion_mode:
+                            fixed_base_lin_vel[:] = torch.tensor((0.0, motion_speed, 0.0), device=env.unwrapped.device)
                             print(
-                                f"[TELEOP] selected joint {joint_num}: {arm_joint_names[selected_joint_idx]} "
-                                f"(current {arm_targets[selected_joint_idx].item():+.4f} rad)"
+                                "[TELEOP] motion mode command: left "
+                                f"(vx=0.0, vy={motion_speed:+.2f}, wz=0.0)"
                             )
-                    else:
-                        print(f"[TELEOP] invalid joint index '{joint_num}', expected 1..{len(arm_joint_names)}")
+                        else:
+                            _apply_delta(selected_joint_idx, key)
 
-                elif key == "a":
-                    if motion_mode:
-                        fixed_base_lin_vel[:] = torch.tensor((0.0, motion_speed, 0.0), device=env.unwrapped.device)
-                        print(
-                            "[TELEOP] motion mode command: left "
-                            f"(vx=0.0, vy={motion_speed:+.2f}, wz=0.0)"
-                        )
-                    else:
-                        _apply_delta(selected_joint_idx, key)
+                    elif key == "d":
+                        if motion_mode:
+                            fixed_base_lin_vel[:] = torch.tensor((0.0, -motion_speed, 0.0), device=env.unwrapped.device)
+                            print(
+                                "[TELEOP] motion mode command: right "
+                                f"(vx=0.0, vy={-motion_speed:+.2f}, wz=0.0)"
+                            )
+                        else:
+                            _apply_delta(selected_joint_idx, key)
 
-                elif key == "d":
-                    if motion_mode:
-                        fixed_base_lin_vel[:] = torch.tensor((0.0, -motion_speed, 0.0), device=env.unwrapped.device)
-                        print(
-                            "[TELEOP] motion mode command: right "
-                            f"(vx=0.0, vy={-motion_speed:+.2f}, wz=0.0)"
-                        )
-                    else:
-                        _apply_delta(selected_joint_idx, key)
+                    elif key == "b":
+                        motion_mode = not motion_mode
+                        fixed_base_lin_vel[:] = torch.zeros(3, device=env.unwrapped.device)
+                        if motion_mode:
+                            print(
+                                "[TELEOP] motion mode ON. Use WASD to move base at "
+                                f"{motion_speed:.2f} m/s."
+                            )
+                        else:
+                            print("[TELEOP] motion mode OFF. A/D now control selected arm joint.")
 
-                elif key == "b":
-                    motion_mode = not motion_mode
-                    fixed_base_lin_vel[:] = torch.zeros(3, device=env.unwrapped.device)
-                    if motion_mode:
-                        print(
-                            "[TELEOP] motion mode ON. Use WASD to move base at "
-                            f"{motion_speed:.2f} m/s."
-                        )
-                    else:
-                        print("[TELEOP] motion mode OFF. A/D now control selected arm joint.")
+                    elif key == "w":
+                        if motion_mode:
+                            fixed_base_lin_vel[:] = torch.tensor((motion_speed, 0.0, 0.0), device=env.unwrapped.device)
+                            print(
+                                "[TELEOP] motion mode command: forward "
+                                f"(vx={motion_speed:+.2f}, vy=0.0, wz=0.0)"
+                            )
 
-                elif key == "w":
-                    if motion_mode:
-                        fixed_base_lin_vel[:] = torch.tensor((motion_speed, 0.0, 0.0), device=env.unwrapped.device)
-                        print(
-                            "[TELEOP] motion mode command: forward "
-                            f"(vx={motion_speed:+.2f}, vy=0.0, wz=0.0)"
-                        )
+                    elif key == "s":
+                        if motion_mode:
+                            fixed_base_lin_vel[:] = torch.tensor((-motion_speed, 0.0, 0.0), device=env.unwrapped.device)
+                            print(
+                                "[TELEOP] motion mode command: backward "
+                                f"(vx={-motion_speed:+.2f}, vy=0.0, wz=0.0)"
+                            )
 
-                elif key == "s":
-                    if motion_mode:
-                        fixed_base_lin_vel[:] = torch.tensor((-motion_speed, 0.0, 0.0), device=env.unwrapped.device)
-                        print(
-                            "[TELEOP] motion mode command: backward "
-                            f"(vx={-motion_speed:+.2f}, vy=0.0, wz=0.0)"
-                        )
+                    elif key == "r":
+                        arm_targets = arm_targets_init.clone()
+                        print("[TELEOP] reset arm targets to initial values")
 
-                elif key == "r":
-                    arm_targets = arm_targets_init.clone()
-                    print("[TELEOP] reset arm targets to initial values")
+                    elif key == "p":
+                        print("[TELEOP] current arm targets:")
+                        for i, (name, value) in enumerate(zip(arm_joint_names, arm_targets.tolist()), start=1):
+                            marker = "<" if i - 1 == selected_joint_idx else " "
+                            print(f" {marker} {i}: {name:>12s} = {value:+.4f}")
 
-                elif key == "p":
-                    print("[TELEOP] current arm targets:")
-                    for i, (name, value) in enumerate(zip(arm_joint_names, arm_targets.tolist()), start=1):
-                        marker = "<" if i - 1 == selected_joint_idx else " "
-                        print(f" {marker} {i}: {name:>12s} = {value:+.4f}")
+                    elif key == "q":
+                        print("[TELEOP] quitting teleoperation...")
+                        env.close()
+                        return
 
-                elif key == "q":
-                    print("[TELEOP] quitting teleoperation...")
-                    env.close()
-                    return
+                # Keep all non-arm commands fixed and update only arm commands (action slice 3:10).
+                actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
+                actions[:, :3] = fixed_base_lin_vel
+                actions[:, 3:10] = arm_targets
+                actions[:, -2:] = fixed_base_pose
 
-            # Keep all non-arm commands fixed and update only arm commands (action slice 3:10).
-            actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
-            actions[:, :3] = fixed_base_lin_vel
-            actions[:, 3:10] = arm_targets
-            actions[:, -2:] = fixed_base_pose
-
-            env.step(actions)
+                env.step(actions)
 
     env.close()
 

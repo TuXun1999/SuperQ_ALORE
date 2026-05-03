@@ -1,0 +1,32 @@
+#usda 1.0
+(
+    defaultPrim = "Root"
+    upAxis = "Z"
+)
+
+def Xform "Root"
+{
+    def Xform "armchair_chairs" (
+        prepend apiSchemas = [
+            "PhysicsMassAPI",
+            "PhysicsRigidBodyAPI",
+            "PhysxRigidBodyAPI",
+            "PhysicsCollisionAPI",
+            "PhysxCollisionAPI",
+            "PhysicsMeshCollisionAPI",
+            "PhysxContactReportAPI",
+        ]
+        prepend references = @./Chairs/Armchair.usd@
+    )
+    {
+        float physics:mass = 3
+        bool physics:collisionEnabled = 1
+        uniform token physics:approximation = "convexDecomposition"
+        float physxContactReport:threshold = 0
+
+        float3 xformOp:rotateXYZ = (0, 0, 0)
+        double3 xformOp:scale = (0.01, 0.01, 0.01)
+        double3 xformOp:translate = (0, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ", "xformOp:scale"]
+    }
+}
