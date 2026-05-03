@@ -205,11 +205,11 @@ class ObservationsCfg:
             scale = 1.0,
         ) # dim: 7 (position + quat) for the target object
         
-        # Category code? (TODO: Clarify this... it's constant zero in ALORE)
-        category_encode = ObsTerm(
-            func = mdp.category_encode,
-            scale = 1.0,
-        ) # dim 3, one-hot encoding for object category, not used in ALORE so just return zeros
+        # Category code? (NOTE: it's constantly zero in ALORE)
+        # category_encode = ObsTerm(
+        #     func = mdp.category_encode,
+        #     scale = 1.0,
+        # ) # dim 3
 
         def __post_init__(self):
             self.enable_corruption = False
