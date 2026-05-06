@@ -38,10 +38,13 @@ GROUND_PATCH_CFG = RigidObjectCfg(
 )
 
 # The chair
-# CHAIR_USD_PATH = ASSET_DIR + "/object-models/meshes/shorter_office_chair/Shorter_Office_Chair.usd"
-# CHAIR_USD_PATH = ASSET_DIR + "/object-models/armchair_with_contact_sensor.usda"
-# CHAIR_USD_PATH = ASSET_DIR + "/object-models/configured_chairs/meramic_chair/meramic_chair_with_contact_sensor.usd"
-CHAIR_USD_PATH = ASSET_DIR + "/object-models/meshes/shorter_office_chair/new_shorter_office_chair.usd"
+# CHAIR_USD_PATH = ASSET_DIR + "/objects/Shorter_Office_Chair.usd" 
+CHAIR_USD_PATH = ASSET_DIR + "/objects/armchair_with_contact_sensor.usda" 
+# CHAIR_USD_PATH = ASSET_DIR + "/objects/meramic_chair_with_contact_sensor.usd"
+# CHAIR_USD_PATH = ASSET_DIR + "/objects/new_shorter_office_chair.usd"
+# CHAIR_USD_PATH = ASSET_DIR + "/objects/birch_seat.usd"
+# CHAIR_USD_PATH = ASSET_DIR + "/objects/willow_bench.usd"
+
 
 CHAIR_RIGID_CFG = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Pushable",
@@ -52,6 +55,6 @@ CHAIR_RIGID_CFG = RigidObjectCfg(
         mass_props=sim_utils.MassPropertiesCfg(mass=0.5),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(0.7, 0.0, 0.0),
-        rot=(1, 0.0, 0.0, 0)),
+        pos=(0.15, 0.0, 0.0),
+        rot=(1.0, 0.0, 0.0, 0.0)),
 )

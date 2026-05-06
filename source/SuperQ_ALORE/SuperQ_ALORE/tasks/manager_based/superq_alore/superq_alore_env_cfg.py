@@ -430,7 +430,7 @@ class EventCfg:
         mode="reset",
         params = {
             "asset_name": "target_object",
-            "offset": (0.05, 0.0)
+            "offset": (0.0, 0.0)
         }
     )
     
@@ -586,46 +586,46 @@ class RewardsCfg:
 class TerminationsCfg:
     """Termination terms for the MDP."""
 
-    # # (1) Time out
-    # time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    # (1) Time out
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
     
-    # # (2) Terminate if illegal contact happens
-    # # Reset the environment if too large action / velocities are detected
-    # physics_explosion = DoneTerm(
-    #     func=mdp.outlier_detected,
-    #     params={"threshold": 1000.0} 
-    # )
-    # base_contact = DoneTerm(
-    #     func=isaac_mdp.illegal_contact,
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["body"]),
-    #         "threshold": 2.0,
-    #     },
-    # )
-    # undesired_ground_contact = DoneTerm(
-    #     func=mdp.illegal_ground_contact,
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "robot_to_ground_contact_forces", body_names=[".*leg"]
-    #         ),
-    #         "threshold": 1.0,
-    #     },
-    # )
+    # (2) Terminate if illegal contact happens
+    # Reset the environment if too large action / velocities are detected
+    physics_explosion = DoneTerm(
+        func=mdp.outlier_detected,
+        params={"threshold": 1000.0} 
+    )
+    base_contact = DoneTerm(
+        func=isaac_mdp.illegal_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["body"]),
+            "threshold": 2.0,
+        },
+    )
+    undesired_ground_contact = DoneTerm(
+        func=mdp.illegal_ground_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "robot_to_ground_contact_forces", body_names=[".*leg"]
+            ),
+            "threshold": 1.0,
+        },
+    )
     
-    # # Terminate if any joint velocity exceeds 50.0 rad/s
-    # aggressive_joint_velocity = DoneTerm(
-    #     func=mdp.joint_velocity_limits,
-    #     params={"max_vel": 30.0},
-    # )
+    # Terminate if any joint velocity exceeds 50.0 rad/s
+    aggressive_joint_velocity = DoneTerm(
+        func=mdp.joint_velocity_limits,
+        params={"max_vel": 30.0},
+    )
 
     # (3) Terminate if the object falls off the gripper
-    # object_slide_off = DoneTerm(
-    #     func=mdp.object_slide_off,
-    #     params={
-    #         "contact_sensor_name": "contact_forces",
-    #         "gripper_links_names": ["arm_link_fngr", "arm_link_jaw"],
-    #     },
-    # )
+    object_slide_off = DoneTerm(
+        func=mdp.object_slide_off,
+        params={
+            "contact_sensor_name": "contact_forces",
+            "gripper_links_names": ["arm_link_fngr", "arm_link_jaw"],
+        },
+    )
 
 ##
 # Environment configuration
