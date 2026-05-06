@@ -39,11 +39,11 @@ GROUND_PATCH_CFG = RigidObjectCfg(
 
 # The chair
 # CHAIR_USD_PATH = ASSET_DIR + "/objects/Shorter_Office_Chair.usd" 
-CHAIR_USD_PATH = ASSET_DIR + "/objects/armchair_with_contact_sensor.usda" 
+# CHAIR_USD_PATH = ASSET_DIR + "/objects/armchair_with_contact_sensor.usda" 
 # CHAIR_USD_PATH = ASSET_DIR + "/objects/meramic_chair_with_contact_sensor.usd"
 # CHAIR_USD_PATH = ASSET_DIR + "/objects/new_shorter_office_chair.usd"
 # CHAIR_USD_PATH = ASSET_DIR + "/objects/birch_seat.usd"
-# CHAIR_USD_PATH = ASSET_DIR + "/objects/willow_bench.usd"
+CHAIR_USD_PATH = ASSET_DIR + "/objects/willow_bench.usd"
 
 
 CHAIR_RIGID_CFG = RigidObjectCfg(
@@ -56,5 +56,5 @@ CHAIR_RIGID_CFG = RigidObjectCfg(
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
         pos=(0.15, 0.0, 0.0),
-        rot=(1.0, 0.0, 0.0, 0.0)),
+        rot=(0.707, 0.0, 0.0, 0.707)),
 )
