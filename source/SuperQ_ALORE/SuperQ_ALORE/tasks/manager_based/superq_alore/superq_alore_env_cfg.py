@@ -30,7 +30,6 @@ from isaaclab.actuators import ActuatorNetMLPCfg, DCMotorCfg, ImplicitActuatorCf
 ##
 from SuperQ_ALORE.assets.spot.spot import SPOT_ARM_CFG  # isort: skip
 from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES, FEET_NAMES, SPOT_BODY_LINKS
-from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
 import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 ##
 # Scene definition
@@ -562,10 +561,8 @@ class RewardsCfg:
                 "arm_wr0",
                 "arm_wr1",], 
             "robot_name": "robot",
-            # TODO: Adapt it to multiple grasp poses
-            "reference_joint_positions": GRASP_POSE_1_JOINT_POS
         },
-    ) # Penalize the deviation of joint positions from the reference initial grasp pose to encourage a more natural pose
+    ) # Penalize the deviation of joint positions from the per-env active grasp pose reference
     
     undesired_contact_penalty = RewTerm(
         func=mdp.undesired_contact_penalty,

@@ -263,22 +263,29 @@ def joint_positions_wrt_reference(
     env: ManagerBasedRLEnv,
     arm_joint_names: tuple[str, ...],
     robot_name: str = "robot",
-    reference_joint_positions: dict = None
 ) -> torch.Tensor:
-    """Penalize large deviations from reference joint positions."""
-    robot = env.scene[robot_name]
-    arm_joint_ids, _ = robot.find_joints(
-            arm_joint_names
-        )
-    reference_joints_positions_tensor = torch.zeros((len(arm_joint_names)), dtype=robot.data.joint_pos.dtype, device=robot.data.joint_pos.device)
-    idx = 0
-    for joint_name in arm_joint_names:
-        if joint_name not in reference_joint_positions:
-            raise ValueError(f"Reference joint positions must be provided for all arm joints. Missing: {joint_name}")
-        reference_joints_positions_tensor[idx] = reference_joint_positions[joint_name]
-        idx += 1
+    """Penalize large deviations from reference joint positions.
     
-    joint_diff = robot.data.joint_pos[:, arm_joint_ids] - reference_joints_positions_tensor
+    Uses per-env reference from env.active_arm_joint_reference, which is updated
+    each episode to match the sampled target pose from the catalog.
+    This enables multi-pose training where each env can have a different
+    target reference pose depending on the sampled object/grasp.
+    """
+    robot = env.scene[robot_name]
+    arm_joint_ids, _ = robot.find_joints(arm_joint_names)
+    
+    # Fetch per-env reference: shape [num_envs, num_arm_joints]
+    # env.active_arm_joint_reference is updated in sample_target_assignments()
+    reference_joint_positions_tensor = env.active_arm_joint_reference  # [num_envs, 7]
+    
+    # robot.data.joint_pos has shape [num_envs, num_total_joints]
+    # We extract only arm joint columns: [num_envs, len(arm_joint_ids)]
+    current_arm_positions = robot.data.joint_pos[:, arm_joint_ids]
+    
+    # Compute per-env difference: [num_envs, len(arm_joint_ids)]
+    joint_diff = current_arm_positions - reference_joint_positions_tensor
+    
+    # Sum absolute differences across joints for each env: [num_envs]
     joint_reference_pos_reward = torch.sum(torch.abs(joint_diff), dim=1)
     return -joint_reference_pos_reward
 
