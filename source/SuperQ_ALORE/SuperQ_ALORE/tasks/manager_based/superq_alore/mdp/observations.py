@@ -9,6 +9,8 @@ from isaaclab.utils.math import quat_apply, quat_mul
 from isaaclab.envs import ManagerBasedRLEnv
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as isaac_mdp
 
+from SuperQ_ALORE.assets.object_catalog import OBJECT_CATALOG
+
 def known_external_force_torque(
     env: ManagerBasedRLEnv,
     event_name: str,
@@ -186,6 +188,43 @@ def category_encode(
 ) -> torch.Tensor:
     # ALORE has a constant zero category code, so we just return zeros here
     return torch.zeros((env.num_envs, 3), device=env.device)
+
+# uncomment if we want to add a one-hot encoding of object category to the observation in the future, 
+# def category_encode(
+#     env: ManagerBasedRLEnv,
+# ) -> torch.Tensor:
+#     """Return per-env one-hot category encoding for active objects.
+    
+#     Each env has a fixed object (set by MultiAssetSpawnerCfg at spawn).
+#     The policy needs to know which object is in each env to adapt its strategy.
+#     For example, chair_1 and chair_2 have different grasp poses and sizes.
+    
+#     Returns one-hot encoding where each dimension corresponds to an object type:
+#     - env with object 0: [1, 0]
+#     - env with object 1: [0, 1]
+    
+#     Shape: [num_envs, len(OBJECT_CATALOG)]
+#     """
+#     from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management
+    
+#     # Ensure catalog state is initialized
+#     object_management.ensure_catalog_state(env)
+    
+#     # Get active object indices: [num_envs]
+#     active_indices = env.active_object_indices
+    
+#     # Create one-hot encoding: [num_envs, len(OBJECT_CATALOG)]
+#     num_objects = len(OBJECT_CATALOG)
+#     category_encoding = torch.zeros(
+#         (env.num_envs, num_objects),
+#         dtype=torch.float32,
+#         device=env.device
+#     )
+    
+#     # Set the corresponding dimension to 1 for each env's object
+#     category_encoding.scatter_(1, active_indices.unsqueeze(1), 1.0)
+    
+#     return category_encoding
 
 def joint_pos_rel(
     env: ManagerBasedRLEnv,
