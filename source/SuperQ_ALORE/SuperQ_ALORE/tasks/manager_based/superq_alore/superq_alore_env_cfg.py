@@ -425,19 +425,11 @@ class EventCfg:
             },
         },
     )
-    reset_object = EventTerm(
-        func=mdp.reset_target_object_from_catalog_pose,
-        mode="reset",
-        params = {
-            "asset_name": "target_object",
-        }
-    )
-    
-    # TODO: figure out how to reset the initial grasp poses at different locations
-    reset_robot_joints = EventTerm(
-        func=mdp.reset_robot_joints_from_catalog_pose,
+    reset_object_and_robot = EventTerm(
+        func=mdp.reset_object_and_robot_from_catalog_pose,
         mode="reset",
         params={
+            "asset_name": "target_object",
             "position_range": (-0.0, 0.0),
             "velocity_range": (-0.0, 0.0),
         },
