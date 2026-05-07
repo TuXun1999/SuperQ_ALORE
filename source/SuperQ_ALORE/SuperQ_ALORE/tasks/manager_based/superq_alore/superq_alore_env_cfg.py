@@ -70,7 +70,7 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = MISSING
     
     # target objects to manipulate
-    target_object = scene.CHAIR_RIGID_CFG
+    target_object = scene.CATALOG_MULTI_OBJECT_RIGID_CFG
     # contact sensors
     # TODO: are they really... helpful?
     contact_forces = ContactSensorCfg(
@@ -426,22 +426,20 @@ class EventCfg:
         },
     )
     reset_object = EventTerm(
-        func=mdp.reset_target_object_position,
+        func=mdp.reset_target_object_from_catalog_pose,
         mode="reset",
         params = {
             "asset_name": "target_object",
-            "offset": (0.0, 0.0)
         }
     )
     
     # TODO: figure out how to reset the initial grasp poses at different locations
     reset_robot_joints = EventTerm(
-        func=mdp.reset_joints_around_grasp_pose,
+        func=mdp.reset_robot_joints_from_catalog_pose,
         mode="reset",
         params={
             "position_range": (-0.0, 0.0),
             "velocity_range": (-0.0, 0.0),
-            "joint_position_ref": GRASP_POSE_1_JOINT_POS,
         },
     )
     # reset_robot_joints = EventTerm(

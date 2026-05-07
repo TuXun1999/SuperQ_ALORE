@@ -11,6 +11,63 @@ from isaaclab.utils.math import sample_uniform
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
+
+from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management
+
+
+def reset_target_object_from_catalog_pose(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    asset_name: str = "target_object",
+) -> None:
+    """Sample a catalog pose for each env in env_ids and write the corresponding object root state."""
+    object_management.sample_target_assignments(env, env_ids)
+
+    target_object = env.scene[asset_name]
+    target_object_state = target_object.data.default_root_state[env_ids].clone()
+    origins = env.scene.env_origins[env_ids]
+    pose_entries = object_management.get_active_pose_entries(env, env_ids)
+
+    pose_pos = torch.tensor(
+        [pose.position for pose in pose_entries],
+        dtype=target_object_state.dtype,
+        device=env.device,
+    )
+    pose_rot = torch.tensor(
+        [pose.orientation for pose in pose_entries],
+        dtype=target_object_state.dtype,
+        device=env.device,
+    )
+
+    target_object_state[:, 0:3] = origins + pose_pos
+    target_object_state[:, 3:7] = pose_rot
+    target_object.write_root_state_to_sim(target_object_state, env_ids=env_ids)
+
+
+def reset_robot_joints_from_catalog_pose(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    position_range: tuple[float, float],
+    velocity_range: tuple[float, float],
+) -> None:
+    """Reset robot joints from the sampled catalog pose for each env in env_ids."""
+    # Guard in case event ordering places this before the object reset term.
+    if not hasattr(env, "target_assignment_ready") or not torch.all(
+        env.target_assignment_ready[env_ids]
+    ):
+        object_management.sample_target_assignments(env, env_ids)
+
+    pose_entries = object_management.get_active_pose_entries(env, env_ids)
+    for local_i, env_id in enumerate(env_ids.tolist()):
+        reset_joints_around_grasp_pose(
+            env=env,
+            env_ids=torch.tensor([env_id], dtype=torch.long, device=env.device),
+            position_range=position_range,
+            velocity_range=velocity_range,
+            joint_position_ref=pose_entries[local_i].joint_positions,
+        )
+
+
 def reset_joints_around_default(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
