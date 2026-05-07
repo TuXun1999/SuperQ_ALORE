@@ -12,3 +12,4 @@ from .commands.commands_cfg import *  # noqa: F403
 from .actions import *  # noqa: F403
 from .terminations import *  # noqa: F403
 from .observations import *  # noqa: F403
+from .object_management import *  # noqa: F403

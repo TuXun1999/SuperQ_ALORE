@@ -25,21 +25,12 @@ def reset_target_object_from_catalog_pose(
     # sample a new pose for envs in env_ids and update env.active_pose_indices accordingly
     object_management.sample_target_assignments(env, env_ids)
 
-    # obtain the sampledd pose of the object for each env in env_ids based on the sampled PoseEntry
+    # obtain batched sampled pose tensors for env_ids
     target_object = env.scene[asset_name]
     target_object_state = target_object.data.default_root_state[env_ids].clone()
     origins = env.scene.env_origins[env_ids]
-    pose_entries = object_management.get_active_pose_entries(env, env_ids)
-
-    pose_pos = torch.tensor(
-        [pose.position for pose in pose_entries],
-        dtype=target_object_state.dtype,
-        device=env.device,
-    )
-    pose_rot = torch.tensor(
-        [pose.orientation for pose in pose_entries],
-        dtype=target_object_state.dtype,
-        device=env.device,
+    pose_pos, pose_rot = object_management.get_active_pose_position_orientation_tensors(
+        env, env_ids
     )
 
     # apply the initial pose for the object
@@ -67,14 +58,18 @@ def reset_robot_joints_from_catalog_pose(
         # and wait for the next event to reset them after we have sampled the target assignment for them.
         object_management.sample_target_assignments(env, env_ids)
 
-    pose_entries = object_management.get_active_pose_entries(env, env_ids)
+    arm_joint_ref = object_management.get_active_arm_joint_reference(env, env_ids)
     for local_i, env_id in enumerate(env_ids.tolist()):
+        # Keep existing reset helper API while sourcing batched references from catalog state.
         reset_joints_around_grasp_pose(
             env=env,
             env_ids=torch.tensor([env_id], dtype=torch.long, device=env.device),
             position_range=position_range,
             velocity_range=velocity_range,
-            joint_position_ref=pose_entries[local_i].joint_positions,
+            joint_position_ref={
+                joint_name: float(arm_joint_ref[local_i, joint_i].item())
+                for joint_i, joint_name in enumerate(object_management.ARM_JOINT_NAMES_IN_ORDER)
+            },
         )
 
 
@@ -94,17 +89,8 @@ def reset_object_and_robot_from_catalog_pose(
     target_object = env.scene[asset_name]
     target_object_state = target_object.data.default_root_state[env_ids].clone()
     origins = env.scene.env_origins[env_ids]
-    pose_entries = object_management.get_active_pose_entries(env, env_ids)
-
-    pose_pos = torch.tensor(
-        [pose.position for pose in pose_entries],
-        dtype=target_object_state.dtype,
-        device=env.device,
-    )
-    pose_rot = torch.tensor(
-        [pose.orientation for pose in pose_entries],
-        dtype=target_object_state.dtype,
-        device=env.device,
+    pose_pos, pose_rot = object_management.get_active_pose_position_orientation_tensors(
+        env, env_ids
     )
 
     target_object_state[:, 0:3] = origins + pose_pos
@@ -112,13 +98,17 @@ def reset_object_and_robot_from_catalog_pose(
     target_object.write_root_state_to_sim(target_object_state, env_ids=env_ids)
 
     # 3) reset robot joints using the sampled pose-specific joint references
+    arm_joint_ref = object_management.get_active_arm_joint_reference(env, env_ids)
     for local_i, env_id in enumerate(env_ids.tolist()):
         reset_joints_around_grasp_pose(
             env=env,
             env_ids=torch.tensor([env_id], dtype=torch.long, device=env.device),
             position_range=position_range,
             velocity_range=velocity_range,
-            joint_position_ref=pose_entries[local_i].joint_positions,
+            joint_position_ref={
+                joint_name: float(arm_joint_ref[local_i, joint_i].item())
+                for joint_i, joint_name in enumerate(object_management.ARM_JOINT_NAMES_IN_ORDER)
+            },
         )
 
 

@@ -177,6 +177,65 @@ def get_active_pose_entries(
         entries.append(OBJECT_CATALOG[obj_idx].poses[pose_idx])
     return entries
 
+  
+def get_active_pose_position_orientation_tensors(
+    env: ManagerBasedEnv, env_ids: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return batched pose position/orientation tensors for env_ids from active assignments."""
+
+    # call the idepmpotent catalog function to ensure all the necessary tensors are initialized
+    ensure_catalog_state(env)
+
+    if env_ids.numel() == 0:
+        raise ValueError("env_ids must not be empty.")
+
+    # obtain the fixed object indices for the input env_ids, 
+    # which will be used to lookup the assigned pose for each env
+    fixed_obj_indices = env.active_object_indices[env_ids]
+    pos = torch.empty((env_ids.numel(), 3), dtype=torch.float32, device=env.device)
+    rot = torch.empty((env_ids.numel(), 4), dtype=torch.float32, device=env.device)
+
+    # iterate through each unique object type present in this batch of env_ids, 
+    # and update the position and orientation tensors for the envs with the same object together (to save some computation)
+    for object_index in torch.unique(fixed_obj_indices).tolist():
+
+        # mask: [num_envs_in_batch], True for envs with this object, False otherwise
+        mask = fixed_obj_indices == object_index
+
+        # sub_env_ids: [num_envs_with_this_object], the env ids that have the current object
+        sub_env_ids = env_ids[mask]
+
+        # chosen_pose_indices: [num_envs_with_this_object], the sampled pose index for each env with the current object
+        chosen_pose_indices = env.active_pose_indices[sub_env_ids]
+
+        # obtain the pose entries for the current object, 
+        # which will be used to lookup the position and orientation 
+        # corresponding to the sampled pose index for each env with the current object
+        poses = OBJECT_CATALOG[int(object_index)].poses
+
+        # only updates the rows in the pos tensor where the mask is True
+        pos[mask] = torch.tensor(
+            # iterates through the tensor of pose IDs sampled for this specifc object batch
+            [poses[int(pose_idx.item())].position for pose_idx in chosen_pose_indices],
+            dtype=torch.float32,
+            device=env.device,
+        )
+        rot[mask] = torch.tensor(
+            [poses[int(pose_idx.item())].orientation for pose_idx in chosen_pose_indices],
+            dtype=torch.float32,
+            device=env.device,
+        )
+
+    return pos, rot
+
+
+def get_active_arm_joint_reference(
+    env: ManagerBasedEnv, env_ids: torch.Tensor
+) -> torch.Tensor:
+    """Return batched active arm joint references [len(env_ids), num_arm_joints]."""
+    ensure_catalog_state(env)
+    return env.active_arm_joint_reference[env_ids]
+
 
 def gather_active_object_tensor(
     env: ManagerBasedEnv, tensor_getter: Callable

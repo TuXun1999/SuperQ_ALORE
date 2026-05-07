@@ -425,6 +425,10 @@ class EventCfg:
             },
         },
     )
+
+    # use an atomic function to reset the object and robot together, 
+    # so that we can ensure the consistency between the object pose 
+    # and the pre-grasping robot joint configuration defined in the catalog pose
     reset_object_and_robot = EventTerm(
         func=mdp.reset_object_and_robot_from_catalog_pose,
         mode="reset",
