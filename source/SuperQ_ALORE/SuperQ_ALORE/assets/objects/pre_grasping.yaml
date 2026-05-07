@@ -1,6 +1,6 @@
 objects:
   chair_1:
-    asset_path: "source/SuperQ_ALORE/assets/objects/armchair_with_contact_sensor.usda"
+    asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/armchair_with_contact_sensor.usda"
     poses:
       back:
         position: [0.0, 0.0, 0.0]

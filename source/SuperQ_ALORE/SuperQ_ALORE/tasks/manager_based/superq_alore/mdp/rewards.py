@@ -274,9 +274,10 @@ def joint_positions_wrt_reference(
     robot = env.scene[robot_name]
     arm_joint_ids, _ = robot.find_joints(arm_joint_names)
     
-    # Fetch per-env reference: shape [num_envs, num_arm_joints]
+    # Fetch per-env reference: shape [num_envs, 7] (all arm joints including gripper)
     # env.active_arm_joint_reference is updated in sample_target_assignments()
-    reference_joint_positions_tensor = env.active_arm_joint_reference  # [num_envs, 7]
+    # Slice to first len(arm_joint_ids) columns to match arm_joint_names (gripper excluded)
+    reference_joint_positions_tensor = env.active_arm_joint_reference[:, :len(arm_joint_ids)]  # [num_envs, 6]
     
     # robot.data.joint_pos has shape [num_envs, num_total_joints]
     # We extract only arm joint columns: [num_envs, len(arm_joint_ids)]
