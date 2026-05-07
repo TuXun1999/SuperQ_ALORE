@@ -40,6 +40,11 @@ import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 class SuperqAloreSceneCfg(InteractiveSceneCfg):
     """Configuration for a cart-pole scene."""
 
+    # Required when spawning different USD assets in different envs via MultiAssetSpawnerCfg.
+    # With replicate_physics=True (default) Isaac Sim copies env_0's physics to all envs and
+    # never processes the distinct USD prims spawned in other envs, so only one mesh appears.
+    replicate_physics: bool = False
+
     # ground plane
     # ground = AssetBaseCfg(
     #     prim_path="/World/ground",
