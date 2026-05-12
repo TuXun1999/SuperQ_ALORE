@@ -57,30 +57,29 @@ GROUND_PATCH_CFG = RigidObjectCfg(
 #         collision_props=DEFAULT_COLLISION_PROPS,
 #         mass_props=sim_utils.MassPropertiesCfg(mass=0.5),
 
-# Multi-object target assets loaded from OBJECT_CATALOG.
-_CATALOG_ASSETS_CFG = tuple(
-    sim_utils.UsdFileCfg(
-        usd_path=entry.asset_path,
-        rigid_props=DEFAULT_RIGID_PROPS,
-        collision_props=DEFAULT_COLLISION_PROPS,
-        mass_props=sim_utils.MassPropertiesCfg(mass=0.5),
+# Pre-spawn one independent RigidObject per catalog entry per env.
+# All objects start underground (z=-100). At each episode reset, the event
+# function places only the sampled (active) object at its YAML pose and leaves
+# all others underground, giving the illusion of a variable object set while
+# keeping the physics fixed and avoiding runtime add/remove of actors.
+def _make_single_object_cfg(obj_index: int) -> RigidObjectCfg:
+    """Build a RigidObjectCfg for a single catalog object."""
+    obj = OBJECT_CATALOG[obj_index]
+    return RigidObjectCfg(
+        prim_path=f"{{ENV_REGEX_NS}}/Pushable_{obj_index}",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=obj.asset_path,
+            rigid_props=DEFAULT_RIGID_PROPS,
+            collision_props=DEFAULT_COLLISION_PROPS,
+        ),
+        # Start underground; event.py places the active one at its YAML pose on reset.
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(0.0, 0.0, -100.0),
+            rot=(1.0, 0.0, 0.0, 0.0),
+        ),
     )
-    for entry in OBJECT_CATALOG
-)
 
-# we set the random_choice to False so that asset configurations are spawned in the order
-# defined in OBJECT_CATALOG, which allows us to have a deterministic mapping from env index to object 
-# (i.e. env i will always have OBJECT_CATALOG[i % N], where N is the number of objects in the catalog)
-CATALOG_MULTI_OBJECT_RIGID_CFG = RigidObjectCfg(
-    prim_path="{ENV_REGEX_NS}/Pushable",
-    spawn=sim_utils.MultiAssetSpawnerCfg(
-        assets_cfg=_CATALOG_ASSETS_CFG,
-        random_choice=False,
-    ),
 
-    # we reset the initail pose in event.py: reset_target_object_from_catalog_pose
-    init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.0),
-        rot=(1.0, 0.0, 0.0, 0.0),
-    ),
-)
+CATALOG_OBJECT_CFGS: list[RigidObjectCfg] = [
+    _make_single_object_cfg(i) for i in range(len(OBJECT_CATALOG))
+]
