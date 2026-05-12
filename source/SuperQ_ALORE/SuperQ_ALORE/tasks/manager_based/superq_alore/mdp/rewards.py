@@ -12,6 +12,8 @@ from isaaclab.managers import RewardTermCfg
 from isaaclab.envs import ManagerBasedRLEnv
 from isaaclab.utils.math import quat_apply, quat_mul
 
+from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management as om
+
 
 """
 Group 1: Object related rewards (primary task)
@@ -21,15 +23,13 @@ Group 1: Object related rewards (primary task)
 def track_lin_vel_xy_exp(
     env: ManagerBasedRLEnv,
     command_name: str = "object_velocity",
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Reward tracking of linear velocity commands (xy axes) using abs exponential kernel."""
-    # extract the used quantities (to enable type-hinting)
-    asset: RigidObject = env.scene[asset_name]
     # compute the error
     target = env.command_manager.get_command(command_name)[:, :2]
     lin_vel_error = torch.linalg.norm(
-        (target - asset.data.root_lin_vel_b[:, :2]), dim=1
+        (target - om.get_active_object_state_attr(env, "root_lin_vel_b")[:, :2]), dim=1
     )
     return torch.exp(-lin_vel_error / 0.25)
 
@@ -37,15 +37,13 @@ def track_lin_vel_xy_exp(
 def track_ang_vel_yaw_exp(
     env: ManagerBasedRLEnv,
     command_name: str = "object_velocity",
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Reward tracking of angular velocity commands (yaw) using abs exponential kernel."""
-    # extract the used quantities (to enable type-hinting)
-    asset: RigidObject = env.scene[asset_name]
     # compute the error
     target = env.command_manager.get_command(command_name)[:, 2]
     ang_vel_error = torch.linalg.norm(
-        (target - asset.data.root_ang_vel_b[:, 2]).unsqueeze(1), dim=1
+        (target - om.get_active_object_state_attr(env, "root_ang_vel_b")[:, 2]).unsqueeze(1), dim=1
     )
     return torch.exp(-ang_vel_error / 0.25)
 
@@ -101,17 +99,15 @@ def _euler_from_quat(quat_angle: torch.Tensor) -> torch.Tensor:
 
 def yaw_alignment_reward(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object",
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
     robot_name: str = "robot"
     ):
     """Encourage the object to be aligned with the robot in the yaw direction."""
     # Extract the assets
     robot = env.scene[robot_name]
-    asset = env.scene[asset_name]
-    
-    # Find the relative yaw different between the object & the robot
+    # Find the relative yaw difference between the object & the robot
     yaw_diff = (
-        (_euler_from_quat(asset.data.root_quat_w)[2] -         # asset.data.root_quat_w
+        (_euler_from_quat(om.get_active_object_state_attr(env, "root_quat_w"))[2] -
         _euler_from_quat(robot.data.root_quat_w)[2] + torch.pi)
         % (2 * torch.pi) - torch.pi
     )
@@ -122,48 +118,39 @@ def yaw_alignment_reward(
 # Velocity along the z-direction (to discourage lifting or digging the object)
 def lin_vel_z_l2(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Penalize linear velocity along the z-direction."""
-    asset: RigidObject = env.scene[asset_name]
-    lin_vel_z = asset.data.root_lin_vel_b[:, 2]
+    lin_vel_z = om.get_active_object_state_attr(env, "root_lin_vel_b")[:, 2]
     return -torch.square(lin_vel_z)
 
 # Angular velocity along the x/y-direction (to discourage flipping the object)
 def ang_vel_xy_l2(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Penalize angular velocity along the x/y-direction."""
-    asset: RigidObject = env.scene[asset_name]
-    ang_vel_xy = asset.data.root_ang_vel_b[:, :2]
+    ang_vel_xy = om.get_active_object_state_attr(env, "root_ang_vel_b")[:, :2]
     return -torch.sum(torch.square(ang_vel_xy), dim=1)
 
 # Flat orientation (to discourage flipping the object)
 def flat_orientation_l2(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Penalize deviation from flat orientation."""
-    asset: RigidObject = env.scene[asset_name]
-    flat_orientation = torch.sum(torch.square(asset.data.projected_gravity_b[:, :2]), dim=1)
+    flat_orientation = torch.sum(
+        torch.square(om.get_active_object_state_attr(env, "projected_gravity_b")[:, :2]), dim=1
+    )
     return -flat_orientation
 
 # Velocity change penalty (to encourage smooth motion)
 def lin_vel_change_penalty(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Penalize change in linear velocity."""
-    # asset: RigidObject = env.scene[asset_name]
-    # current_lin_vel = asset.data.root_lin_vel_b[:, :2]  # (vx, vy)
-    
-    # # Calculate the penalty
-    # lin_vel_change_penalty = torch.norm(current_lin_vel - env.prev_obj_vel[:, :2], dim=-1)
-
-    # return -lin_vel_change_penalty
-    asset: RigidObject = env.scene[asset_name]
-    current_lin_vel = asset.data.root_lin_vel_b[:, :2]  # (vx, vy)
+    current_lin_vel = om.get_active_object_state_attr(env, "root_lin_vel_b")[:, :2]  # (vx, vy)
     prev_lin_vel = env.observation_manager.compute_group("reward_calculation")["object_velocity"][:, 0, :2]  # (vx, vy)
     lin_vel_change_penalty = torch.norm(current_lin_vel - prev_lin_vel, dim=-1)
     return -lin_vel_change_penalty
@@ -171,11 +158,10 @@ def lin_vel_change_penalty(
 
 def ang_vel_change_penalty(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Penalize change in angular velocity."""
-    asset: RigidObject = env.scene[asset_name]
-    current_ang_vel = asset.data.root_ang_vel_b[:, 2]  # yaw velocity
+    current_ang_vel = om.get_active_object_state_attr(env, "root_ang_vel_b")[:, 2]  # yaw velocity
     prev_ang_vel = env.observation_manager.compute_group("reward_calculation")["object_velocity"][:, 0, 2]  # yaw velocity
     ang_vel_change_penalty = torch.abs(current_ang_vel - prev_ang_vel)
     return -ang_vel_change_penalty
