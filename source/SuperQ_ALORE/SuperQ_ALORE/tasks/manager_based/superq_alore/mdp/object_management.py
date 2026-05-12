@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import torch
 
@@ -19,11 +19,19 @@ if TYPE_CHECKING:
 # but maybe this function is useful if we want to have deterministic initialisation of the target assignment in some cases (e.g. for testing)
 def _resolve_pose_filter(env: ManagerBasedEnv, object_id: str) -> tuple[str, ...]:
     """Return the allowed pose ids for object_id given env.cfg filters."""
+
+    # first check if there is a per-object filter in the env cfg, which is more specific and has higher priority than the global filter
     per_object = getattr(env.cfg, "target_pose_ids_by_object", None) or {}
     if object_id in per_object:
+
+        # if there is a per-object filter, return it directly (after converting to tuple if it's a list)
         return tuple(per_object[object_id])
+    
+    # if there is no per-object filter, check the global filter, which applies to all objects but has lower priority than the per-object filter
     global_filter = getattr(env.cfg, "target_pose_ids", None)
     if global_filter is None:
+
+        # if there is no global filter either, return all poses for this object from the catalog
         return POSE_IDS_BY_OBJECT[object_id]
     return tuple(global_filter)
 
@@ -31,34 +39,28 @@ def _resolve_pose_filter(env: ManagerBasedEnv, object_id: str) -> tuple[str, ...
 def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     """Lazy-initialise all per-env catalog tensors on env (idempotent)."""
 
-    # TODO: figure out why here we can modify the attribute? what if env does not have that?
-
     # only do the work once, even if ensure_catalog_state is called multiple times
+    # but at the first time, since _catalog_ready is not set, this "return" will be skipped
     if hasattr(env, "_catalog_ready"):
         return
 
+    # obtatn the number of objects from the object_catalog.py that processes the YAML file.
     num_objects = len(OBJECT_CATALOG)
 
-    # MultiAssetSpawnerCfg(random_choice=False) assigns env i → assets_cfg[i % N].
-    # We build assets_cfg in OBJECT_CATALOG order, so env i has OBJECT_CATALOG[i % N].
-    # kind of like hash table
-    env._fixed_object_indices = (
-        torch.arange(env.num_envs, dtype=torch.long, device=env.device) % num_objects
-    )
+    # active_object_indices is sampled randomly at each reset by sample_target_assignments.
+    # Initialise to zero (meaningless until the first reset call).
+    env.active_object_indices = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
 
-    # active_object_indices never changes during training
-    # so the same object will always be assigned to the same env
-    # TODO: think about this: should we also fix the pose for the object for each env?
-    env.active_object_indices = env._fixed_object_indices.clone()
-
-    env._allowed_pose_indices: dict[str, torch.Tensor] = {}
+    # initialize a dict for the env to store the allowed pose indices for each object
+    env._allowed_pose_indices = {}
     for oid in OBJECT_IDS:  # iterate through all objects
 
         # get all possible poses for this object
         all_poses = POSE_IDS_BY_OBJECT[oid]
 
         # TODO: trivial filtering based on env cfg, which we do not use at all for now
-        # but we may use this for deterministic testing in the future
+        # but we may use this for deterministic testing in the future.
+        # Espeically, if no filter is specified, all poses for this object will be returned.
         requested = _resolve_pose_filter(env, oid)
 
         # a list of allowed poses for the object
@@ -87,15 +89,17 @@ def ensure_catalog_state(env: ManagerBasedEnv) -> None:
         dtype=torch.float32, device=env.device,
     )
 
+    # next time when the function is called, the first "if" condition will be true 
+    # and the function will return immediately
     env._catalog_ready = True
 
 
 def sample_target_assignments(env: ManagerBasedEnv, env_ids: torch.Tensor) -> None:
-    """Randomly sample a new pose for each env in env_ids.
+    """Randomly sample a new (object, pose) assignment for each env in env_ids.
 
-    The chair model is fixed for the lifetime of training (set by MultiAssetSpawnerCfg
-    at spawn).  Only the pose (arm joints + chair position/orientation) is re-sampled
-    each episode, always from the poses that belong to that env's fixed chair.
+    For each reset env, this function samples an object index uniformly from the
+    catalog, then samples a valid pose for that object and updates all derived
+    per-env state (pose index, arm joint reference, readiness flag).
     """
 
     # call the idepmpotent catalog function to ensure all the necessary tensors are initialized
@@ -105,12 +109,32 @@ def sample_target_assignments(env: ManagerBasedEnv, env_ids: torch.Tensor) -> No
     if env_ids.numel() == 0: # total number of elements in the tensor.
         return
 
-    # read the fixed object corresponding to the env_ids to be updated
-    fixed_obj_indices = env.active_object_indices[env_ids]
+    num_objects = len(OBJECT_CATALOG)
 
-    # TODO: why we use torch.unique here? why not just iterate direclty?
+    # assign objects to envs fairly and randomly, without any object initialization bias.
+    batch_size = env_ids.numel()
+
+    # batch size larger than # objects, we can cover all objects at least once, 
+    # so we repeat the object indices as needed and then do a random permutation to assign objects to envs randomly
+    if batch_size >= num_objects:
+
+        # up-ceil division to get the number of repeats needed to cover the batch size,
+        repeats = (batch_size + num_objects - 1) // num_objects
+
+        # create a base tensor of shape [num_objects * repeats] that contains repeated object indices [0, 1, ..., num_objects-1], 
+        # and then take the first batch_size elements after a random permutation to get the final assigned object index for each env 
+        # in the batch
+        base = torch.arange(num_objects, device=env.device).repeat(repeats)[:batch_size]
+        random_obj_indices = base[torch.randperm(batch_size, device=env.device)]
+    else:
+        # directly use subset of objects
+        random_obj_indices = torch.randperm(num_objects, device=env.device)[:batch_size]
+    
+    # advanced indexing to assign the sampled object indices to the envs in env_ids
+    env.active_object_indices[env_ids] = random_obj_indices
+
     # iterate through each unique object type present in this reset batch
-    for object_index in torch.unique(fixed_obj_indices).tolist():
+    for object_index in torch.unique(random_obj_indices).tolist():
 
         # convert the numerical object index back to the object id string
         # based on the sturcuture of OBJECT_CATALOG in object_catalog.py and how we built the 
@@ -122,11 +146,11 @@ def sample_target_assignments(env: ManagerBasedEnv, env_ids: torch.Tensor) -> No
 
         # boolean mask selecting envs in the batch that share this object
         # mask shape: [num_envs_in_batch], True for envs with this object, False otherwise
-        mask = fixed_obj_indices == object_index
+        mask = random_obj_indices == object_index
 
         # sub_env_ids is the list of env ids that have the current object
         # i.e. the envs that we need to update in this iteration
-        # TODO: what is the grammar here for using mask as slicing for env_ids?
+        # Boolean indexing to get the env ids in env_ids that have the current object
         sub_env_ids = env_ids[mask]
 
         # randonmly sample a pose index from the allowed pool
@@ -174,6 +198,8 @@ def get_active_pose_entries(
         # get the pose object corresponding to the env_id 
         # based on the active_object_indices and active_pose_indices tensors
         pose_idx = int(env.active_pose_indices[env_id].item())
+
+        # a list of pose records, one per env
         entries.append(OBJECT_CATALOG[obj_idx].poses[pose_idx])
     return entries
 
@@ -181,7 +207,7 @@ def get_active_pose_entries(
 def get_active_pose_position_orientation_tensors(
     env: ManagerBasedEnv, env_ids: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Return batched pose position/orientation tensors for env_ids from active assignments."""
+    """This function converts the catalog selection state into sim-ready tensors. But it is not real-time pose."""
 
     # call the idepmpotent catalog function to ensure all the necessary tensors are initialized
     ensure_catalog_state(env)
@@ -237,9 +263,68 @@ def get_active_arm_joint_reference(
     return env.active_arm_joint_reference[env_ids]
 
 
-def gather_active_object_tensor(
-    env: ManagerBasedEnv, tensor_getter: Callable
+def get_active_object_state_attr(
+    env: ManagerBasedEnv, attr_name: str
 ) -> torch.Tensor:
-    """Return the tensor from the single target_object asset (one chair per env)."""
-    return tensor_getter(env.scene["target_object"])
+    """Return per-env the requested data attribute from each env's active target object.
+    We can use this function to obtain the real-time state of the active object.
+
+    Stacks ``env.scene[f'target_object_{i}'].data.<attr_name>`` for all catalog
+    objects, then selects the row corresponding to each env's ``active_object_indices``.
+    Works for any scalar/vector attribute stored in ``RigidObjectData`` (e.g.
+    ``root_pos_w``, ``root_quat_w``, ``root_lin_vel_b``, ``projected_gravity_b``, etc.).
+    """
+    ensure_catalog_state(env)
+    n_catalog = len(OBJECT_CATALOG)
+
+    # collect the requested attribute from all objects into a list of tensors,
+    # tensor: a python list consists of N_catalog tensors, [num_envs, attr_dim] for each tensor.
+    tensors = [
+        getattr(env.scene[f"target_object_{i}"].data, attr_name)
+        for i in range(n_catalog)
+    ]
+    # stacked: [N_catalog, num_envs, attr_dim]
+    stacked = torch.stack(tensors, dim=0)
+
+    # corresponding object index for each env in env_ids, shape: [num_envs]
+    idx = env.active_object_indices         
+    arange = torch.arange(env.num_envs, device=env.device)
+
+    # the same as: stacked[idx, arange, :]
+    return stacked[idx, arange]    # shape: [num_envs, attr_dim]    
+
+
+def get_active_object_physx_masses(env: ManagerBasedEnv) -> torch.Tensor:
+    """Return the scalar total mass for each env's active target object.
+
+    Shape: ``[num_envs, 1]``.
+    """
+    ensure_catalog_state(env)
+    n_catalog = len(OBJECT_CATALOG)
+    tensors = [
+        torch.sum(env.scene[f"target_object_{i}"].root_physx_view.get_masses(), dim=1).unsqueeze(-1)
+        for i in range(n_catalog)
+    ]
+    stacked = torch.stack(tensors, dim=0)  # [N_catalog, num_envs, 1]
+    idx = env.active_object_indices.to(stacked.device)
+    env_ids = torch.arange(env.num_envs, device=stacked.device)
+    return stacked[idx, env_ids]  # [num_envs, 1]
+
+
+def get_active_object_physx_material_properties(env: ManagerBasedEnv) -> torch.Tensor:
+    """Return the PhysX material properties (static friction, dynamic friction, restitution)
+    for the first shape of each env's active target object.
+
+    Shape: ``[num_envs, 3]``.
+    """
+    ensure_catalog_state(env)
+    n_catalog = len(OBJECT_CATALOG)
+    tensors = [
+        env.scene[f"target_object_{i}"].root_physx_view.get_material_properties()[:, 0, :]
+        for i in range(n_catalog)
+    ]  # each: [num_envs, 3]
+    stacked = torch.stack(tensors, dim=0)  # [N_catalog, num_envs, 3]
+    idx = env.active_object_indices.to(stacked.device)
+    env_ids = torch.arange(env.num_envs, device=stacked.device)
+    return stacked[idx, env_ids]  # [num_envs, 3]
 
