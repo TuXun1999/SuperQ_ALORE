@@ -8,7 +8,7 @@ from dataclasses import MISSING
 
 import torch
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -40,10 +40,6 @@ import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 class SuperqAloreSceneCfg(InteractiveSceneCfg):
     """Configuration for a cart-pole scene."""
 
-    # Required when spawning different USD assets in different envs via MultiAssetSpawnerCfg.
-    # With replicate_physics=True (default) Isaac Sim copies env_0's physics to all envs and
-    # never processes the distinct USD prims spawned in other envs, so only one mesh appears.
-    replicate_physics: bool = False
 
     # ground plane
     # ground = AssetBaseCfg(
@@ -73,8 +69,22 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
     # robots
     robot: ArticulationCfg = MISSING
     
-    # target objects to manipulate
-    target_object = scene.CATALOG_MULTI_OBJECT_RIGID_CFG
+    # objects: we spawn all objects in the catalog, but only the active object will be actually placed at its active pose.
+    # create a local variable to store all objects defined in the catalog, 
+    _target_object_cfgs = {
+        # dictionary comprehension to create multiple target objects based on the catalog configs
+        f"target_object_{idx}": cfg for idx, cfg in enumerate(scene.CATALOG_OBJECT_CFGS)
+    }
+
+    # stores type hint
+    __annotations__.update({name: RigidObjectCfg for name in _target_object_cfgs})
+
+    # dynamically create class variable to the local symbol table 
+    # so that the keys from the dictionary become actual local variable.
+    locals().update(_target_object_cfgs)
+
+    # remove the local variable from the namespace after using it.
+    del _target_object_cfgs
     # contact sensors
     # TODO: are they really... helpful?
     contact_forces = ContactSensorCfg(
@@ -107,7 +117,8 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
     object_velocity = isaac_mdp.UniformVelocityCommandCfg(
-        asset_name="target_object",
+        # target_object_0 is used as the representative for the velocity-command frame.
+        asset_name="target_object_0",
         resampling_time_range=(100.0, 100.0), # No need to change the command
         rel_standing_envs=0.0,
         rel_heading_envs=0.0,
@@ -320,7 +331,6 @@ class ObservationsCfg:
         # Object physical properties (Static fric, mass, dynamic fric)
         obj_physical_properties = ObsTerm(
             func = mdp.obj_physical_properties,
-            params={"object_name": "target_object"},
             scale = 1.0,
         ) # dim: 3
         
@@ -379,7 +389,6 @@ class ObservationsCfg:
             func=mdp.object_velocity,
             history_length = 2,
             flatten_history_dim = False,
-            params={"asset_name": "target_object"},
         ) # dim: 3
         applied_actions = ObsTerm(
             func = mdp.last_high_level_action, 
@@ -437,7 +446,6 @@ class EventCfg:
         func=mdp.reset_object_and_robot_from_catalog_pose,
         mode="reset",
         params={
-            "asset_name": "target_object",
             "position_range": (-0.0, 0.0),
             "velocity_range": (-0.0, 0.0),
         },
@@ -486,7 +494,6 @@ class RewardsCfg:
         func=mdp.yaw_alignment_reward, 
         weight=5.0,
         params={
-            "asset_name": "target_object",
             "robot_name": "robot",
         },
     ) # Align the yaw of the object with the desired direction (if applicable)
@@ -494,31 +501,31 @@ class RewardsCfg:
     lin_vel_z_l2 = RewTerm(
         func=mdp.lin_vel_z_l2,
         weight=2.0,
-        params = {"asset_name": "target_object"}
+        params = {},
     ) # Penalize the vertical velocity of the object to encourage it to stay on the ground
     
     ang_vel_xy_l2 = RewTerm(
         func=mdp.ang_vel_xy_l2,
         weight=0.05,
-        params = {"asset_name": "target_object"}
+        params = {},
     ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
     
     flat_orientation_l2 = RewTerm(
         func=mdp.flat_orientation_l2,
         weight=10.0,
-        params = {"asset_name": "target_object"}
+        params = {},
     ) # Encourage the object to maintain a flat orientation (if applicable)
 
     lin_vel_change_penalty = RewTerm(
         func=mdp.lin_vel_change_penalty,
         weight=2.0,
-        params = {"asset_name": "target_object"}
+        params = {},
     ) # Penalize the change in linear velocity of the object to encourage smooth motion
     
     ang_vel_change_penalty = RewTerm(
         func=mdp.ang_vel_change_penalty,
         weight=2.0,
-        params = {"asset_name": "target_object"}
+        params = {},
     ) # Penalize the change in angular velocity of the object to encourage smooth motion
     
     # TODO: the distance may be tricky
@@ -661,8 +668,8 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
     # Create a new buffer to store the previous object velocities & actions
     def _pre_physics_step(self, action):
         # Cache the current velocity before it gets updated
-        prev_obj_lin_vel = self.scene["target_object"].data.root_lin_vel_b.clone()[:, :2]
-        prev_obj_ang_vel = self.scene["target_object"].data.root_ang_vel_b.clone()[:, 2]
+        prev_obj_lin_vel = mdp.get_active_object_state_attr(self, "root_lin_vel_b").clone()[:, :2]
+        prev_obj_ang_vel = mdp.get_active_object_state_attr(self, "root_ang_vel_b").clone()[:, 2]
         self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
     
     # After the physics step, update prev_action and prev_prev_action for the next step
