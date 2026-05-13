@@ -96,66 +96,150 @@ class InteractiveGNN(nn.Module):
         # ee: ee_pose_in_base_frame 7, contact_state,                      # 8
         # object:  obj_pose_in_base_frame 7, goal_vel 3,                   # 10 
         # ========================================================================
+        
+        # base: orientation 2, angular velocity 3
         base_feat = critic_obs[:, 72:77]    # [num_envs, 5]
-        joint1_feat = torch.cat([ critic_obs[:, 53:60], critic_obs[:,66:67], critic_obs[:,48:49], 
-                                  critic_obs[:, 12:13], critic_obs[:, 30:31]], dim=-1)  # [num_envs, 11]
-        joint2_feat = torch.cat([ critic_obs[:, 60:67], critic_obs[:,67:68], critic_obs[:,49:50],
-                                critic_obs[:, 13:14], critic_obs[:, 31:32]], dim=-1)
-        joint3_feat = torch.cat([critic_obs[:, 67:74], critic_obs[:,68:69], critic_obs[:,50:51],
-                                critic_obs[:, 14:15], critic_obs[:, 32:33]], dim=-1)
-        joint4_feat = torch.cat([critic_obs[:, 74:81], critic_obs[:,69:70], critic_obs[:,51:52],
-                                critic_obs[:, 15:16], critic_obs[:, 33:34]], dim=-1)
-        joint5_feat = torch.cat([critic_obs[:, 81:88], critic_obs[:,70:71], critic_obs[:,52:53],
-                                critic_obs[:, 16:17], critic_obs[:, 34:35]], dim=-1)
-        joint6_feat = torch.cat([critic_obs[:, 88:95], critic_obs[:,71:72], critic_obs[:,53:54],
-                                critic_obs[:, 17:18], critic_obs[:, 35:36]], dim=-1)
-        ee_feat = critic_obs[:, 95:103]  # [num_envs, 8]                                  
-        object_feat = torch.cat([critic_obs[:, 103:110], critic_obs[:, 110:113]], dim=-1)  # [num_envs, 10]  
+        
+        # The indices of arm joints in one group of joint states:
+        arm_joint_indices = [0, 5, 10, 15, 16, 17]
+        q_start_idx = 54
+        q_default_start_idx = 36
+        q_relative_start_idx = 0
+        q_velocity_start_idx = 18
+        
+        # joints: 
+        # link: arm_link_sh0, arm_sh0
+        # Find the indices of the joint attributes in critic_obs
+        joint1_q_idx = q_start_idx + arm_joint_indices[0]
+        joint1_q_default_idx = q_default_start_idx + arm_joint_indices[0]
+        joint1_q_relative_idx = q_relative_start_idx + arm_joint_indices[0]
+        joint1_q_velocity_idx = q_velocity_start_idx + arm_joint_indices[0]
+        
+        joint1_feat = torch.cat([
+            # link pose in robot frame
+            critic_obs[:, 89:96], 
+            # q
+            critic_obs[:,joint1_q_idx:joint1_q_idx+1], 
+            # default_q
+            critic_obs[:,joint1_q_default_idx:joint1_q_default_idx+1], 
+            # q_relative = q - default_q
+            critic_obs[:, joint1_q_relative_idx:joint1_q_relative_idx+1], 
+            # q_velocity
+            critic_obs[:, joint1_q_velocity_idx:joint1_q_velocity_idx+1]], 
+        dim=-1)  # [num_envs, 11]
+        
+        # link: arm_link_sh1, joint2
+        joint2_q_idx = q_start_idx + arm_joint_indices[1]
+        joint2_q_default_idx = q_default_start_idx + arm_joint_indices[1]
+        joint2_q_relative_idx = q_relative_start_idx + arm_joint_indices[1]
+        joint2_q_velocity_idx = q_velocity_start_idx + arm_joint_indices[1]
+        
+        joint2_feat = torch.cat([
+            # link pose in robot frame
+            critic_obs[:, 96:103], 
+            # q
+            critic_obs[:,joint2_q_idx:joint2_q_idx+1], 
+            # default_q
+            critic_obs[:,joint2_q_default_idx:joint2_q_default_idx+1], 
+            # q_relative = q - default_q
+            critic_obs[:, joint2_q_relative_idx:joint2_q_relative_idx+1], 
+            # q_velocity
+            critic_obs[:, joint2_q_velocity_idx:joint2_q_velocity_idx+1]], 
+        dim=-1)  # [num_envs, 11]
+        
+        # link: arm_link_el0, joint3
+        joint3_q_idx = q_start_idx + arm_joint_indices[2]
+        joint3_q_default_idx = q_default_start_idx + arm_joint_indices[2]
+        joint3_q_relative_idx = q_relative_start_idx + arm_joint_indices[2]
+        joint3_q_velocity_idx = q_velocity_start_idx + arm_joint_indices[2]
+        
+        joint3_feat = torch.cat([
+            # link pose in robot frame
+            critic_obs[:, 103:110], 
+            # q
+            critic_obs[:,joint3_q_idx:joint3_q_idx+1], 
+            # default_q
+            critic_obs[:,joint3_q_default_idx:joint3_q_default_idx+1], 
+            # q_relative = q - default_q
+            critic_obs[:, joint3_q_relative_idx:joint3_q_relative_idx+1], 
+            # q_velocity
+            critic_obs[:, joint3_q_velocity_idx:joint3_q_velocity_idx+1]], 
+        dim=-1)  # [num_envs, 11]
+        
+        # link: arm_link_el1, joint4
+        joint4_q_idx = q_start_idx + arm_joint_indices[3]
+        joint4_q_default_idx = q_default_start_idx + arm_joint_indices[3]
+        joint4_q_relative_idx = q_relative_start_idx + arm_joint_indices[3]
+        joint4_q_velocity_idx = q_velocity_start_idx + arm_joint_indices[3]
+        
+        joint4_feat = torch.cat([
+            # link pose in robot frame
+            critic_obs[:, 110:117], 
+            # q
+            critic_obs[:,joint4_q_idx:joint4_q_idx+1], 
+            # default_q
+            critic_obs[:,joint4_q_default_idx:joint4_q_default_idx+1], 
+            # q_relative = q - default_q
+            critic_obs[:, joint4_q_relative_idx:joint4_q_relative_idx+1], 
+            # q_velocity
+            critic_obs[:, joint4_q_velocity_idx:joint4_q_velocity_idx+1]], 
+        dim=-1)  # [num_envs, 11]
+        
 
-        # padding to ensure all node features have the same dimension
+        # link: arm_link_wr0, joint5
+        joint5_q_idx = q_start_idx + arm_joint_indices[4]
+        joint5_q_default_idx = q_default_start_idx + arm_joint_indices[4]
+        joint5_q_relative_idx = q_relative_start_idx + arm_joint_indices[4]
+        joint5_q_velocity_idx = q_velocity_start_idx + arm_joint_indices[4]
+        
+        joint5_feat = torch.cat([
+            # link pose in robot frame
+            critic_obs[:, 117:124], 
+            # q
+            critic_obs[:,joint5_q_idx:joint5_q_idx+1], 
+            # default_q
+            critic_obs[:,joint5_q_default_idx:joint5_q_default_idx+1], 
+            # q_relative = q - default_q
+            critic_obs[:, joint5_q_relative_idx:joint5_q_relative_idx+1], 
+            # q_velocity
+            critic_obs[:, joint5_q_velocity_idx:joint5_q_velocity_idx+1]], 
+        dim=-1)  # [num_envs, 11]
+        
+        # link: arm_link_wr1, joint6
+        joint6_q_idx = q_start_idx + arm_joint_indices[5]
+        joint6_q_default_idx = q_default_start_idx + arm_joint_indices[5]
+        joint6_q_relative_idx = q_relative_start_idx + arm_joint_indices[5]
+        joint6_q_velocity_idx = q_velocity_start_idx + arm_joint_indices[5]
+        
+        joint6_feat = torch.cat([
+            # link pose in robot frame
+            critic_obs[:, 124:131], 
+            # q
+            critic_obs[:,joint6_q_idx:joint6_q_idx+1], 
+            # default_q
+            critic_obs[:,joint6_q_default_idx:joint6_q_default_idx+1], 
+            # q_relative = q - default_q
+            critic_obs[:, joint6_q_relative_idx:joint6_q_relative_idx+1], 
+            # q_velocity
+            critic_obs[:, joint6_q_velocity_idx:joint6_q_velocity_idx+1]], 
+        dim=-1)  # [num_envs, 11]
+        
+        # End-effector features: end-effector pose (7) + contact state (1)
+        ee_feat = critic_obs[:, 131:139]  # [num_envs, 8]                                  
+        
+        # Object features:  
+        # object pose in base frame (7) + goal_vel (vx, vy, vomega) (3)
+        # # TODO: modify it with our own shape encoder
+        object_feat = torch.cat([critic_obs[:, 139:146], critic_obs[:, 86:89]], dim=-1)  # [num_envs, 10]  
+
+        
+        # Padding to ensure all node features have the same dimension
         # zero-padding → [11]
         num_envs = critic_obs.shape[0]
         base_feat_padded  = torch.cat([base_feat, torch.zeros(num_envs, 6, device=device)], dim=-1) # 
         ee_feat_padded  = torch.cat([ee_feat, torch.zeros(num_envs, 3, device=device)], dim=-1)
         object_feat_padded  = torch.cat([object_feat, torch.zeros(num_envs, 1, device=device)], dim=-1)
 
-
-         # TODO
-        # node_list = []
-        # pose_list = []
-
-        # for b in range(num_env):
-        #     nodes = []
-        #     types = []
-        #     poses = []
-
-        #     nodes.append(base_feat[b])
-        #     types.append([1, 0, 0, 0])
-        #     poses.append(torch.tensor([0., 0., 0., 0., 0., 0., 1.], device=device))  # base pose
-
-        #     for joint_feat in [joint1_feat[b], joint2_feat[b], joint3_feat[b], joint4_feat[b], joint5_feat[b], joint6_feat[b]]:
-        #         nodes.append(joint_feat)
-        #         types.append([0, 1, 0, 0])
-        #         poses.append(joint_feat[:7])
-
-        #     nodes.append(ee_feat[b])
-        #     types.append([0, 0, 1, 0])
-        #     poses.append(ee_feat[b][:7])
-
-        #     nodes.append(object_feat[b])
-        #     types.append([0, 0, 0, 1])
-        #     poses.append(object_feat[b][:7])
-
-        #     node_feats = [torch.cat([n, torch.tensor(t, dtype=torch.float32, device=device)]) for n, t in zip(nodes, types)]
-        #     node_feats = torch.stack(node_feats, dim=0)  # [9, node_dim]
-        #     node_list.append(node_feats)
-
-        #     poses = torch.stack(poses, dim=0)  # [9, 7]
-        #     pose_list.append(poses)
-
-        # node_features = torch.cat(node_list, dim=0)  # [B * 9, D]
-        # pose_table = torch.cat(pose_list, dim=0)     # [B * 9, 7]
-        # batch = torch.arange(num_env, device=device).repeat_interleave(9)
 
         #  joint_feats: list of [B, 11] → stack to [B, 6, 11]
         joint_feats = torch.stack([joint1_feat, joint2_feat, joint3_feat, joint4_feat, joint5_feat, joint6_feat], dim=1)
@@ -185,11 +269,11 @@ class InteractiveGNN(nn.Module):
         node_features = torch.cat([all_nodes, type_tensor], dim=-1)  # [B, 9, 15]
         node_features = node_features.reshape(-1, 15)  # [B * 9, 15]
 
-        # ---pose_table ---
+        # Construct pose table => for edge construction purpose
         # base pose: [0,0,0,0,0,0,1]
         base_pose = torch.tensor([0., 0., 0., 0., 0., 0., 1.], device=device).view(1, 1, 7).expand(num_env, 1, 7)
 
-        # joints, ee, object pose 
+        # Extract out joints, ee, object pose 
         joint_pose = joint_feats[:, :, :7]               # [B, 6, 7]
         ee_pose = ee_feat[:, :7].unsqueeze(1)            # [B, 1, 7]
         object_pose = object_feat[:, :7].unsqueeze(1)    # [B, 1, 7]
@@ -200,7 +284,7 @@ class InteractiveGNN(nn.Module):
         # --- batch vector ---
         batch = torch.arange(num_env, device=device).repeat_interleave(9)  # [B*9]
 
-        # ======
+        # Build up the edges
         num_nodes_per_graph = 9
         local_edges = [(0, j) for j in range(1, 7)]  # base→joints
         local_edges += [(j, j+1) for j in range(1, 6)]  # joint chain
@@ -208,7 +292,7 @@ class InteractiveGNN(nn.Module):
         local_edges.append((7, 8))  # ee→object
         local_edges += [(dst, src) for (src, dst) in local_edges]  # reverse edges
 
-        # TODO
+        # The non-vectorized version of constructing edge_index (for reference)
         # edge_index = []
         # for b in range(num_env):
         #     offset = b * num_nodes_per_graph
@@ -216,6 +300,7 @@ class InteractiveGNN(nn.Module):
         #         edge_index.append([offset + src, offset + dst])
         # edge_index = torch.tensor(edge_index, dtype=torch.long, device=device).t()
 
+        # Indices of the nodes attached to each edge
         num_edges_per_graph = len(local_edges)
         local_edges_tensor = torch.tensor(local_edges, dtype=torch.long, device=device)  # [E, 2]
         src_local, dst_local = local_edges_tensor[:, 0], local_edges_tensor[:, 1]  # [E]
@@ -223,6 +308,7 @@ class InteractiveGNN(nn.Module):
         batch_offsets = torch.arange(num_env, device=device) * num_nodes_per_graph  # [B]
         batch_offsets = batch_offsets.view(-1, 1).expand(-1, num_edges_per_graph)   # [B, E]
 
+        # src & dst of nodes in node_features (Bx9, 15)
         src_all = src_local.view(1, -1) + batch_offsets  # [B, E]
         dst_all = dst_local.view(1, -1) + batch_offsets  # [B, E]
 
@@ -232,14 +318,14 @@ class InteractiveGNN(nn.Module):
             dst_all.reshape(-1)   # [B * E]
         ], dim=0)  # [2, B * E]
 
-        # ======
+        # Calculate the relative pose for each edge & attach it to the edge attributes
         src, dst = edge_index
-        pos_src = pose_table[src][:, :3]
-        pos_dst = pose_table[dst][:, :3]
+        pos_src = pose_table[src][:3]
+        pos_dst = pose_table[dst][:3]
         rel_pos = pos_dst - pos_src  # [E, 3]
 
-        quat_src = pose_table[src][:, 3:]
-        quat_dst = pose_table[dst][:, 3:]
+        quat_src = pose_table[src][3:]
+        quat_dst = pose_table[dst][3:]
         q_src_inv = quat_inverse(quat_src)
         rel_quat = quat_mul(quat_dst, q_src_inv)  # [E, 4]
 

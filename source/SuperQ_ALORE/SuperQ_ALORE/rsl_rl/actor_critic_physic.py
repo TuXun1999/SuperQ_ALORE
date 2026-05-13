@@ -16,6 +16,7 @@ import seaborn as sns
 import torch
 import torch.nn as nn
 from torch.distributions import Normal
+from tensordict import TensorDict
 
 from rsl_rl.modules import ActorCritic
 from .physic_estimator import PhysicEstimator
@@ -27,8 +28,8 @@ class PhysicActorCritic(ActorCritic):
 
     def __init__(
         self,
-        num_actor_obs,
-        num_critic_obs,
+        obs: TensorDict,
+        obs_groups: dict[str, list[str]],
         num_actions,
         actor_hidden_dims=[256, 256, 256],
         critic_hidden_dims=[256, 256, 256],
@@ -37,13 +38,10 @@ class PhysicActorCritic(ActorCritic):
         noise_std_type: str = "scalar",
         **kwargs,
     ):
-        # 11*(44+2)
-        # print(f"====PhysicActorCritic input dimensions: actor={num_actor_obs}, critic={num_critic_obs}, actions={num_actions}====")
-        self.history_length = 11
  
         super().__init__(
-            num_actor_obs=num_actor_obs + self.history_length*3+ 128, #TODO： hard code, 11*3 for velocity prediction ## TODO: with only physical estimation
-            num_critic_obs=num_critic_obs,
+            obs=obs,
+            obs_groups=obs_groups,
             num_actions=num_actions,
             actor_hidden_dims=actor_hidden_dims,
             critic_hidden_dims=critic_hidden_dims,
@@ -53,18 +51,41 @@ class PhysicActorCritic(ActorCritic):
             **kwargs
         )
 
-        #
+        # Hard-coded attributes...
+        self.history_length = 10
+        
+        # Pre-process the actions
+        # (x, y, omega) for the base, 6 joint angles for the arm
+        self.action_scale = torch.tensor([0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05], device=self.device)  # scale the action output to a reasonable range for the environment, especially for the arm joints
+        self.action_clip = torch.tensor([0.6, 0.0, 0.6, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05], device=self.device)  # clip the action output to ensure safety (especially for the base)
+        
         if not hasattr(self, 'device'):
             self.device = kwargs.get('device', 'cpu')
 
+        self.obs_groups = obs_groups
+        num_actor_obs = 0
+        for obs_group in obs_groups["policy"]:
+            assert len(obs[obs_group].shape) == 2, "The ActorCritic module only supports 1D observations."
+            num_actor_obs += obs[obs_group].shape[-1]
+        num_critic_obs = 0
+        for obs_group in obs_groups["critic"]:
+            assert len(obs[obs_group].shape) == 2, "The ActorCritic module only supports 1D observations."
+            num_critic_obs += obs[obs_group].shape[-1]
+        
+        # Actor obs (per environment)
         self.num_actor_obs = int(num_actor_obs / self.history_length)
 
         activation = resolve_nn_activation(activation)
 
-        mlp_input_dim_a = num_actor_obs + self.history_length*3 + 128 # 11*3 for velocity prediction, 128 for GNN output ## TODO: with only physical estimation
+        
+        # The input to the actor predictor consists of raw env observations and the 
+        # estimated object base velocities and the graph neural network output
+        mlp_input_dim_a = num_actor_obs + self.history_length*3 + 128 
+        # history_length*3 for velocity prediction, 128 for GNN output 
+
         mlp_input_dim_c = num_critic_obs
 
-        # multi-head actor policy
+        # Multi-head actor policy
         shared_layers = []
         shared_layers.append(nn.Linear(mlp_input_dim_a, actor_hidden_dims[0]))
         shared_layers.append(activation)
@@ -73,9 +94,9 @@ class PhysicActorCritic(ActorCritic):
             shared_layers.append(activation)
         self.shared_mlp = nn.Sequential(*shared_layers)
 
-        # base control 
+        # Base control head
         self.base_head = nn.Linear(actor_hidden_dims[-1], 3)
-        # arm control 
+        # Arm control head
         self.arm_head = nn.Linear(actor_hidden_dims[-1], 6)
 
         # Add a physic estimator
@@ -147,7 +168,17 @@ class PhysicActorCritic(ActorCritic):
 
     def act(self, observations, critic_observations, **kwargs):
         self.update_distribution(observations, critic_observations)
-        return self.distribution.sample()
+        actions_raw = self.distribution.sample() 
+        
+        # Scale & Clip
+        actions = actions_raw * self.action_scale
+        actions = torch.clamp(actions, -self.action_clip, self.action_clip)
+        """
+        actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
+        (Forced to match 12D action space of the pretrained locomotion policy)
+        """
+        actions = torch.cat([actions, torch.zeros(actions.shape[0], 3, device=actions.device)], dim=-1)
+        return actions
 
 
     def act_inference(self, observations, critic_observations):
@@ -243,10 +274,18 @@ class PhysicActorCritic(ActorCritic):
         arm_mean = self.arm_head(shared_feat)
         actions_mean = torch.cat([base_mean, arm_mean], dim=-1)
 
-        return actions_mean
+        # Scale & Clip
+        actions = actions_mean * self.action_scale
+        actions = torch.clamp(actions, -self.action_clip, self.action_clip)
+        """
+        actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
+        (Forced to match 12D action space of the pretrained locomotion policy)
+        """
+        actions = torch.cat([actions, torch.zeros(actions.shape[0], 3, device=actions.device)], dim=-1)
+        return actions
     
 
-   
+    """(DEPRECATED) Saving to csv may not be demanded yet..."""
     def _save_predictions_and_gt_to_csv(self, pred_vx, pred_vy, pred_omega, 
                                     gt_vx, gt_vy, gt_omega):
 
