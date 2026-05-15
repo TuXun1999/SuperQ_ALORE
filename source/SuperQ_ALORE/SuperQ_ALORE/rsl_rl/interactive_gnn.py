@@ -320,12 +320,12 @@ class InteractiveGNN(nn.Module):
 
         # Calculate the relative pose for each edge & attach it to the edge attributes
         src, dst = edge_index
-        pos_src = pose_table[src][:3]
-        pos_dst = pose_table[dst][:3]
+        pos_src = pose_table[src, :3]
+        pos_dst = pose_table[dst, :3]
         rel_pos = pos_dst - pos_src  # [E, 3]
 
-        quat_src = pose_table[src][3:]
-        quat_dst = pose_table[dst][3:]
+        quat_src = pose_table[src, 3:]
+        quat_dst = pose_table[dst, 3:]
         q_src_inv = quat_inverse(quat_src)
         rel_quat = quat_mul(quat_dst, q_src_inv)  # [E, 4]
 

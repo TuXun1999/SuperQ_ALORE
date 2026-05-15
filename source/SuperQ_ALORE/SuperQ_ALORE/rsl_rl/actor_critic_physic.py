@@ -7,11 +7,12 @@ import csv
 import os
 from datetime import datetime
 
-import numpy as np
-import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
-from sklearn.decomposition import PCA
-import seaborn as sns
+# TODO: libraries used by ALORE (for visualization purpose perhaps?)
+# import numpy as np
+# import matplotlib.pyplot as plt
+# from sklearn.manifold import TSNE
+# from sklearn.decomposition import PCA
+
 
 import torch
 import torch.nn as nn
@@ -54,14 +55,15 @@ class PhysicActorCritic(ActorCritic):
         # Hard-coded attributes...
         self.history_length = 10
         
-        # Pre-process the actions
-        # (x, y, omega) for the base, 6 joint angles for the arm
-        self.action_scale = torch.tensor([0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05], device=self.device)  # scale the action output to a reasonable range for the environment, especially for the arm joints
-        self.action_clip = torch.tensor([0.6, 0.0, 0.6, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05], device=self.device)  # clip the action output to ensure safety (especially for the base)
         
         if not hasattr(self, 'device'):
             self.device = kwargs.get('device', 'cpu')
 
+        # Pre-process the actions
+        # (x, y, omega) for the base, 6 joint angles for the arm (the last three are forced to be 0)
+        self.action_scale = torch.tensor([0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0], device=self.device)  # scale the action output to a reasonable range for the environment, especially for the arm joints
+        self.action_clip = torch.tensor([0.6, 0.0, 0.6, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0], device=self.device)  # clip the action output to ensure safety (especially for the base)
+        
         self.obs_groups = obs_groups
         num_actor_obs = 0
         for obs_group in obs_groups["policy"]:
@@ -154,7 +156,10 @@ class PhysicActorCritic(ActorCritic):
         base_mean = self.base_head(shared_feat)
         arm_mean = self.arm_head(shared_feat)
         mean = torch.cat([base_mean, arm_mean], dim=-1)
-
+        
+        # Pad the actions to match the 12D action space accepted by the environment
+        mean = torch.cat([mean, torch.zeros(mean.shape[0], 3, device=mean.device)], dim=-1)
+        
         # compute standard deviation
         if self.noise_std_type == "scalar":
             std = self.std.expand_as(mean)
@@ -166,22 +171,31 @@ class PhysicActorCritic(ActorCritic):
         self.distribution = Normal(mean, std)
 
 
-    def act(self, observations, critic_observations, **kwargs):
+    def act(self, obs, **kwargs):
+        # Separate obs & critic_obs
+        observations = obs["policy"]
+        critic_observations = obs["critic"]
+        
+        """
+        actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
+        (Forced to match 12D action space of the pretrained locomotion policy)
+        
+        The last dimensions are forced to be 0
+        """
         self.update_distribution(observations, critic_observations)
         actions_raw = self.distribution.sample() 
         
         # Scale & Clip
-        actions = actions_raw * self.action_scale
-        actions = torch.clamp(actions, -self.action_clip, self.action_clip)
-        """
-        actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
-        (Forced to match 12D action space of the pretrained locomotion policy)
-        """
-        actions = torch.cat([actions, torch.zeros(actions.shape[0], 3, device=actions.device)], dim=-1)
+        actions = actions_raw * self.action_scale.to(actions_raw.device)
+        actions = torch.clamp(actions, -self.action_clip.to(actions_raw.device), self.action_clip.to(actions_raw.device))
+
         return actions
 
 
-    def act_inference(self, observations, critic_observations):
+    def act_inference(self, obs, **kwargs):
+        # Separate obs out
+        observations = obs["policy"]
+        critic_observations = obs["critic"]
         # velocity prediction
         physic_estimator = self.physic_estimator(observations)
 
@@ -275,8 +289,8 @@ class PhysicActorCritic(ActorCritic):
         actions_mean = torch.cat([base_mean, arm_mean], dim=-1)
 
         # Scale & Clip
-        actions = actions_mean * self.action_scale
-        actions = torch.clamp(actions, -self.action_clip, self.action_clip)
+        actions = actions_mean * self.action_scale.to(actions_mean.device)
+        actions = torch.clamp(actions, -self.action_clip.to(actions_mean.device), self.action_clip.to(actions_mean.device))
         """
         actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
         (Forced to match 12D action space of the pretrained locomotion policy)

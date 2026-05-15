@@ -103,9 +103,11 @@ class OnPolicyRunnerSuperQALORE():
             start = time.time()
             # Rollout
             with torch.inference_mode():
+                # TODO: Consider only start training after a successful grasp?
                 for _ in range(self.num_steps_per_env):
                     # Sample actions
                     actions = self.alg.act(obs)
+                    
                     # Step the environment
                     obs, rewards, dones, extras = self.env.step(actions.to(self.env.device))
                     # Move to device
@@ -149,7 +151,7 @@ class OnPolicyRunnerSuperQALORE():
                 self.alg.compute_returns(obs)
 
             # Update policy
-            loss_dict = self.alg.update()
+            loss_dict, _ = self.alg.update()
 
             stop = time.time()
             learn_time = stop - start
@@ -434,7 +436,6 @@ class OnPolicyRunnerSuperQALORE():
             obs,
             [self.env.num_actions],
         )
-
         return alg
 
     def _prepare_logging_writer(self) -> None:

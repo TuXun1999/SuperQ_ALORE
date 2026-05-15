@@ -192,7 +192,7 @@ class PhysicPPO(PPO):
                         param_group["lr"] = self.learning_rate
 
             # Physic Estimator update
-            estimation_loss = self.policy.physic_estimator.update(obs_batch)
+            estimation_loss = self.policy.physic_estimator.update(obs_batch["policy"], obs_batch["critic"])
 
             # Surrogate loss
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))

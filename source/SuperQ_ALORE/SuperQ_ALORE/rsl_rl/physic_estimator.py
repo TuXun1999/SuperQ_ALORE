@@ -7,7 +7,7 @@ import torch.optim as optim
 class PhysicEstimator(nn.Module):
     def __init__(self,
                  input_dim=44,
-                 output_dim=3,  # [mass, mu]
+                 output_dim=3,  # [object_x, object_y, object_ang_vel_z]
                  lstm_hidden_size=128,
                  lstm_layers=1,
                  mlp_hidden_dim=64,
@@ -18,7 +18,7 @@ class PhysicEstimator(nn.Module):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_actor_obs = input_dim  # Number of observations used for one-step prediction
-        self.history_length = 11  # Assuming the history length is 11
+        self.history_length = 10  # Assuming the history length is 10
 
         # LSTM encoder
         self.lstm = nn.LSTM(
@@ -50,13 +50,13 @@ class PhysicEstimator(nn.Module):
     def forward(self, obs_history):
         """
         obs_history: (B, T, D)
-        Returns: (B, 2)
+        Returns: (B, 3) as the predicted [object_x, object_y, object_ang_vel_z]
         """
         B = obs_history.shape[0]
         T = self.history_length
         D = self.num_actor_obs
 
-        obs_history = obs_history.view(B, T, D)  # 💡 关键 reshape
+        obs_history = obs_history.view(B, T, D)  # Reshape
 
         # print(f"====obs_history shape: {obs_history.shape}====")
         lstm_out, (h_n, _) = self.lstm(obs_history)  # h_n: (num_layers, B, H)
@@ -69,7 +69,7 @@ class PhysicEstimator(nn.Module):
     def update(self, obs_history, critic_obs):
         """
         obs_history: (B, T, D)
-        mass_gt, mu_gt: (B,) or (B, 1)
+        object_x_gt, object_y_gt, object_ang_vel_z_gt are extracted from critic_obs for supervised learning
         """
         # print(f"====PhysicEstimator update called====")
 
@@ -94,7 +94,7 @@ class PhysicEstimator(nn.Module):
     def predict(self, obs_history):
         """
         obs_history: (B, T, D)
-        Returns: (B, 2) as numpy array
+        Returns: (B, 3) as numpy array
         """
         if not isinstance(obs_history, torch.Tensor):
             obs_history = torch.tensor(obs_history, dtype=torch.float32)

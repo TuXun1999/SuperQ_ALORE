@@ -190,7 +190,7 @@ class ObservationsCfg:
         commands = ObsTerm(
             func=isaac_mdp.generated_commands,
             params={"command_name": "object_velocity"},
-        ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
+        ) # dim: 3 
         
         # End-effector in robot frame
         ee_pose_in_robot_frame = ObsTerm(
@@ -205,7 +205,7 @@ class ObservationsCfg:
             scale = 1.0,
         ) # dim: 7 (position + quat) for the target object
         
-        # Category code? (NOTE: it's constantly zero in ALORE)
+        # Category code (NOTE: it's constantly zero in ALORE)
         # category_encode = ObsTerm(
         #     func = mdp.category_encode,
         #     scale = 1.0,
@@ -282,7 +282,7 @@ class ObservationsCfg:
                     },
             scale = 1.0,
         ) # dim: 7 *  7 (position + quat) for the arm links
-         
+        
         # End-effector contact state
         ee_contact_state = ObsTerm(
             func = mdp.ee_contact_state,
@@ -304,13 +304,13 @@ class ObservationsCfg:
         
        # Object velocity in robot frame
         obj_lin_vel_in_robot_frame = ObsTerm(
-            func = mdp.obj_lin_vel_in_robot_frame,
+            func = mdp.obj_lin_vel_in_body_frame,
             scale = 2.0,
         ) # dim: 3
         
         # Object angular velocity in robot frame
         obj_ang_vel_in_robot_frame = ObsTerm(
-            func = mdp.obj_ang_vel_in_robot_frame,
+            func = mdp.obj_ang_vel_in_body_frame,
             scale = 0.25,
         ) # dim: 3
         
@@ -468,7 +468,6 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     ## (1) Group 1: Object related rewards (primary task)
-    # TODO: UUNCOMMENT THEM!!
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_exp,
         weight=5.0,
@@ -531,7 +530,7 @@ class RewardsCfg:
         params={
             "robot_name": "robot",
             "end_effector_link_name": "arm_link_jaw",
-            "distance_threshold": 0.6,
+            "distance_threshold": 1.0,
         },
     ) # Penalize the distance between the end-effector and the robot
     
@@ -664,15 +663,15 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         
         
     # Create a new buffer to store the previous object velocities & actions
-    def _pre_physics_step(self, action):
-        # Cache the current velocity before it gets updated
-        prev_obj_lin_vel = self.scene["target_object"].data.root_lin_vel_b.clone()[:, :2]
-        prev_obj_ang_vel = self.scene["target_object"].data.root_ang_vel_b.clone()[:, 2]
-        self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
+    # def _pre_physics_step(self, action):
+    #     # Cache the current velocity before it gets updated
+    #     prev_obj_lin_vel = self.scene["target_object"].data.root_lin_vel_b.clone()[:, :2]
+    #     prev_obj_ang_vel = self.scene["target_object"].data.root_ang_vel_b.clone()[:, 2]
+    #     self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
     
-    # After the physics step, update prev_action and prev_prev_action for the next step
-    def _post_physics_step(self, action):
-        # Update the observed actions as well
-        self.prev_prev_action = getattr(self, "prev_action", torch.zeros_like(action))
-        self.prev_action = action.clone()
+    # # After the physics step, update prev_action and prev_prev_action for the next step
+    # def _post_physics_step(self, action):
+    #     # Update the observed actions as well
+    #     self.prev_prev_action = getattr(self, "prev_action", torch.zeros_like(action))
+    #     self.prev_action = action.clone()
 
