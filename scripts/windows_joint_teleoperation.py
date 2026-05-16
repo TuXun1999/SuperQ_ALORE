@@ -5,7 +5,7 @@
 
 """Keyboard teleoperation for Spot arm joints with optional base motion mode.
 
-Controls (tkinter window):
+Controls (Windows terminal):
 - 1..7: select arm joint index
 - a: increase selected joint angle by +step_size (arm mode)
 - d: decrease selected joint angle by -step_size (arm mode)
@@ -15,14 +15,12 @@ Controls (tkinter window):
 - p: print current targets
 - q: quit
 
-Keep the small tkinter window focused while driving the robot.
 The script keeps non-arm action components fixed, so only Spot arm joint targets are changed.
 """
 
 import argparse
 import math
-import tkinter as tk
-from collections import deque
+import msvcrt
 
 from isaaclab.app import AppLauncher
 
@@ -102,7 +100,7 @@ from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management 
 
 # Teleoperation catalog selection (file-level settings; not CLI):
 TELEOP_OBJECT_ID = "chair_1"
-TELEOP_POSE_ID = "back"
+TELEOP_POSE_ID = "handle"
 
 
 def _build_arm_joint_names() -> list[str]:
@@ -199,57 +197,6 @@ def _print_help(arm_joint_names: list[str], selected_idx: int, targets: torch.Te
         print(f"  {i}: {name:>12s} = {value:+.4f}")
 
 
-class _TkKeyboardReader:
-    """Non-blocking key reader backed by a small Tk window."""
-
-    def __init__(self) -> None:
-        self._queue: deque[str] = deque()
-        try:
-            self.root = tk.Tk()
-        except tk.TclError as exc:
-            raise RuntimeError(
-                "Failed to initialize tkinter keyboard input. Ensure an X display is available."
-            ) from exc
-
-        self.root.title("Joint Teleoperation")
-        self.root.geometry("320x80")
-        self.root.resizable(False, False)
-        self.root.attributes("-topmost", True)
-        self.root.bind("<KeyPress>", self._on_key_press)
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-        label = tk.Label(
-            self.root,
-            text="Focus this window and use 1..7, WASD, b, r, p, q",
-            padx=12,
-            pady=20,
-        )
-        label.pack(fill="both", expand=True)
-        self.root.focus_force()
-        self.root.update_idletasks()
-
-    def _on_key_press(self, event: tk.Event) -> None:
-        if event.keysym:
-            self._queue.append(event.keysym.lower())
-
-    def _on_close(self) -> None:
-        self._queue.append("q")
-
-    def poll_events(self) -> None:
-        self.root.update_idletasks()
-        self.root.update()
-
-    def has_key(self) -> bool:
-        return bool(self._queue)
-
-    def get_key(self) -> str:
-        return self._queue.popleft()
-
-    def close(self) -> None:
-        if self.root.winfo_exists():
-            self.root.destroy()
-
-
 def main():
     """Run keyboard teleoperation for arm joints only."""
     # Teleoperation is intended for a single environment.
@@ -294,7 +241,6 @@ def main():
     fixed_base_pose = torch.tensor(args_cli.base_pose, device=env.unwrapped.device, dtype=torch.float32)
     motion_mode = False
     motion_speed = float(args_cli.motion_speed)
-    keyboard = _TkKeyboardReader()
 
     _print_help(arm_joint_names, selected_joint_idx, arm_targets, step_size)
 
@@ -310,11 +256,9 @@ def main():
 
     while simulation_app.is_running():
         with torch.inference_mode():
-            keyboard.poll_events()
-
             # Consume all pending key presses (non-blocking).
-            while keyboard.has_key():
-                key = keyboard.get_key()
+            while msvcrt.kbhit():
+                key = msvcrt.getwch().lower()
 
                 if key.isdigit():
                     joint_num = int(key)
@@ -322,8 +266,8 @@ def main():
                         selected_joint_idx = joint_num - 1
 
                         # Support compact combo control like: 1a, 1d, 5a, 5d.
-                        if (not motion_mode) and keyboard.has_key():
-                            maybe_dir = keyboard.get_key()
+                        if (not motion_mode) and msvcrt.kbhit():
+                            maybe_dir = msvcrt.getwch().lower()
                             if maybe_dir in ("a", "d"):
                                 _apply_delta(selected_joint_idx, maybe_dir)
                             else:
@@ -398,19 +342,22 @@ def main():
 
                 elif key == "q":
                     print("[TELEOP] quitting teleoperation...")
-                    keyboard.close()
                     env.close()
                     return
 
-            # Keep all non-arm commands fixed and update only arm commands (action slice 3:10).
+            # Keep non-arm commands fixed and send arm deltas on action slice 3:10.
             actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
             actions[:, :3] = fixed_base_lin_vel
-            actions[:, 3:10] = arm_targets
+            if hasattr(env.unwrapped, "active_arm_joint_reference"):
+                arm_reference = env.unwrapped.active_arm_joint_reference[0, :7]
+            else:
+                arm_reference = torch.zeros_like(arm_targets)
+            arm_deltas = arm_targets - arm_reference
+            actions[:, 3:10] = arm_deltas.unsqueeze(0)
             actions[:, -2:] = fixed_base_pose
 
             env.step(actions)
 
-    keyboard.close()
     env.close()
 
 

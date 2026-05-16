@@ -18,7 +18,7 @@ Use the keyboard teleoperation script to command Spot arm joints (and optionally
 
 ```bash
 # If Isaac Lab is available in your current Python environment:
-python scripts/joint_teleoperation.py --task Joint-Teleoperation --num_envs 1
+python scripts/windows_joint_teleoperation.py --task Joint-Teleoperation --num_envs 1
 
 # If Isaac Lab is not in your active environment, use Isaac Lab's launcher instead:
 # <FULL_PATH_TO_isaaclab.bat> -p scripts/joint_teleoperation.py --task Template-Superq-Alore-v0 --num_envs 1
