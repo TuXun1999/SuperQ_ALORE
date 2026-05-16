@@ -116,7 +116,8 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         4. Predict the arm joint actions & leg joint actions
         """
         # Extract the arm actions from the input actions
-        arm_actions = actions[:, 3:10] # dim: 7
+        arm_actions_delta = actions[:, 3:10] # dim: 7
+        
         # Extract the "command" for the low-level controller
         base_velocity = actions[:, :3]
         # Extract the base pose command (pitch and height, roll is set to be zero)
@@ -125,8 +126,16 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         base_pose[:, 1] = 0.55 # force the height
         leg_actions = torch.zeros(actions.shape[0], 12).to(actions.device) # dim: 12
         
+        # The joint angles to command for the arm
+        arm_actions = torch.zeros_like(arm_actions_delta, device=arm_actions_delta.device) # dim: 7, which is the target joint position for the arm joints
+        
         
         # Grip the object in the beginning, and maintain the gripper pose after that
+        gripper_closing_mask = self._env.episode_length_buf > 1 
+        if gripper_closing_mask.any(): 
+            arm_actions[gripper_closing_mask, -1] = torch.clamp(
+                -0.9 + self._env.episode_length_buf[gripper_closing_mask]* self.gripper_vel, max= -0.15
+            )
         gripper_closing_mask = self._env.episode_length_buf > 1 
         if gripper_closing_mask.any(): 
             arm_actions[gripper_closing_mask, -1] = torch.clamp(
@@ -158,18 +167,17 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             # Also, force the robot to stand
             base_velocity[start_moving_mask] = torch.zeros(3, device=base_velocity.device) # zero base velocity
             
-
+            
 
         """
         Section II: For the robot that have completed the gripper closing
         Arm joint: use the ones generated from the high-level controller
         Leg joint: use the predicted actions from the low-level controller
         """
-        # if (~start_moving_mask).any():
-            #     arm_joint_current_pos = self._asset.data.joint_pos[:, self._arm_joint_ids]
-            #     arm_joint_current_pos = arm_joint_current_pos[~start_moving_mask]
-            #     arm_actions[~start_moving_mask] = arm_actions[~start_moving_mask]
-            
+        if (~start_moving_mask).any():
+                # For the episodes where the chair moving has started, directly command the arm joint to be the target joint positions generated from the high-level controller
+                arm_actions[~start_moving_mask, :-1] = arm_grasp_pose_by_default[:-1] + arm_actions_delta[~start_moving_mask, :-1]
+
         with torch.inference_mode():
             # The environmental policy observations
             policy_env_obs = self._env.observation_manager.compute_group(
@@ -241,8 +249,6 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         
         
         # Execute the action directly (according to ALORE)
-        # TODO: modify it into relative pose execution
-        # arm_current = self._asset.data.joint_pos[:, self._arm_joint_ids]
         self._arm_raw_actions[:] = arm_actions
         self._arm_processed_actions[:] = self._arm_raw_actions.clone()
 

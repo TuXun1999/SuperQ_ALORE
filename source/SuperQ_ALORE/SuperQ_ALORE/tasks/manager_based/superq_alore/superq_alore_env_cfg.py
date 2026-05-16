@@ -205,7 +205,7 @@ class ObservationsCfg:
         commands = ObsTerm(
             func=isaac_mdp.generated_commands,
             params={"command_name": "object_velocity"},
-        ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
+        ) # dim: 3 
         
         # End-effector in robot frame
         ee_pose_in_robot_frame = ObsTerm(
@@ -220,11 +220,11 @@ class ObservationsCfg:
             scale = 1.0,
         ) # dim: 7 (position + quat) for the target object
         
-        # Category code? (TODO: Clarify this... it's constant zero in ALORE)
-        category_encode = ObsTerm(
-            func = mdp.category_encode,
-            scale = 1.0,
-        ) # dim 3, one-hot encoding for object category, not used in ALORE so just return zeros
+        # Category code (NOTE: it's constantly zero in ALORE)
+        # category_encode = ObsTerm(
+        #     func = mdp.category_encode,
+        #     scale = 1.0,
+        # ) # dim 3
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -279,7 +279,7 @@ class ObservationsCfg:
         commands = ObsTerm(
             func=isaac_mdp.generated_commands,
             params={"command_name": "object_velocity"},
-        ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
+        ) # dim: 3
         
         # Link pose in robot frame
         link_pose_in_robot_frame = ObsTerm(
@@ -292,11 +292,12 @@ class ObservationsCfg:
                         "arm_link_wr0",
                         "arm_link_wr1",
                         "arm_link_fngr",
-                        "arm_link_jaw"]
+                        # arm_link_jaw
+                        ]
                     },
             scale = 1.0,
-        ) # dim: 8 *  7 (position + quat) for the arm links
-         
+        ) # dim: 7 *  7 (position + quat) for the arm links
+        
         # End-effector contact state
         ee_contact_state = ObsTerm(
             func = mdp.ee_contact_state,
@@ -318,13 +319,13 @@ class ObservationsCfg:
         
        # Object velocity in robot frame
         obj_lin_vel_in_robot_frame = ObsTerm(
-            func = mdp.obj_lin_vel_in_robot_frame,
+            func = mdp.obj_lin_vel_in_body_frame,
             scale = 2.0,
         ) # dim: 3
         
         # Object angular velocity in robot frame
         obj_ang_vel_in_robot_frame = ObsTerm(
-            func = mdp.obj_ang_vel_in_robot_frame,
+            func = mdp.obj_ang_vel_in_body_frame,
             scale = 0.25,
         ) # dim: 3
         
@@ -473,7 +474,6 @@ class RewardsCfg:
     """Reward terms for the MDP."""
 
     ## (1) Group 1: Object related rewards (primary task)
-    # TODO: UUNCOMMENT THEM!!
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_exp,
         weight=5.0,
@@ -535,7 +535,7 @@ class RewardsCfg:
         params={
             "robot_name": "robot",
             "end_effector_link_name": "arm_link_jaw",
-            "distance_threshold": 0.6,
+            "distance_threshold": 1.0,
         },
     ) # Penalize the distance between the end-effector and the robot
     
@@ -591,6 +591,8 @@ class TerminationsCfg:
 
     # (1) Time out
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    # (1) Time out
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
     
     # (2) Terminate if illegal contact happens
     # Reset the environment if too large action / velocities are detected
@@ -614,14 +616,36 @@ class TerminationsCfg:
             "threshold": 1.0,
         },
     )
+    # (2) Terminate if illegal contact happens
+    # Reset the environment if too large action / velocities are detected
+    physics_explosion = DoneTerm(
+        func=mdp.outlier_detected,
+        params={"threshold": 1000.0} 
+    )
+    base_contact = DoneTerm(
+        func=isaac_mdp.illegal_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["body"]),
+            "threshold": 2.0,
+        },
+    )
+    undesired_ground_contact = DoneTerm(
+        func=mdp.illegal_ground_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "robot_to_ground_contact_forces", body_names=[".*leg"]
+            ),
+            "threshold": 1.0,
+        },
+    )
     
-    # Terminate if any joint velocity exceeds 50.0 rad/s
+    # Terminate if any joint velocity exceeds 30.0 rad/s
     aggressive_joint_velocity = DoneTerm(
         func=mdp.joint_velocity_limits,
         params={"max_vel": 30.0},
     )
 
-    # (3) Terminate if the object falls off the gripper
+    #(3) Terminate if the object falls off the gripper
     object_slide_off = DoneTerm(
         func=mdp.object_slide_off,
         params={
@@ -672,9 +696,9 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         prev_obj_ang_vel = mdp.get_active_object_state_attr(self, "root_ang_vel_b").clone()[:, 2]
         self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
     
-    # After the physics step, update prev_action and prev_prev_action for the next step
-    def _post_physics_step(self, action):
-        # Update the observed actions as well
-        self.prev_prev_action = getattr(self, "prev_action", torch.zeros_like(action))
-        self.prev_action = action.clone()
+    # # After the physics step, update prev_action and prev_prev_action for the next step
+    # def _post_physics_step(self, action):
+    #     # Update the observed actions as well
+    #     self.prev_prev_action = getattr(self, "prev_action", torch.zeros_like(action))
+    #     self.prev_action = action.clone()
 

@@ -302,13 +302,13 @@ def ee_contact_state(
     
     return gripper_fail.float().unsqueeze(-1)  # shape (num_envs, 1)
 
-def obj_lin_vel_in_robot_frame(
+def obj_lin_vel_in_body_frame(
     env: ManagerBasedRLEnv,
     object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     return om.get_active_object_state_attr(env, "root_lin_vel_b")  # (N_envs, 3)
 
-def obj_ang_vel_in_robot_frame(
+def obj_ang_vel_in_body_frame(
     env: ManagerBasedRLEnv,
     object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
