@@ -128,6 +128,17 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         
         # The joint angles to command for the arm
         arm_actions = torch.zeros_like(arm_actions_delta, device=arm_actions_delta.device) # dim: 7, which is the target joint position for the arm joints
+
+        # assign per-env active arm joint reference
+        if hasattr(self._env, "active_arm_joint_reference"):
+            arm_reference = self._env.active_arm_joint_reference[:, : arm_actions.shape[1]]
+        else:
+            arm_joint_names = [joint_name for joint_name in GRASP_POSE_1_JOINT_POS.keys() if joint_name.startswith("arm")]
+            default_arm_ref = torch.tensor(
+                [GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in arm_joint_names],
+                device=self._env.unwrapped.device,
+            )
+            arm_reference = default_arm_ref.unsqueeze(0).expand(self.num_envs, -1)
         
         
         # Grip the object in the beginning, and maintain the gripper pose after that
@@ -150,18 +161,9 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         # (FAILED) Leg joint: use the PD controller to force the robot to stand still
         # """
         if start_moving_mask.any():
-            # Keep startup arm pose consistent with env-selected catalog reference.
+            # Keep startup arm pose consistent with per-env reference.
             # Only overwrite non-gripper joints so gripper closing logic stays active.
-            if hasattr(self._env, "active_arm_joint_reference"):
-                startup_arm_ref = self._env.active_arm_joint_reference[start_moving_mask, : arm_actions.shape[1]]
-                arm_actions[start_moving_mask, :-1] = startup_arm_ref[:, :-1]
-            else:
-                arm_joint_names = [joint_name for joint_name in GRASP_POSE_1_JOINT_POS.keys() if joint_name.startswith("arm")]
-                arm_grasp_pose_by_default = torch.tensor(
-                    [GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in arm_joint_names],
-                    device=self._env.unwrapped.device,
-                )
-                arm_actions[start_moving_mask, :-1] = arm_grasp_pose_by_default[:-1]
+            arm_actions[start_moving_mask, :-1] = arm_reference[start_moving_mask, :-1]
             # leg_actions[start_moving_mask] = leg_grasp_pose_by_default
             
             # Also, force the robot to stand
@@ -175,8 +177,11 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         Leg joint: use the predicted actions from the low-level controller
         """
         if (~start_moving_mask).any():
-                # For the episodes where the chair moving has started, directly command the arm joint to be the target joint positions generated from the high-level controller
-                arm_actions[~start_moving_mask, :-1] = arm_grasp_pose_by_default[:-1] + arm_actions_delta[~start_moving_mask, :-1]
+                # For moving episodes, offset the per-env reference with policy delta.
+                arm_actions[~start_moving_mask, :-1] = (
+                    arm_reference[~start_moving_mask, :-1] + arm_actions_delta[~start_moving_mask, :-1]
+                )
+
 
         with torch.inference_mode():
             # The environmental policy observations
