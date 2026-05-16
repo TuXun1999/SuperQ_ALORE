@@ -180,7 +180,8 @@ def main():
 
             # set the active arm joints to the reference joint positions for the active pose, 
             # so that the arm will hold the desired pose with zero actions
-            actions[:, 3:10] = env.unwrapped.active_arm_joint_reference[:, :7]
+            # also notice that we now use relative action, so we send zero delta.
+            actions[:, 3:10] = torch.zeros_like(actions[:, 3:10], device=actions.device) # command zero delta for the arm joints to hold the arm at the desired pose defined by the active arm joint reference
 
             # Only command the base to be at a suitable height & pitch 
             # (roll action not desired)
