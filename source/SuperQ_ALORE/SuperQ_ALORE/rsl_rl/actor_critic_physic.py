@@ -59,10 +59,6 @@ class PhysicActorCritic(ActorCritic):
         if not hasattr(self, 'device'):
             self.device = kwargs.get('device', 'cpu')
 
-        # Pre-process the actions
-        # (x, y, omega) for the base, 6 joint angles for the arm (the last three are forced to be 0)
-        self.action_scale = torch.tensor([0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0], device=self.device)  # scale the action output to a reasonable range for the environment, especially for the arm joints
-        self.action_clip = torch.tensor([0.6, 0.0, 0.6, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0], device=self.device)  # clip the action output to ensure safety (especially for the base)
         
         self.obs_groups = obs_groups
         num_actor_obs = 0
@@ -146,9 +142,9 @@ class PhysicActorCritic(ActorCritic):
 
         ## interactive GNN processing
         # TODO: figure out why nan in GNN construction
-        # node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
-        # z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
-        z = torch.zeros(B, 128, device=obs_augmented.device)  # (B, 128) -- ablation without GNN features, to test the effect of velocity prediction alone
+        node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
+        z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
+        # z = torch.zeros(B, 128, device=obs_augmented.device)  # (B, 128) -- ablation without GNN features, to test the effect of velocity prediction alone
         actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)  # (B, 634)
         
         
@@ -201,14 +197,9 @@ class PhysicActorCritic(ActorCritic):
             print(f"Error during action sampling: {e}")
             print(f"Mean: {self.distribution.mean[0]}")
             print(f"Std: {self.distribution.stddev[0]}")
-            
             raise e
-        
-        # Scale & Clip
-        actions = actions_raw * self.action_scale.to(actions_raw.device)
-        actions = torch.clamp(actions, -self.action_clip.to(actions_raw.device), self.action_clip.to(actions_raw.device))
 
-        return actions
+        return actions_raw
 
 
     def act_inference(self, obs, **kwargs):
@@ -267,10 +258,10 @@ class PhysicActorCritic(ActorCritic):
 
         # interactive GNN processing
         # TODO: figure out why nan in GNN construction
-        # node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
-        # z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
+        node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
+        z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
 
-        z = torch.zeros(B, 128, device=obs_augmented.device)  # (B, 128) -- ablation without GNN features, to test the effect of velocity prediction alone
+        # z = torch.zeros(B, 128, device=obs_augmented.device)  # (B, 128) -- ablation without GNN features, to test the effect of velocity prediction alone
         actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)  # (B, 634)
         
 
@@ -282,15 +273,8 @@ class PhysicActorCritic(ActorCritic):
         # Pad three zeros for the last three dimensions of the action
         actions_mean = torch.cat([actions_mean, torch.zeros(actions_mean.shape[0], 3, device=actions_mean.device)], dim=-1)
 
-        # Scale & Clip
-        actions = actions_mean * self.action_scale.to(actions_mean.device)
-        actions = torch.clamp(actions, -self.action_clip.to(actions_mean.device), self.action_clip.to(actions_mean.device))
-        """
-        actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
-        (Forced to match 12D action space of the pretrained locomotion policy)
-        """
         
-        return actions
+        return actions_mean
     
 
     """(DEPRECATED) Saving to csv may not be demanded yet..."""
