@@ -95,7 +95,6 @@ from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
-from SuperQ_ALORE.rsl_rl.on_policy_runner_superqalore import OnPolicyRunnerSuperQALORE
 # from SuperQ_ALORE.rsl_rl.on_policy_runner_physics import PhysicsOnPolicyRunner
 # import logger
 logger = logging.getLogger(__name__)
@@ -189,9 +188,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
     # create runner from rsl-rl
-    # TODO: modify it into our own custom runner
     if agent_cfg.class_name == "OnPolicyRunner": # This is the default choice for PPO agent
-        runner = OnPolicyRunnerSuperQALORE(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
+        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     elif agent_cfg.class_name == "DistillationRunner":
         runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     else:
@@ -203,6 +201,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
         runner.load(resume_path)
+
+    # Wrap the runner's act method to apply action clipping
+    # This ensures stock RSL-RL PPO actions are clipped to safe bounds from PhysicActorCritic
+    action_clip = torch.tensor(
+        [0.6, 0.0, 0.6, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0],
+        device=agent_cfg.device
+    )
+    original_act = runner.alg.act
+    
+    def clipped_act(obs, **kwargs):
+        """Wrapper that clips actor output to safe bounds."""
+        actions = original_act(obs, **kwargs)
+        actions = torch.clamp(actions, -action_clip.to(actions.device), action_clip.to(actions.device))
+        return actions
+    
+    runner.alg.act = clipped_act
+    print(f"[INFO] Action clipping enabled with bounds: {action_clip.cpu().numpy()}")
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
