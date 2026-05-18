@@ -112,7 +112,8 @@ def yaw_alignment_reward(
     # Find the relative yaw different between the object & the robot
     yaw_diff = (
         (_euler_from_quat(asset.data.root_quat_w)[2] -         # asset.data.root_quat_w
-        _euler_from_quat(robot.data.root_quat_w)[2] + torch.pi/2)
+         # in our setting, the offset should be pi / 2
+        _euler_from_quat(robot.data.root_quat_w)[2] + torch.pi / 2.0)
         % (2 * torch.pi) - torch.pi
     )
     yaw_alignment_reward = -torch.abs(yaw_diff) / torch.pi

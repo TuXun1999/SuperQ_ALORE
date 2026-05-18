@@ -16,10 +16,10 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 500
     save_interval = 100
-    experiment_name = "SuperQ_ALORE_w_GNN"
+    experiment_name = "SuperQ_ALORE"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
-        class_name = "PhysicActorCritic",
+        class_name = "ActorCritic",
         init_noise_std=1.0,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
@@ -27,7 +27,7 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(
-        class_name = "PhysicPPO",
+        class_name = "PPO",
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,

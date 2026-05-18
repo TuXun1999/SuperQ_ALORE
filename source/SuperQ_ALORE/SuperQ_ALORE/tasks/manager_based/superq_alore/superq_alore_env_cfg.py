@@ -492,6 +492,14 @@ class RewardsCfg:
     #         "robot_name": "robot",
     #     },
     # ) # Align the yaw of the object with the desired direction (if applicable)
+    # yaw_alignment = RewTerm(
+    #     func=mdp.yaw_alignment_reward, 
+    #     weight=5.0,
+    #     params={
+    #         "asset_name": "target_object",
+    #         "robot_name": "robot",
+    #     },
+    # ) # Align the yaw of the object with the desired direction (if applicable)
     
     lin_vel_z_l2 = RewTerm(
         func=mdp.lin_vel_z_l2,
@@ -505,6 +513,11 @@ class RewardsCfg:
         params = {"asset_name": "target_object"}
     ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
     
+    # flat_orientation_l2 = RewTerm(
+    #     func=mdp.flat_orientation_l2,
+    #     weight=10.0,
+    #     params = {"asset_name": "target_object"}
+    # ) # Encourage the object to maintain a flat orientation (if applicable)
     # flat_orientation_l2 = RewTerm(
     #     func=mdp.flat_orientation_l2,
     #     weight=10.0,
