@@ -14,7 +14,7 @@ from isaaclab_rl.rsl_rl import (
 @configclass
 class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 6000
+    max_iterations = 500
     save_interval = 100
     experiment_name = "SuperQ_ALORE_w_GNN"
     empirical_normalization = False
@@ -23,6 +23,7 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         init_noise_std=1.0,
         actor_hidden_dims=[512, 256, 128],
         critic_hidden_dims=[512, 256, 128],
+        noise_std_type="scalar",
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(
@@ -38,5 +39,6 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         gamma=0.99,
         lam=0.95,
         desired_kl=0.01,
-        max_grad_norm=1.0,
+        max_grad_norm=0.5,
+        normalize_advantage_per_mini_batch=True,
     )

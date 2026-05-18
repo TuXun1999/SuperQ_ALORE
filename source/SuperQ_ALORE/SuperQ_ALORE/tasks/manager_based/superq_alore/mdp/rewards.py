@@ -112,7 +112,7 @@ def yaw_alignment_reward(
     # Find the relative yaw different between the object & the robot
     yaw_diff = (
         (_euler_from_quat(asset.data.root_quat_w)[2] -         # asset.data.root_quat_w
-        _euler_from_quat(robot.data.root_quat_w)[2] + torch.pi)
+        _euler_from_quat(robot.data.root_quat_w)[2] + torch.pi/2)
         % (2 * torch.pi) - torch.pi
     )
     yaw_alignment_reward = -torch.abs(yaw_diff) / torch.pi
@@ -210,7 +210,7 @@ def distance_penalty(
     distance_ee2base_x = ee_pos_in_robot_frame[:, 0]
 
     # Calculate the penalty
-    distance_penalty = 1.0 / (1.0 + torch.exp(200 * (distance_ee2base_x - distance_threshold)))
+    distance_penalty = 1.0 / (1.0 + torch.exp(200 * torch.abs(distance_ee2base_x - distance_threshold)))
     return distance_penalty
 
 """Group 2: Robot state related rewards"""

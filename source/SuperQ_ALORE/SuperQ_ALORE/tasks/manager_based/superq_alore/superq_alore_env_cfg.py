@@ -115,8 +115,8 @@ class CommandsCfg:
         ranges=isaac_mdp.UniformVelocityCommandCfg.Ranges(
             lin_vel_x=(-0.0, 0.0),
             lin_vel_y=(-0.0, 0.5),
-            ang_vel_z=(-0.5, 0.5),
-            heading=(-math.pi, math.pi), # Not used if heading_command = False
+            ang_vel_z=(-0.0, 0.0),
+            heading=(-math.pi/6, math.pi/6), # Not used if heading_command = False
         ),
     )
 
@@ -470,13 +470,13 @@ class RewardsCfg:
     ## (1) Group 1: Object related rewards (primary task)
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_exp,
-        weight=5.0,
+        weight=10.0,
         params={"command_name": "object_velocity"},
     ) # Track the xy linear velocity of th object according to the command
     
     track_ang_vel_yaw_exp = RewTerm(
         func=mdp.track_ang_vel_yaw_exp,
-        weight=5.0,
+        weight=10.0,
         params={"command_name": "object_velocity"},
     ) # Track the yaw angular velocity of the object according to the command
     
@@ -484,14 +484,14 @@ class RewardsCfg:
     
     
     ## Smooth movement of the object
-    yaw_alignment = RewTerm(
-        func=mdp.yaw_alignment_reward, 
-        weight=5.0,
-        params={
-            "asset_name": "target_object",
-            "robot_name": "robot",
-        },
-    ) # Align the yaw of the object with the desired direction (if applicable)
+    # yaw_alignment = RewTerm(
+    #     func=mdp.yaw_alignment_reward, 
+    #     weight=5.0,
+    #     params={
+    #         "asset_name": "target_object",
+    #         "robot_name": "robot",
+    #     },
+    # ) # Align the yaw of the object with the desired direction (if applicable)
     
     lin_vel_z_l2 = RewTerm(
         func=mdp.lin_vel_z_l2,
@@ -501,15 +501,15 @@ class RewardsCfg:
     
     ang_vel_xy_l2 = RewTerm(
         func=mdp.ang_vel_xy_l2,
-        weight=0.05,
+        weight=2.0,
         params = {"asset_name": "target_object"}
     ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
     
-    flat_orientation_l2 = RewTerm(
-        func=mdp.flat_orientation_l2,
-        weight=10.0,
-        params = {"asset_name": "target_object"}
-    ) # Encourage the object to maintain a flat orientation (if applicable)
+    # flat_orientation_l2 = RewTerm(
+    #     func=mdp.flat_orientation_l2,
+    #     weight=10.0,
+    #     params = {"asset_name": "target_object"}
+    # ) # Encourage the object to maintain a flat orientation (if applicable)
 
     lin_vel_change_penalty = RewTerm(
         func=mdp.lin_vel_change_penalty,
@@ -524,15 +524,15 @@ class RewardsCfg:
     ) # Penalize the change in angular velocity of the object to encourage smooth motion
     
     # TODO: the distance may be tricky
-    distance_penalty = RewTerm(
-        func=mdp.distance_penalty,
-        weight=10.0,
-        params={
-            "robot_name": "robot",
-            "end_effector_link_name": "arm_link_jaw",
-            "distance_threshold": 1.0,
-        },
-    ) # Penalize the distance between the end-effector and the robot
+    # distance_penalty = RewTerm(
+    #     func=mdp.distance_penalty,
+    #     weight=5.0,
+    #     params={
+    #         "robot_name": "robot",
+    #         "end_effector_link_name": "arm_link_jaw",
+    #         "distance_threshold": 0.8,
+    #     },
+    # ) # Penalize the distance between the end-effector and the robot
     
     ## Group 2: Robot related rewards (auxiliary task, to encourage better robot behavior)
     action_rate_l2 = RewTerm(
@@ -558,7 +558,7 @@ class RewardsCfg:
     
     joint_positions_wrt_reference = RewTerm(
         func=mdp.joint_positions_wrt_reference,
-        weight=5.0,
+        weight=4.0,
         params={
             "arm_joint_names": [
                 "arm_sh0",
@@ -575,7 +575,7 @@ class RewardsCfg:
     
     undesired_contact_penalty = RewTerm(
         func=mdp.undesired_contact_penalty,
-        weight=5.0,
+        weight=7.0,
         params={
             "undesired_contact_body_names": SPOT_BODY_LINKS,  # Replace with actual body names
             "contact_sensor_name": "contact_forces",

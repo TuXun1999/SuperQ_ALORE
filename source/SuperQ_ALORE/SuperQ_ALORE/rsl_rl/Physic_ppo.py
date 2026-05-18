@@ -25,7 +25,7 @@ class PhysicPPO(PPO):
         value_loss_coef=1.0,
         entropy_coef=0.0,
         learning_rate=1e-3,
-        max_grad_norm=1.0,
+        max_grad_norm=0.5,
         use_clipped_value_loss=True,
         schedule="fixed",
         desired_kl=0.01,
@@ -118,7 +118,7 @@ class PhysicPPO(PPO):
             # we start with 1 and increase it if we use symmetry augmentation
             num_aug = 1
             # original batch size
-            original_batch_size = obs_batch.shape[0]
+            original_batch_size = obs_batch.batch_size[0]
 
             # check if we should normalize advantages per mini batch
             if self.normalize_advantage_per_mini_batch:
@@ -195,6 +195,7 @@ class PhysicPPO(PPO):
             estimation_loss = self.policy.physic_estimator.update(obs_batch["policy"], obs_batch["critic"])
 
             # Surrogate loss
+            # NOTE: clamp the ratio
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
             surrogate = -torch.squeeze(advantages_batch) * ratio
             surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
@@ -276,6 +277,13 @@ class PhysicPPO(PPO):
             # -- For PPO
             nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.optimizer.step()
+            
+            if any(torch.isnan(param).any() for param in self.policy.base_head.parameters()):
+                print("NaN detected in base_head parameters!")
+                print(f"NaN in surrogate_loss? {torch.isnan(surrogate_loss).any()}")
+                print(f"NaN in value_loss? {torch.isnan(value_loss).any()}")
+                print(f"NaN in entropy? {torch.isnan(entropy_batch).any()}")
+                exit(0)
             # -- For RND
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
