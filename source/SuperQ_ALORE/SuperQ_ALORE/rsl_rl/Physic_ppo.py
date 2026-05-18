@@ -195,7 +195,9 @@ class PhysicPPO(PPO):
             estimation_loss = self.policy.physic_estimator.update(obs_batch["policy"], obs_batch["critic"])
 
             # Surrogate loss
-            ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
+            # clamp the ratio, after which it can run, but we should double check if this is correct to do so. The reason for the clamp is that in the early stage of training, the policy can change drastically, which can lead to very large ratio and thus very large surrogate loss, which can destabilize the training. By clamping the ratio, we can avoid this issue and stabilize the training. However, we should also check if this is correct to do so.
+            ratio = torch.exp((actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch)).clamp(-10, 10))
+
             surrogate = -torch.squeeze(advantages_batch) * ratio
             surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
                 ratio, 1.0 - self.clip_param, 1.0 + self.clip_param
