@@ -142,9 +142,9 @@ class PhysicActorCritic(ActorCritic):
 
         ## interactive GNN processing
         # TODO: figure out why nan in GNN construction
-        node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
-        z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
-        # z = torch.zeros(B, 128, device=obs_augmented.device)  # (B, 128) -- ablation without GNN features, to test the effect of velocity prediction alone
+        # node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
+        # z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
+        z = torch.zeros(B, 128, device=obs_augmented.device)  # (B, 128) -- ablation without GNN features, to test the effect of velocity prediction alone
         actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)  # (B, 634)
         
         
@@ -258,10 +258,10 @@ class PhysicActorCritic(ActorCritic):
 
         # interactive GNN processing
         # TODO: figure out why nan in GNN construction
-        node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
-        z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
+        # node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
+        # z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
 
-        # z = torch.zeros(B, 128, device=obs_augmented.device)  # (B, 128) -- ablation without GNN features, to test the effect of velocity prediction alone
+        z = torch.zeros(B, 128, device=obs_augmented.device)  # (B, 128) -- ablation without GNN features, to test the effect of velocity prediction alone
         actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)  # (B, 634)
         
 

@@ -114,8 +114,8 @@ class CommandsCfg:
         # might need to consider different command ranges
         ranges=isaac_mdp.UniformVelocityCommandCfg.Ranges(
             lin_vel_x=(-0.0, 0.0),
-            lin_vel_y=(-0.0, 0.5),
-            ang_vel_z=(-0.0, 0.0),
+            lin_vel_y=(-0.5, 0.5),
+            ang_vel_z=(-0.5, 0.5),
             heading=(-math.pi/6, math.pi/6), # Not used if heading_command = False
         ),
     )
