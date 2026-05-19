@@ -470,7 +470,7 @@ class RewardsCfg:
     ## (1) Group 1: Object related rewards (primary task)
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_exp,
-        weight=10.0,
+        weight=5.0,
         params={"command_name": "object_velocity"},
     ) # Track the xy linear velocity of th object according to the command
     
