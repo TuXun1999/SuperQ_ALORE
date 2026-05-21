@@ -8,7 +8,7 @@ from dataclasses import MISSING
 
 import torch
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -30,7 +30,6 @@ from isaaclab.actuators import ActuatorNetMLPCfg, DCMotorCfg, ImplicitActuatorCf
 ##
 from SuperQ_ALORE.assets.spot.spot import SPOT_ARM_CFG  # isort: skip
 from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES, FEET_NAMES, SPOT_BODY_LINKS
-from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
 import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 ##
 # Scene definition
@@ -40,6 +39,7 @@ import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 @configclass
 class SuperqAloreSceneCfg(InteractiveSceneCfg):
     """Configuration for a cart-pole scene."""
+
 
     # ground plane
     # ground = AssetBaseCfg(
@@ -69,8 +69,22 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
     # robots
     robot: ArticulationCfg = MISSING
     
-    # target objects to manipulate
-    target_object = scene.CHAIR_RIGID_CFG
+    # objects: we spawn all objects in the catalog, but only the active object will be actually placed at its active pose.
+    # create a local variable to store all objects defined in the catalog, 
+    _target_object_cfgs = {
+        # dictionary comprehension to create multiple target objects based on the catalog configs
+        f"target_object_{idx}": cfg for idx, cfg in enumerate(scene.CATALOG_OBJECT_CFGS)
+    }
+
+    # stores type hint
+    __annotations__.update({name: RigidObjectCfg for name in _target_object_cfgs})
+
+    # dynamically create class variable to the local symbol table 
+    # so that the keys from the dictionary become actual local variable.
+    locals().update(_target_object_cfgs)
+
+    # remove the local variable from the namespace after using it.
+    del _target_object_cfgs
     # contact sensors
     # TODO: are they really... helpful?
     contact_forces = ContactSensorCfg(
@@ -103,7 +117,8 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
     object_velocity = isaac_mdp.UniformVelocityCommandCfg(
-        asset_name="target_object",
+        # target_object_0 is used as the representative for the velocity-command frame.
+        asset_name="target_object_0",
         resampling_time_range=(100.0, 100.0), # No need to change the command
         rel_standing_envs=0.0,
         rel_heading_envs=0.0,
@@ -317,7 +332,6 @@ class ObservationsCfg:
         # Object physical properties (Static fric, mass, dynamic fric)
         obj_physical_properties = ObsTerm(
             func = mdp.obj_physical_properties,
-            params={"object_name": "target_object"},
             scale = 1.0,
         ) # dim: 3
         
@@ -376,7 +390,6 @@ class ObservationsCfg:
             func=mdp.object_velocity,
             history_length = 2,
             flatten_history_dim = False,
-            params={"asset_name": "target_object"},
         ) # dim: 3
         applied_actions = ObsTerm(
             func = mdp.last_high_level_action, 
@@ -426,23 +439,16 @@ class EventCfg:
             },
         },
     )
-    reset_object = EventTerm(
-        func=mdp.reset_target_object_position,
-        mode="reset",
-        params = {
-            "asset_name": "target_object",
-            "offset": (0.05, 0.0)
-        }
-    )
-    
-    # TODO: figure out how to reset the initial grasp poses at different locations
-    reset_robot_joints = EventTerm(
-        func=mdp.reset_joints_around_grasp_pose,
+
+    # use an atomic function to reset the object and robot together, 
+    # so that we can ensure the consistency between the object pose 
+    # and the pre-grasping robot joint configuration defined in the catalog pose
+    reset_object_and_robot = EventTerm(
+        func=mdp.reset_object_and_robot_from_catalog_pose,
         mode="reset",
         params={
             "position_range": (-0.0, 0.0),
             "velocity_range": (-0.0, 0.0),
-            "joint_position_ref": GRASP_POSE_1_JOINT_POS,
         },
     )
     # reset_robot_joints = EventTerm(
@@ -496,13 +502,13 @@ class RewardsCfg:
     lin_vel_z_l2 = RewTerm(
         func=mdp.lin_vel_z_l2,
         weight=2.0,
-        params = {"asset_name": "target_object"}
+        params = {},
     ) # Penalize the vertical velocity of the object to encourage it to stay on the ground
     
     ang_vel_xy_l2 = RewTerm(
         func=mdp.ang_vel_xy_l2,
         weight=0.05,
-        params = {"asset_name": "target_object"}
+        params = {},
     ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
     
     # flat_orientation_l2 = RewTerm(
@@ -514,13 +520,13 @@ class RewardsCfg:
     lin_vel_change_penalty = RewTerm(
         func=mdp.lin_vel_change_penalty,
         weight=2.0,
-        params = {"asset_name": "target_object"}
+        params = {},
     ) # Penalize the change in linear velocity of the object to encourage smooth motion
     
     ang_vel_change_penalty = RewTerm(
         func=mdp.ang_vel_change_penalty,
         weight=2.0,
-        params = {"asset_name": "target_object"}
+        params = {},
     ) # Penalize the change in angular velocity of the object to encourage smooth motion
     
     # TODO: the distance may be tricky
@@ -568,10 +574,8 @@ class RewardsCfg:
                 "arm_wr0",
                 "arm_wr1",], 
             "robot_name": "robot",
-            # TODO: Adapt it to multiple grasp poses
-            "reference_joint_positions": GRASP_POSE_1_JOINT_POS
         },
-    ) # Penalize the deviation of joint positions from the reference initial grasp pose to encourage a more natural pose
+    ) # Penalize the deviation of joint positions from the per-env active grasp pose reference
     
     undesired_contact_penalty = RewTerm(
         func=mdp.undesired_contact_penalty,
@@ -588,7 +592,31 @@ class TerminationsCfg:
 
     # (1) Time out
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    # (1) Time out
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
     
+    # (2) Terminate if illegal contact happens
+    # Reset the environment if too large action / velocities are detected
+    physics_explosion = DoneTerm(
+        func=mdp.outlier_detected,
+        params={"threshold": 1000.0} 
+    )
+    base_contact = DoneTerm(
+        func=isaac_mdp.illegal_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["body"]),
+            "threshold": 2.0,
+        },
+    )
+    undesired_ground_contact = DoneTerm(
+        func=mdp.illegal_ground_contact,
+        params={
+            "sensor_cfg": SceneEntityCfg(
+                "robot_to_ground_contact_forces", body_names=[".*leg"]
+            ),
+            "threshold": 1.0,
+        },
+    )
     # (2) Terminate if illegal contact happens
     # Reset the environment if too large action / velocities are detected
     physics_explosion = DoneTerm(
@@ -663,11 +691,11 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         
         
     # Create a new buffer to store the previous object velocities & actions
-    # def _pre_physics_step(self, action):
-    #     # Cache the current velocity before it gets updated
-    #     prev_obj_lin_vel = self.scene["target_object"].data.root_lin_vel_b.clone()[:, :2]
-    #     prev_obj_ang_vel = self.scene["target_object"].data.root_ang_vel_b.clone()[:, 2]
-    #     self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
+    def _pre_physics_step(self, action):
+        # Cache the current velocity before it gets updated
+        prev_obj_lin_vel = mdp.get_active_object_state_attr(self, "root_lin_vel_b").clone()[:, :2]
+        prev_obj_ang_vel = mdp.get_active_object_state_attr(self, "root_ang_vel_b").clone()[:, 2]
+        self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
     
     # # After the physics step, update prev_action and prev_prev_action for the next step
     # def _post_physics_step(self, action):

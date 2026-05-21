@@ -9,6 +9,9 @@ from isaaclab.utils.math import quat_apply, quat_mul
 from isaaclab.envs import ManagerBasedRLEnv
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as isaac_mdp
 
+from SuperQ_ALORE.assets.object_catalog import OBJECT_CATALOG
+from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management as om
+
 def known_external_force_torque(
     env: ManagerBasedRLEnv,
     event_name: str,
@@ -131,25 +134,22 @@ def ee_pose_in_robot_frame(
 def obj_pose_in_robot_frame(
     env: ManagerBasedRLEnv,
     robot_name: str = "robot",
-    object_name: str = "target_object",
+    object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     robot = env.scene[robot_name]
-    obj = env.scene[object_name]
 
-    # Obtain the object pose in world frame
-    obj_pos_w = obj.data.root_pos_w  # shape (N_envs, 3)
-    obj_quat_w = obj.data.root_quat_w  # shape (N_envs, 4)
+    # Use active-object helper instead of fixed scene key
+    obj_pos_w = om.get_active_object_state_attr(env, "root_pos_w")   # (num_envs, 3)
+    obj_quat_w = om.get_active_object_state_attr(env, "root_quat_w") # (num_envs, 4)
 
-    # Obtain the robot base pos & quat in world frame
-    robot_base_pos = robot.data.root_pos_w  # (num_envs, 3)
-    robot_quat_inv = quat_inverse_safe(robot.data.root_quat_w)  # (num_envs, 4)
+    robot_base_pos = robot.data.root_pos_w
+    robot_quat_inv = quat_inverse_safe(robot.data.root_quat_w)
 
-    # Calculate the relative displacement
-    obj_pos_relative = obj_pos_w - robot_base_pos  # (num_envs, 3)
-    obj_pos_in_robot_frame = quat_apply(robot_quat_inv, obj_pos_relative)  # (num_envs, 3)
-    obj_quat_in_robot_frame = quat_mul(robot_quat_inv, obj_quat_w)  # (num_envs, 4)
+    obj_pos_relative = obj_pos_w - robot_base_pos
+    obj_pos_in_robot_frame = quat_apply(robot_quat_inv, obj_pos_relative)
+    obj_quat_in_robot_frame = quat_mul(robot_quat_inv, obj_quat_w)
 
-    return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)  # (num_envs, 7)
+    return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)
 
 def link_pose_in_robot_frame(
     env: ManagerBasedRLEnv,
@@ -186,6 +186,43 @@ def category_encode(
 ) -> torch.Tensor:
     # ALORE has a constant zero category code, so we just return zeros here
     return torch.zeros((env.num_envs, 3), device=env.device)
+
+# uncomment if we want to add a one-hot encoding of object category to the observation in the future, 
+# def category_encode(
+#     env: ManagerBasedRLEnv,
+# ) -> torch.Tensor:
+#     """Return per-env one-hot category encoding for active objects.
+    
+#     Each env has a fixed object (set by MultiAssetSpawnerCfg at spawn).
+#     The policy needs to know which object is in each env to adapt its strategy.
+#     For example, chair_1 and chair_2 have different grasp poses and sizes.
+    
+#     Returns one-hot encoding where each dimension corresponds to an object type:
+#     - env with object 0: [1, 0]
+#     - env with object 1: [0, 1]
+    
+#     Shape: [num_envs, len(OBJECT_CATALOG)]
+#     """
+#     from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management
+    
+#     # Ensure catalog state is initialized
+#     object_management.ensure_catalog_state(env)
+    
+#     # Get active object indices: [num_envs]
+#     active_indices = env.active_object_indices
+    
+#     # Create one-hot encoding: [num_envs, len(OBJECT_CATALOG)]
+#     num_objects = len(OBJECT_CATALOG)
+#     category_encoding = torch.zeros(
+#         (env.num_envs, num_objects),
+#         dtype=torch.float32,
+#         device=env.device
+#     )
+    
+#     # Set the corresponding dimension to 1 for each env's object
+#     category_encoding.scatter_(1, active_indices.unsqueeze(1), 1.0)
+    
+#     return category_encoding
 
 def joint_pos_rel(
     env: ManagerBasedRLEnv,
@@ -225,12 +262,11 @@ def default_joint_pos(
 
 def object_velocity(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object",
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
-    obj = env.scene[asset_name]
-    obj_lin_vel = obj.data.root_lin_vel_b[:, :2]  # shape (N_envs, 2)
-    obj_ang_vel = obj.data.root_ang_vel_b[:, 2:]  # shape (N_envs, 1)
-    return torch.cat([obj_lin_vel, obj_ang_vel], dim=-1).to(env.device)  # shape (N_envs, 3)
+    obj_lin_vel = om.get_active_object_state_attr(env, "root_lin_vel_b")[:, :2]  # (N_envs, 2)
+    obj_ang_vel = om.get_active_object_state_attr(env, "root_ang_vel_b")[:, 2:]  # (N_envs, 1)
+    return torch.cat([obj_lin_vel, obj_ang_vel], dim=-1).to(env.device)  # (N_envs, 3)
 
 def last_high_level_action(
     env: ManagerBasedRLEnv,
@@ -268,25 +304,22 @@ def ee_contact_state(
 
 def obj_lin_vel_in_body_frame(
     env: ManagerBasedRLEnv,
-    object_name: str = "target_object",
+    object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
-    obj_lin_vel_b = env.scene[object_name].data.root_lin_vel_b  # shape (N_envs, 3)
-    return obj_lin_vel_b
+    return om.get_active_object_state_attr(env, "root_lin_vel_b")  # (N_envs, 3)
 
 def obj_ang_vel_in_body_frame(
     env: ManagerBasedRLEnv,
-    object_name: str = "target_object",
+    object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
-    obj_ang_vel_b = env.scene[object_name].data.root_ang_vel_b  # shape (N_envs, 3)
-    return obj_ang_vel_b
+    return om.get_active_object_state_attr(env, "root_ang_vel_b")  # (N_envs, 3)
 
 def obj_physical_properties(
     env: ManagerBasedRLEnv,
-    object_name: str = "target_object",
+    object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
-    obj = env.scene[object_name]
-    # Assuming the physical properties we want are mass, friction, and restitution
-    mass = torch.sum(obj.root_physx_view.get_masses(), dim=1).unsqueeze(-1)  # shape (num_envs, 1)  
-    static_friction = obj.root_physx_view.get_material_properties()[:, 0, 0].unsqueeze(-1)  # shape (num_envs, 1)
-    dynamic_friction = obj.root_physx_view.get_material_properties()[:, 0, 1].unsqueeze(-1)  # shape (num_envs, 1)
-    return torch.cat([static_friction, mass, dynamic_friction], dim=-1).to(env.device)  # shape (num_envs, 3)
+    mass = om.get_active_object_physx_masses(env)              # (num_envs, 1)
+    mat = om.get_active_object_physx_material_properties(env)  # (num_envs, 3)
+    static_friction = mat[:, 0].unsqueeze(-1)                  # (num_envs, 1)
+    dynamic_friction = mat[:, 1].unsqueeze(-1)                 # (num_envs, 1)
+    return torch.cat([static_friction, mass, dynamic_friction], dim=-1).to(env.device)  # (num_envs, 3)

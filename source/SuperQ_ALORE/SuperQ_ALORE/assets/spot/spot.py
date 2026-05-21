@@ -34,8 +34,6 @@ from SuperQ_ALORE.assets.spot.constants import (
 # TODO: Determine SPOT's configuration from SuperQ-GRASP
 def spot_initial_pos():
     return (-1.0, 0.0, 0.515)
-
-# (DEPRECATED)
 def spot_initial_joint_pos(spot_initial_joint_pos_ref):
     spot_initial_joint_pos = {}
     # Arm joints 
