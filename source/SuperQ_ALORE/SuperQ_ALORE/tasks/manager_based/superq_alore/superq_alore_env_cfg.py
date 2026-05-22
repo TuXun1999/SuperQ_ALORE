@@ -303,13 +303,13 @@ class ObservationsCfg:
         ) # dim: 3
         
        # Object velocity in robot frame
-        obj_lin_vel_in_robot_frame = ObsTerm(
+        obj_lin_vel_in_body_frame = ObsTerm(
             func = mdp.obj_lin_vel_in_body_frame,
             scale = 2.0,
         ) # dim: 3
         
         # Object angular velocity in robot frame
-        obj_ang_vel_in_robot_frame = ObsTerm(
+        obj_ang_vel_in_body_frame = ObsTerm(
             func = mdp.obj_ang_vel_in_body_frame,
             scale = 0.25,
         ) # dim: 3
