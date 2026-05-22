@@ -8,6 +8,7 @@ from .curriculums import *  # noqa: F403
 from .rewards import *  # noqa: F403
 from .event import *  # noqa: F403
 from .commands.arm_command import *  # noqa: F403
+from .commands.object_velocity_command import *  # noqa: F403
 from .commands.commands_cfg import *  # noqa: F403
 from .actions import *  # noqa: F403
 from .terminations import *  # noqa: F403

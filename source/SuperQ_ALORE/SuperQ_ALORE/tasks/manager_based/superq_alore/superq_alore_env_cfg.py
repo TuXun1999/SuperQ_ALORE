@@ -116,20 +116,20 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP."""
-    object_velocity = isaac_mdp.UniformVelocityCommandCfg(
-        # target_object_0 is used as the representative for the velocity-command frame.
+    object_velocity = mdp.ObjectUniformVelocityRobotFrameCommandCfg(
+        # Keep target object as the command reference asset.
         asset_name="target_object_0",
+        reference_asset_name="robot",
         resampling_time_range=(100.0, 100.0), # No need to change the command
         rel_standing_envs=0.0,
         rel_heading_envs=0.0,
         heading_command=False,
         heading_control_stiffness=1.0,
         debug_vis=True,
-        # TODO: for objects of different frame conventions, we 
-        # might need to consider different command ranges
-        ranges=isaac_mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.0, 0.0),
-            lin_vel_y=(-0.0, 0.5),
+        # Linear direction is enforced in command term to robot x-axis.
+        ranges=mdp.ObjectUniformVelocityRobotFrameCommandCfg.Ranges(
+            lin_vel_x=(-0.5, 0.5),
+            lin_vel_y=(0.0, 0.0),
             ang_vel_z=(-0.5, 0.5),
             heading=(-math.pi, math.pi), # Not used if heading_command = False
         ),
