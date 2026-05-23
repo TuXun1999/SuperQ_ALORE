@@ -12,6 +12,78 @@ import isaaclab_tasks.manager_based.locomotion.velocity.mdp as isaac_mdp
 from SuperQ_ALORE.assets.object_catalog import OBJECT_CATALOG
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management as om
 
+
+def _resolve_goal_pose_w(
+    env: ManagerBasedRLEnv,
+    goal_term_name: str = "goal_region",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Resolve goal position/quaternion in world frame with term-name fallback."""
+    term_candidates = []
+    for name in (goal_term_name, "goal_region", "goal_pose"):
+        if name not in term_candidates:
+            term_candidates.append(name)
+
+    last_err = None
+    for name in term_candidates:
+        try:
+            term = env.command_manager.get_term(name)
+            goal_pos_w = term.goal_w if hasattr(term, "goal_w") else term.command[:, :3]
+            if hasattr(term, "goal_quat_w"):
+                goal_quat_w = term.goal_quat_w
+            else:
+                goal_quat_w = torch.zeros((goal_pos_w.shape[0], 4), device=goal_pos_w.device, dtype=goal_pos_w.dtype)
+                goal_quat_w[:, 0] = 1.0
+            return goal_pos_w, goal_quat_w
+        except Exception as err:
+            last_err = err
+
+    raise RuntimeError(f"Failed to resolve goal term from candidates: {term_candidates}") from last_err
+
+
+def _quat_to_rot_matrix(quat_wxyz: torch.Tensor) -> torch.Tensor:
+    """Convert batched quaternions (wxyz) to batched rotation matrices [N, 3, 3]."""
+    w, x, y, z = quat_wxyz[:, 0], quat_wxyz[:, 1], quat_wxyz[:, 2], quat_wxyz[:, 3]
+    rot = torch.zeros((quat_wxyz.shape[0], 3, 3), device=quat_wxyz.device, dtype=quat_wxyz.dtype)
+
+    rot[:, 0, 0] = 1.0 - 2.0 * (y * y + z * z)
+    rot[:, 0, 1] = 2.0 * (x * y - z * w)
+    rot[:, 0, 2] = 2.0 * (x * z + y * w)
+    rot[:, 1, 0] = 2.0 * (x * y + z * w)
+    rot[:, 1, 1] = 1.0 - 2.0 * (x * x + z * z)
+    rot[:, 1, 2] = 2.0 * (y * z - x * w)
+    rot[:, 2, 0] = 2.0 * (x * z - y * w)
+    rot[:, 2, 1] = 2.0 * (y * z + x * w)
+    rot[:, 2, 2] = 1.0 - 2.0 * (x * x + y * y)
+    return rot
+
+
+def box_to_goal_vec_b3(
+    env: ManagerBasedRLEnv, goal_term_name: str = "goal_region"
+) -> torch.Tensor:
+    """Vector from active object to goal, expressed in the active object's body frame."""
+    goal_pos_w, _ = _resolve_goal_pose_w(env, goal_term_name=goal_term_name)
+    obj_pos_w = om.get_active_object_state_attr(env, "root_pos_w")
+    obj_quat_w = om.get_active_object_state_attr(env, "root_quat_w")
+
+    vec_w = goal_pos_w - obj_pos_w
+    return math_utils.quat_apply_inverse(obj_quat_w, vec_w)
+
+
+def goal_rot_mat_in_object(
+    env: ManagerBasedRLEnv, goal_term_name: str = "goal_region"
+) -> torch.Tensor:
+    """Goal orientation as a rotation matrix expressed in the active object's frame.
+
+    Returns flattened matrix with shape [num_envs, 9].
+    """
+    _, goal_quat_w = _resolve_goal_pose_w(env, goal_term_name=goal_term_name)
+    obj_quat_w = om.get_active_object_state_attr(env, "root_quat_w")
+
+    obj_quat_inv = quat_inverse_safe(obj_quat_w)
+    rel_quat = quat_mul(obj_quat_inv, goal_quat_w)
+    rel_rot = _quat_to_rot_matrix(rel_quat)
+    return rel_rot.reshape(env.num_envs, 9)
+
 def known_external_force_torque(
     env: ManagerBasedRLEnv,
     event_name: str,
