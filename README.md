@@ -1,10 +1,33 @@
+Some useful commands:
+
+To start a training:
+```bash
+python scripts/rsl_rl/train.py --task Template-Superq-Alore-v0 --num_envs 4096 --headless
+```
+
+To start a joint teleoperation:
+```bash
+python scripts/windows_joint_teleoperation.py --task Joint-Teleoperation --num_envs 1
+```
+
+To start a `zero_agent`:
+```bash
+python3 ./scripts/zero_agent.py --task Template-Superq-Alore-v0 --num_envs 20
+
+```
+
+
+
+
+
+
 # Set of the Project
 Everything in README(old).md is deployed, except the Omniverse setup. (The IDE setup may not
 be 100% successful though, because it seems that isaacsim can be detected by VScode, but isaaclab cannot)
 
 # Deployment of low-level controller
 In your terminal, run 
-```
+```bash
 python3 ./scripts/zero_agent.py --task Template-Superq-Alore-v0 --num_envs 20
 ```
 

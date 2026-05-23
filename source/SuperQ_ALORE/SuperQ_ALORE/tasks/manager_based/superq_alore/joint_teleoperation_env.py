@@ -106,6 +106,19 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP."""
+    goal_pose = mdp.GoalPoseCommandCfg(
+        resampling_time_range=(1e6, 1e6),
+        debug_vis=True,
+        debug_vis_keypoints=True,
+        debug_vis_keypoint_radius=0.04,
+        ranges=mdp.GoalPoseCommandCfg.Ranges(
+            pos_x=(-0.75, 0.75),
+            pos_y=(-0.75, 0.75),
+            pos_z=(0.0, 0.0),
+            yaw=(-math.pi, math.pi),
+        ),
+    )
+
     object_velocity = mdp.ObjectUniformVelocityRobotFrameCommandCfg(
         # Keep target object as the command reference asset.
         asset_name="target_object_0",
