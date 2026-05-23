@@ -16,6 +16,40 @@ from SuperQ_ALORE.assets.object_catalog import OBJECT_CATALOG
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management
 
 
+def resample_goal_region_on_reset(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    goal_term_name: str = "goal_pose",
+) -> None:
+    """Explicitly resample goal command for reset envs.
+
+    This is useful when command-level time-based resampling is disabled
+    (e.g. resampling_time_range set to a very large value).
+    """
+    if env_ids.numel() == 0:
+        return
+
+    term_candidates = []
+    for name in (goal_term_name, "goal_pose", "goal_region"):
+        if name not in term_candidates:
+            term_candidates.append(name)
+
+    for name in term_candidates:
+        try:
+            goal_term = env.command_manager.get_term(name)
+        except Exception:
+            continue
+
+        if hasattr(goal_term, "resample_on_reset"):
+            goal_term.resample_on_reset(env_ids)
+            return
+        if hasattr(goal_term, "_resample_command"):
+            goal_term._resample_command(env_ids)
+            return
+
+    raise RuntimeError(f"Unable to resample goal term from candidates: {term_candidates}")
+
+
 # Deprecated: we reset object and robot atomically.
 def reset_target_object_from_catalog_pose(
     env: ManagerBasedEnv,
