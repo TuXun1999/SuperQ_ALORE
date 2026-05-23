@@ -15,6 +15,7 @@ from .arm_command import (
     BasePoseCommand,
     ArmLegJointBasePoseCommand,
 )
+from .goal_pose_command import GoalPoseCommand
 from .object_velocity_command import ObjectUniformVelocityRobotFrameCommand
 
 
@@ -86,6 +87,43 @@ class ObjectUniformVelocityRobotFrameCommandCfg(CommandTermCfg):
     # Set the scale of the visualization markers to (0.5, 0.5, 0.5)
     goal_vel_visualizer_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
     current_vel_visualizer_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
+
+
+@configclass
+class GoalPoseCommandCfg(CommandTermCfg):
+    """Configuration for a per-env sampled goal pose and corresponding object green marker."""
+
+    class_type: type = GoalPoseCommand
+
+    @configclass
+    class Ranges:
+        pos_x: tuple[float, float] = MISSING
+        """Range for the x-coordinate of the goal pose."""
+
+        pos_y: tuple[float, float] = MISSING
+        """Range for the y-coordinate of the goal pose."""
+
+        pos_z: tuple[float, float] = (0.0, 0.0)
+        """Range for the z-coordinate of the goal pose, default to zero."""
+
+        yaw: tuple[float, float] = (-3.141592653589793, 3.141592653589793)
+        """Range for the yaw angle of the goal pose, default to [-pi, pi]."""
+
+    ranges: Ranges = MISSING
+    """Distribution ranges for sampling the goal pose."""
+
+    goal_term_name: str = "goal_pose"
+    """The name of the goal term that this command is associated with. Defaults to "goal_pose"."""
+
+    success_object_to_goal_dist_thresh_m: float = 0.10
+    """Distance threshold (meters) for success-rate computation."""
+
+    success_keypoint_angle_error_thresh_deg: float = 10.0
+    """Keypoint yaw-angle threshold (degrees) for success-rate computation."""
+
+    debug_vis: bool = True
+    debug_vis_keypoints: bool = True
+    debug_vis_keypoint_radius: float = 0.04
 
 
 @configclass
