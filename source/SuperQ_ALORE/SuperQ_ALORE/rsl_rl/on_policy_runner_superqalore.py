@@ -63,6 +63,21 @@ class OnPolicyRunnerSuperQALORE():
         self.current_learning_iteration = 0
         self.git_status_repos = [rsl_rl.__file__]
 
+        # Optional fine-grained iteration profiler.
+        profiling_cfg = self.cfg.get("profiling", {})
+        self.enable_iteration_profiling = bool(profiling_cfg.get("enable_iteration_timing", False))
+        self.iteration_profile_interval = max(1, int(profiling_cfg.get("iteration_timing_interval", 1)))
+
+    def _sync_for_timing(self) -> None:
+        """Synchronize GPU before timing reads for accurate wall-clock measurements."""
+        if torch.cuda.is_available() and "cuda" in str(self.device):
+            torch.cuda.synchronize()
+
+    def _time_now(self) -> float:
+        """Return synchronized high-resolution wall-clock time."""
+        self._sync_for_timing()
+        return time.perf_counter()
+
     def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False) -> None:
         # Initialize writer
         self._prepare_logging_writer()
@@ -101,23 +116,50 @@ class OnPolicyRunnerSuperQALORE():
         tot_iter = start_iter + num_learning_iterations
         for it in range(start_iter, tot_iter):
             start = time.time()
+            iter_profile = {
+                "act": 0.0,
+                "env_step": 0.0,
+                "process_env_step": 0.0,
+                "bookkeeping": 0.0,
+                "compute_returns": 0.0,
+                "update": 0.0,
+                "log": 0.0,
+                "save": 0.0,
+                "rollout_total": 0.0,
+                "total": 0.0,
+            }
             # Rollout
             with torch.inference_mode():
+                rollout_start_profile = self._time_now() if self.enable_iteration_profiling else None
                 # TODO: Consider only start training after a successful grasp?
                 for _ in range(self.num_steps_per_env):
                     # Sample actions
+                    if self.enable_iteration_profiling:
+                        t0 = self._time_now()
                     actions = self.alg.act(obs)
+                    if self.enable_iteration_profiling:
+                        iter_profile["act"] += self._time_now() - t0
                     
                     # Step the environment
+                    if self.enable_iteration_profiling:
+                        t0 = self._time_now()
                     obs, rewards, dones, extras = self.env.step(actions.to(self.env.device))
+                    if self.enable_iteration_profiling:
+                        iter_profile["env_step"] += self._time_now() - t0
                     # Move to device
                     obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
                     # Process the step
+                    if self.enable_iteration_profiling:
+                        t0 = self._time_now()
                     self.alg.process_env_step(obs, rewards, dones, extras)
+                    if self.enable_iteration_profiling:
+                        iter_profile["process_env_step"] += self._time_now() - t0
                     # Extract intrinsic rewards (only for logging)
                     intrinsic_rewards = self.alg.intrinsic_rewards if self.alg.rnd else None
                     # Book keeping
                     if self.log_dir is not None:
+                        if self.enable_iteration_profiling:
+                            t0 = self._time_now()
                         if "episode" in extras:
                             ep_infos.append(extras["episode"])
                         elif "log" in extras:
@@ -142,16 +184,29 @@ class OnPolicyRunnerSuperQALORE():
                             irewbuffer.extend(cur_ireward_sum[new_ids][:, 0].cpu().numpy().tolist())
                             cur_ereward_sum[new_ids] = 0
                             cur_ireward_sum[new_ids] = 0
+                        if self.enable_iteration_profiling:
+                            iter_profile["bookkeeping"] += self._time_now() - t0
+
+                if self.enable_iteration_profiling and rollout_start_profile is not None:
+                    iter_profile["rollout_total"] = self._time_now() - rollout_start_profile
 
                 stop = time.time()
                 collection_time = stop - start
                 start = stop
 
                 # Compute returns
+                if self.enable_iteration_profiling:
+                    t0 = self._time_now()
                 self.alg.compute_returns(obs)
+                if self.enable_iteration_profiling:
+                    iter_profile["compute_returns"] += self._time_now() - t0
 
             # Update policy
+            if self.enable_iteration_profiling:
+                t0 = self._time_now()
             loss_dict, _ = self.alg.update()
+            if self.enable_iteration_profiling:
+                iter_profile["update"] += self._time_now() - t0
 
             stop = time.time()
             learn_time = stop - start
@@ -159,10 +214,29 @@ class OnPolicyRunnerSuperQALORE():
 
             if self.log_dir is not None and not self.disable_logs:
                 # Log information
+                if self.enable_iteration_profiling:
+                    t0 = self._time_now()
                 self.log(locals())
+                if self.enable_iteration_profiling:
+                    iter_profile["log"] += self._time_now() - t0
                 # Save model
                 if it % self.save_interval == 0:
+                    if self.enable_iteration_profiling:
+                        t0 = self._time_now()
                     self.save(os.path.join(self.log_dir, f"model_{it}.pt"))
+                    if self.enable_iteration_profiling:
+                        iter_profile["save"] += self._time_now() - t0
+
+            if self.enable_iteration_profiling:
+                iter_profile["total"] = (
+                    iter_profile["rollout_total"]
+                    + iter_profile["compute_returns"]
+                    + iter_profile["update"]
+                    + iter_profile["log"]
+                    + iter_profile["save"]
+                )
+                if self.log_dir is not None and not self.disable_logs and (it % self.iteration_profile_interval == 0):
+                    self._log_iteration_profile(iter_profile, it, pad=35)
 
             # Clear episode infos
             ep_infos.clear()
@@ -178,6 +252,38 @@ class OnPolicyRunnerSuperQALORE():
         # Save the final model after training
         if self.log_dir is not None and not self.disable_logs:
             self.save(os.path.join(self.log_dir, f"model_{self.current_learning_iteration}.pt"))
+
+    def _log_iteration_profile(self, profile: dict, it: int, pad: int = 35) -> None:
+        """Emit a compact per-iteration timing breakdown to terminal and logger."""
+        total = max(profile.get("total", 0.0), 1e-12)
+
+        labels = [
+            ("act", "Timing/act"),
+            ("env_step", "Timing/env_step"),
+            ("process_env_step", "Timing/process_env_step"),
+            ("bookkeeping", "Timing/bookkeeping"),
+            ("compute_returns", "Timing/compute_returns"),
+            ("update", "Timing/update"),
+            ("log", "Timing/log"),
+            ("save", "Timing/save"),
+            ("rollout_total", "Timing/rollout_total"),
+            ("total", "Timing/total"),
+        ]
+
+        if self.writer is not None:
+            for key, tag in labels:
+                self.writer.add_scalar(tag, profile[key], it)
+                self.writer.add_scalar(f"{tag}_pct", 100.0 * profile[key] / total, it)
+
+        timing_lines = [
+            f"{'-' * 80}",
+            f"{f'Iteration timing profile [{it}]':>{pad}}",
+        ]
+        for key, _ in labels:
+            timing_lines.append(
+                f"{f'{key}:':>{pad}} {profile[key]:.4f}s ({100.0 * profile[key] / total:5.1f}%)"
+            )
+        print("\n".join(timing_lines))
 
     def log(self, locs: dict, width: int = 80, pad: int = 35) -> None:
         # Compute the collection size
