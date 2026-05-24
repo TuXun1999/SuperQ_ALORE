@@ -265,12 +265,22 @@ def ang_vel_xy_l2(
 def flat_orientation_l2(
     env: ManagerBasedRLEnv,
     asset_name: str = "target_object",  # deprecated - ignored, active object used
+    flat_threshold: float = 0,
 ) -> torch.Tensor:
-    """Penalize deviation from flat orientation."""
-    flat_orientation = torch.sum(
+    """Indicator-style non-flat penalty: 1 if not flat, else 0."""
+    tilt_l2 = torch.sum(
         torch.square(om.get_active_object_state_attr(env, "projected_gravity_b")[:, :2]), dim=1
     )
-    return -flat_orientation
+    return (tilt_l2 > float(flat_threshold)).to(torch.float32)
+
+
+def flat_orientation(
+    env: ManagerBasedRLEnv,
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
+    flat_threshold: float = 1.0e-3,
+) -> torch.Tensor:
+    """Backward-compatible alias for flat-orientation indicator penalty."""
+    return flat_orientation_l2(env, asset_name=asset_name, flat_threshold=flat_threshold)
 
 # Velocity change penalty (to encourage smooth motion)
 def lin_vel_change_penalty(
