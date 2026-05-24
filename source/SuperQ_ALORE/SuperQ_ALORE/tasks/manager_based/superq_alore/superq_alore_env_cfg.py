@@ -528,13 +528,13 @@ class RewardsCfg:
         weight=8.0,
         params={
             "goal_term_name": "goal_pose",
-            "sigma3": 0.38,
+            "sigma3": 1.5,
         },
     ) # Encourage object-goal pose matching using world-frame keypoint distance
 
     vel_toward_goal = RewTerm(
         func=mdp.velocity_toward_goal_exp,
-        weight=3.0,
+        weight=1.0,
         params={
             "goal_term_name": "goal_pose",
             "sigma2": 0.7071067812,
