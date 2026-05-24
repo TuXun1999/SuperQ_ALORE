@@ -255,7 +255,7 @@ class ObservationsCfg:
 
         def __post_init__(self):
             self.enable_corruption = False
-            self.history_length = 10
+            self.history_length = 1
             self.concatenate_terms = True
         
 
@@ -534,7 +534,7 @@ class RewardsCfg:
 
     vel_toward_goal = RewTerm(
         func=mdp.velocity_toward_goal_exp,
-        weight=1.0,
+        weight=0.5,
         params={
             "goal_term_name": "goal_pose",
             "sigma2": 0.7071067812,
@@ -568,6 +568,14 @@ class RewardsCfg:
         weight=0.05,
         params = {},
     ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
+
+    flat_orientation_l2 = RewTerm(
+        func=mdp.flat_orientation_l2,
+        weight=-10.0,
+        params={
+            "flat_threshold": 0,
+        },
+    ) # Indicator penalty: subtract 1 when object is non-flat
 
     lin_vel_change_penalty = RewTerm(
         func=mdp.lin_vel_change_penalty,
