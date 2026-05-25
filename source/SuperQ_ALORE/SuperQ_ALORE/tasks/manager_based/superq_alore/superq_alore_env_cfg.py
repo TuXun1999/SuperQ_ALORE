@@ -228,7 +228,7 @@ class ObservationsCfg:
 
         def __post_init__(self):
             self.enable_corruption = False
-            self.history_length = 10
+            self.history_length = 1
             self.concatenate_terms = True
         
 
