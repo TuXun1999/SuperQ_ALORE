@@ -125,7 +125,7 @@ class CommandsCfg:
             pos_x=(-1.5, 1.5),
             pos_y=(-1.5, 1.5),
             pos_z=(0.0, 0.0),
-            yaw=(-math.pi / 4, math.pi / 4),
+            yaw=(0, 2 * math.pi),
         ),
     )
 
@@ -214,12 +214,6 @@ class ObservationsCfg:
             func = mdp.last_high_level_action, params={"clip_limit": 100}
         ) # dim: 9
         
-        # Commands (x, y, omega)
-        # commands = ObsTerm(
-        #     func=isaac_mdp.generated_commands,
-        #     params={"command_name": "object_velocity"},
-        # ) # dim: 3 
-        
         # End-effector in robot frame
         ee_pose_in_robot_frame = ObsTerm(
             func = mdp.ee_pose_in_robot_frame,
@@ -246,12 +240,6 @@ class ObservationsCfg:
             params={"goal_term_name": "goal_pose"},
             noise=Unoise(n_min=-0.01, n_max=0.01),
         ) # dim: 9
-        
-        # Category code (NOTE: it's constantly zero in ALORE)
-        # category_encode = ObsTerm(
-        #     func = mdp.category_encode,
-        #     scale = 1.0,
-        # ) # dim 3
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -534,7 +522,7 @@ class RewardsCfg:
 
     vel_toward_goal = RewTerm(
         func=mdp.velocity_toward_goal_exp,
-        weight=0.5,
+        weight=1.0,
         params={
             "goal_term_name": "goal_pose",
             "sigma2": 0.7071067812,
@@ -542,20 +530,6 @@ class RewardsCfg:
             "use_xy": True,
         },
     ) # Encourage object velocity to align with the direction from object to goal
-
-    sparse_completion_reward = RewTerm(
-        func=mdp.sparse_completion_reward,
-        weight=10.0,
-        params={
-            "goal_term_name": "goal_pose",
-            "dist_error": 0.10,
-            "angular_error": 10.0,
-            "success_reward": 1.0,
-        },
-    ) # Sparse completion bonus when pose error is within distance and angle thresholds
-
-    
-    is_alive = RewTerm(func=mdp.is_alive, weight=1.0) # The manipulation process should be alive
     
     lin_vel_z_l2 = RewTerm(
         func=mdp.lin_vel_z_l2,
@@ -565,7 +539,7 @@ class RewardsCfg:
     
     ang_vel_xy_l2 = RewTerm(
         func=mdp.ang_vel_xy_l2,
-        weight=0.05,
+        weight=2.0,
         params = {},
     ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
 
@@ -573,44 +547,10 @@ class RewardsCfg:
         func=mdp.flat_orientation_l2,
         weight=-10.0,
         params={
-            "flat_threshold": 0,
+            "flat_threshold": 0.25,
         },
     ) # Indicator penalty: subtract 1 when object is non-flat
 
-    lin_vel_change_penalty = RewTerm(
-        func=mdp.lin_vel_change_penalty,
-        weight=2.0,
-        params = {},
-    ) # Penalize the change in linear velocity of the object to encourage smooth motion
-    
-    ang_vel_change_penalty = RewTerm(
-        func=mdp.ang_vel_change_penalty,
-        weight=2.0,
-        params = {},
-    ) # Penalize the change in angular velocity of the object to encourage smooth motion
-    
-    ## Group 2: Robot related rewards (auxiliary task, to encourage better robot behavior)
-    action_rate_l2 = RewTerm(
-        func=mdp.action_rate_l2,
-        weight=0.01,
-    ) # Penalize large instantaneous changes in the action output to encourage smoother motion
-    action_rate2_l2 = RewTerm(
-        func=mdp.action_rate2_l2,
-        weight=0.002,
-    ) # Penalize large instantaneous changes in the action changes to encourage smoother motion
-    
-    joint_torques = RewTerm(
-        func=mdp.joint_torques,
-        weight=2.5e-7,
-        params={"arm_joint_names": ARM_JOINT_NAMES, "robot_name": "robot"},
-    ) # Penalize the torques in the arm joints to encourage energy-efficient motion
-    
-    joint_accel = RewTerm(
-        func=mdp.joint_accel,
-        weight=2.5e-7,
-        params={"arm_joint_names": ARM_JOINT_NAMES, "robot_name": "robot"},
-    ) # Penalize the acceleration in the arm joints to encourage smoother motion
-    
     joint_positions_wrt_reference = RewTerm(
         func=mdp.joint_positions_wrt_reference,
         weight=5.0,
@@ -626,15 +566,6 @@ class RewardsCfg:
         },
     ) # Penalize the deviation of joint positions from the per-env active grasp pose reference
     
-    undesired_contact_penalty = RewTerm(
-        func=mdp.undesired_contact_penalty,
-        weight=5.0,
-        params={
-            "undesired_contact_body_names": SPOT_BODY_LINKS,  # Replace with actual body names
-            "contact_sensor_name": "contact_forces",
-            "undesired_contact_threshold": 1.0,
-        },
-    ) 
 
 @configclass
 class TerminationsCfg:

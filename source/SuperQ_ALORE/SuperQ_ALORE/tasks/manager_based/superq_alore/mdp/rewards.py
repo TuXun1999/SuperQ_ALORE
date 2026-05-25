@@ -252,6 +252,15 @@ def lin_vel_z_l2(
     lin_vel_z = om.get_active_object_state_attr(env, "root_lin_vel_b")[:, 2]
     return -torch.square(lin_vel_z)
 
+# Linear velocity along the robot y-direction (to discourage lateral slipping)
+def lin_vel_y_l2(
+    env: ManagerBasedRLEnv,
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
+) -> torch.Tensor:
+    """Penalize linear velocity along the robot y-direction in robot frame."""
+    lin_vel_y = om.get_active_object_state_attr(env, "root_lin_vel_b")[:, 1]
+    return -torch.square(lin_vel_y)
+
 # Angular velocity along the x/y-direction (to discourage flipping the object)
 def ang_vel_xy_l2(
     env: ManagerBasedRLEnv,
