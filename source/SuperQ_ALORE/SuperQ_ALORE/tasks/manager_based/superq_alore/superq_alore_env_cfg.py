@@ -118,14 +118,22 @@ class CommandsCfg:
     """Command specifications for the MDP."""
     goal_pose = mdp.GoalPoseCommandCfg(
         resampling_time_range=(1e6, 1e6), # No need to change the command
+        enable_yaw_curriculum=True,
+        curriculum_success_rate_threshold=0.60, # go to next level if success rate exceeds the threshold
+        curriculum_initial_yaw_range=(0.0, 0.0), # start with no yaw displacement
+        curriculum_yaw_step=math.pi / 6.0, # increase yaw range by 60 degrees each time the success rate threshold is met
+        curriculum_max_yaw=math.pi, # maximum yaw range is 180 degrees
         debug_vis=True,
         debug_vis_keypoints=True,
         debug_vis_keypoint_radius=0.04,
+        # if enable_yaw_curriculum is set, then the yaw of the goal pose is not actually used. 
+        # Instead, the curriculum will control the yaw range for sampling the goal pose, and 
+        # the actual yaw value in the command will be reset in the constructor.
         ranges=mdp.GoalPoseCommandCfg.Ranges(
             pos_x=(-1.5, 1.5),
             pos_y=(-1.5, 1.5),
             pos_z=(0.0, 0.0),
-            yaw=(0, 2 * math.pi),
+            yaw=(0.0, 0.0),
         ),
     )
 
@@ -531,23 +539,23 @@ class RewardsCfg:
         },
     ) # Encourage object velocity to align with the direction from object to goal
     
-    lin_vel_z_l2 = RewTerm(
-        func=mdp.lin_vel_z_l2,
-        weight=2.0,
-        params = {},
-    ) # Penalize the vertical velocity of the object to encourage it to stay on the ground
+    # lin_vel_z_l2 = RewTerm(
+    #     func=mdp.lin_vel_z_l2,
+    #     weight=2.0,
+    #     params = {},
+    # ) # Penalize the vertical velocity of the object to encourage it to stay on the ground
     
-    ang_vel_xy_l2 = RewTerm(
-        func=mdp.ang_vel_xy_l2,
-        weight=2.0,
-        params = {},
-    ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
+    # ang_vel_xy_l2 = RewTerm(
+    #     func=mdp.ang_vel_xy_l2,
+    #     weight=2.0,
+    #     params = {},
+    # ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
 
     flat_orientation_l2 = RewTerm(
         func=mdp.flat_orientation_l2,
         weight=-10.0,
         params={
-            "flat_threshold": 0.25,
+            "flat_threshold": 1e-3,
         },
     ) # Indicator penalty: subtract 1 when object is non-flat
 

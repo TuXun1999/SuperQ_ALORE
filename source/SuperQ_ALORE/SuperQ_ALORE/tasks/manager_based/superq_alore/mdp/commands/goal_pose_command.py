@@ -34,6 +34,17 @@ class GoalPoseCommand(CommandTerm):
         self._kps_vis = None
         super().__init__(cfg, env)
 
+        self._curriculum_level = 0
+        self._curriculum_success_threshold = float(getattr(self.cfg, "curriculum_success_rate_threshold", 0.60))
+        self._curriculum_yaw_step = float(getattr(self.cfg, "curriculum_yaw_step", 0.0))
+        self._curriculum_max_yaw = float(getattr(self.cfg, "curriculum_max_yaw", 0.0))
+        self._yaw_curriculum_enabled = bool(getattr(self.cfg, "enable_yaw_curriculum", False))
+        initial_yaw_range = tuple(getattr(self.cfg, "curriculum_initial_yaw_range", self.cfg.ranges.yaw))
+        self._active_yaw_range = self.cfg.ranges.yaw
+        if self._yaw_curriculum_enabled:
+            self._active_yaw_range = self._sanitize_yaw_range(*initial_yaw_range)
+            self.cfg.ranges.yaw = self._active_yaw_range
+
         # stores the goal pose in world frame for each environment, represented as (x, y, z) position and (x, y, z, w) quaternion. 
         self.goal_w = torch.zeros((self.num_envs, 3), device=self.device)
         self.goal_quat_w = torch.zeros((self.num_envs, 4), device=self.device)
@@ -150,7 +161,7 @@ class GoalPoseCommand(CommandTerm):
         samples[:, 0].uniform_(*self.cfg.ranges.pos_x)
         samples[:, 1].uniform_(*self.cfg.ranges.pos_y)
         samples[:, 2].uniform_(*self.cfg.ranges.pos_z)
-        samples[:, 3].uniform_(*self.cfg.ranges.yaw)
+        samples[:, 3].uniform_(*self._active_yaw_range)
 
         self.goal_w[env_ids, 0] = origins[:, 0] + samples[:, 0]
         self.goal_w[env_ids, 1] = origins[:, 1] + samples[:, 1]
@@ -234,6 +245,61 @@ class GoalPoseCommand(CommandTerm):
         self.metrics["robot_speed"] = robot_speed
         self.metrics["robot_yaw_degree"] = robot_yaw_degree
         self.metrics["success_rate"] = success_rate
+        self.metrics["goal_yaw_curriculum_level"] = torch.full(
+            (self.num_envs,),
+            float(self._curriculum_level),
+            device=self.device,
+            dtype=self.goal_w.dtype,
+        )
+        self.metrics["goal_yaw_curriculum_span"] = torch.full(
+            (self.num_envs,),
+            float(self._active_yaw_range[1] - self._active_yaw_range[0]),
+            device=self.device,
+            dtype=self.goal_w.dtype,
+        )
+
+        # after calculating the metrics, check if we can advance the curriculum level based on the success rate.
+        self._maybe_advance_yaw_curriculum(success_rate)
+
+    def _sanitize_yaw_range(self, yaw_min: float, yaw_max: float) -> tuple[float, float]:
+        yaw_min = max(float(yaw_min), -self._curriculum_max_yaw)
+        yaw_max = min(float(yaw_max), self._curriculum_max_yaw)
+        return (min(yaw_min, yaw_max), max(yaw_min, yaw_max))
+
+    def _maybe_advance_yaw_curriculum(self, success_rate: torch.Tensor) -> None:
+
+        # return immediately if the yaw curriculum is not enabled in the configuration.
+        if not self._yaw_curriculum_enabled:
+            return
+
+        # check if the current yaw range already covers the maximum allowed yaw range for the curriculum. 
+        # If it does, then there is no need to advance the curriculum further, so we can return early.
+        current_min, current_max = self._active_yaw_range
+        if current_min <= -self._curriculum_max_yaw and current_max >= self._curriculum_max_yaw:
+            return
+
+        # calculate the mean success rate across all environments. If the mean success rate is below the threshold defined in the configuration,
+        # then we should not advance the curriculum yet, so we can return early. This ensures that the agent has sufficiently mastered the current 
+        # level of difficulty before moving on to a more challenging yaw range.
+        mean_success_rate = float(success_rate.mean().item())
+        if mean_success_rate < self._curriculum_success_threshold:
+            return
+
+        # if the success rate meets the threshold, calculate the next yaw range by expanding the current yaw range by a step defined in the configuration.
+        next_yaw_range = self._sanitize_yaw_range(
+            current_min - self._curriculum_yaw_step,
+            current_max + self._curriculum_yaw_step,
+        )
+
+        # if the next yaw range is the same as the current active yaw range, 
+        # it means we have already reached the maximum yaw range for the curriculum, so we can return without making any changes.
+        if next_yaw_range == self._active_yaw_range:
+            return
+        
+        # if the next yaw range is different from the current yaw range, it means we can advance the curriculum to the next level.
+        self._curriculum_level += 1
+        self._active_yaw_range = next_yaw_range
+        self.cfg.ranges.yaw = next_yaw_range
 
     def _set_debug_vis_impl(self, debug_vis: bool):
         """set the visibility of the goal pose and keypoint visualizers based on the debug_vis flag."""

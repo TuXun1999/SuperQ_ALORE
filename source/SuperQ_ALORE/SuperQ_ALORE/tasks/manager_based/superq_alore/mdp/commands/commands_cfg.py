@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import MISSING
 
 from isaaclab.managers import CommandTermCfg
@@ -120,6 +121,21 @@ class GoalPoseCommandCfg(CommandTermCfg):
 
     success_keypoint_angle_error_thresh_deg: float = 10.0
     """Keypoint yaw-angle threshold (degrees) for success-rate computation."""
+
+    enable_yaw_curriculum: bool = True
+    """Whether to progressively widen the sampled yaw range based on success rate."""
+
+    curriculum_success_rate_threshold: float = 0.60
+    """Mean success-rate threshold required to unlock the next yaw difficulty level."""
+
+    curriculum_initial_yaw_range: tuple[float, float] = (0.0, 0.0)
+    """Initial yaw range used when the curriculum starts."""
+
+    curriculum_yaw_step: float = math.pi / 3.0
+    """Yaw expansion applied on each side when advancing a curriculum level."""
+
+    curriculum_max_yaw: float = math.pi
+    """Maximum absolute yaw magnitude allowed by the curriculum."""
 
     debug_vis: bool = True
     debug_vis_keypoints: bool = True
