@@ -167,8 +167,22 @@ class GoalPoseCommand(CommandTerm):
         self.goal_w[env_ids, 1] = origins[:, 1] + samples[:, 1]
         self.goal_w[env_ids, 2] = origins[:, 2] + samples[:, 2]
 
+        base_yaw = torch.zeros(env_ids.numel(), device=self.device, dtype=self.goal_w.dtype)
+        try:
+            if hasattr(self._env, "target_assignment_ready"):
+                ready_mask = self._env.target_assignment_ready[env_ids]
+                if torch.any(ready_mask):
+                    ready_env_ids = env_ids[ready_mask]
+                    _, pose_rot = object_mgmt.get_active_pose_position_orientation_tensors(self._env, ready_env_ids)
+                    _, _, pose_yaw = math_utils.euler_xyz_from_quat(pose_rot)
+                    base_yaw[ready_mask] = pose_yaw.to(dtype=self.goal_w.dtype)
+        except Exception:
+            # Keep zero-reference yaw if catalog pose is unavailable.
+            pass
+
+        goal_yaw = base_yaw + samples[:, 3]
         zeros = torch.zeros(env_ids.numel(), device=self.device, dtype=self.goal_w.dtype)
-        self.goal_quat_w[env_ids] = math_utils.quat_from_euler_xyz(zeros, zeros, samples[:, 3])
+        self.goal_quat_w[env_ids] = math_utils.quat_from_euler_xyz(zeros, zeros, goal_yaw)
 
     def _update_command(self):
         return
