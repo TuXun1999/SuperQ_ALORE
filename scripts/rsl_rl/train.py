@@ -233,6 +233,38 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     runner.alg.act = clipped_act
     print(f"[INFO] Action clipping enabled with bounds: {action_clip.cpu().numpy()}")
 
+    def _set_env_learning_iteration(iter_idx: int) -> None:
+        """Helper function to set the current PPO learning iteration index in the environment for curriculum scheduling."""
+        value = int(iter_idx)
+
+        # Attempt to set the learning iteration index in both the environment and its unwrapped version (if it exists).
+        for target in (env, getattr(env, "unwrapped", None)):
+            if target is None:
+                continue
+            try:
+                # attempt to set the learning iteration index in the environment for curriculum scheduling
+                setattr(target, "learning_iteration", value)
+            except Exception:
+                pass
+
+    # Initialize to the first PPO learning iteration.
+    _set_env_learning_iteration(0)
+
+    # saves the original logging function so that we can call it after injecting the learning iteration index update for curriculum scheduling
+    original_log_for_curriculum = runner.log
+
+    def log_with_learning_iteration(*call_args, **call_kwargs):
+        """Wrapper around the runner's log function to update the environment with the current learning iteration index for curriculum scheduling."""
+        locs = call_args[0] if len(call_args) > 0 else call_kwargs.get("locs", {})
+        it = int(locs.get("it", 0))
+        # runner.log() is called after rollout+update for iteration `it`.
+        # Set the env-side counter to `it + 1` so the next rollout uses the next PPO iteration index.
+        _set_env_learning_iteration(it + 1)
+        return original_log_for_curriculum(*call_args, **call_kwargs)
+
+    # replace the runner's log function with the wrapped version that updates the environment with the current learning iteration index for curriculum scheduling
+    runner.log = log_with_learning_iteration
+
     if args_cli.profile_iteration_timing:
         print("[INFO] Per-iteration timing profiler enabled.")
 

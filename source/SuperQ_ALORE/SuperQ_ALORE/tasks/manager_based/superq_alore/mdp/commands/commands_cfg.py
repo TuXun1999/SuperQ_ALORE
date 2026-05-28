@@ -123,10 +123,7 @@ class GoalPoseCommandCfg(CommandTermCfg):
     """Keypoint yaw-angle threshold (degrees) for success-rate computation."""
 
     enable_yaw_curriculum: bool = True
-    """Whether to progressively widen the sampled yaw range based on success rate."""
-
-    curriculum_success_rate_threshold: float = 0.60
-    """Mean success-rate threshold required to unlock the next yaw difficulty level."""
+    """Whether to progressively widen the sampled yaw range using an iteration-based schedule."""
 
     curriculum_initial_yaw_range: tuple[float, float] = (0.0, 0.0)
     """Initial yaw range used when the curriculum starts."""
@@ -136,6 +133,9 @@ class GoalPoseCommandCfg(CommandTermCfg):
 
     curriculum_max_yaw: float = math.pi
     """Maximum absolute yaw magnitude allowed by the curriculum."""
+
+    curriculum_iterations_per_level: int = 1000
+    """Number of command update iterations required before increasing one yaw curriculum level."""
 
     debug_vis: bool = True
     debug_vis_keypoints: bool = True

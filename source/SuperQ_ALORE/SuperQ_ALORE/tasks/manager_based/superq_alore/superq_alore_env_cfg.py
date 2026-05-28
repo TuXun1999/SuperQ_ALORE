@@ -119,10 +119,10 @@ class CommandsCfg:
     goal_pose = mdp.GoalPoseCommandCfg(
         resampling_time_range=(1e6, 1e6), # No need to change the command
         enable_yaw_curriculum=True,
-        curriculum_success_rate_threshold=0.60, # go to next level if success rate exceeds the threshold
+        curriculum_iterations_per_level=10, # increase one curriculum level every 1000 iterations
         curriculum_initial_yaw_range=(0.0, 0.0), # start with no yaw displacement
-        curriculum_yaw_step=math.pi / 6.0, # increase yaw range by 60 degrees each time the success rate threshold is met
-        curriculum_max_yaw=math.pi, # maximum yaw range is 180 degrees
+        curriculum_yaw_step=math.pi / 18.0, # increase yaw range by 10 degrees on each side per curriculum level
+        curriculum_max_yaw=math.pi / 2.0, # maximum yaw range is 90 degrees
         debug_vis=True,
         debug_vis_keypoints=True,
         debug_vis_keypoint_radius=0.04,
