@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import torch
 from typing import TYPE_CHECKING
+from pxr import PhysxSchema, UsdPhysics
 
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
@@ -14,6 +15,45 @@ if TYPE_CHECKING:
 
 from SuperQ_ALORE.assets.object_catalog import OBJECT_CATALOG
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management
+
+
+def configure_physx_scene_gpu_buffers(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    gpu_temp_buffer_capacity: int = 64 * 1024 * 1024,
+    gpu_heap_capacity: int = 256 * 1024 * 1024,
+    gpu_max_rigid_patch_count: int = 1_048_576,
+) -> None:
+    """Apply PhysX GPU capacities on the live PhysicsScene prim at startup."""
+    del env_ids  # Unused for startup event hooks.
+    stage = getattr(env.sim, "stage", None)
+    if stage is None:
+        return
+
+    physics_scene_prim = None
+    for prim in stage.Traverse():
+        if prim.IsA(UsdPhysics.Scene):
+            physics_scene_prim = prim
+            break
+    if physics_scene_prim is None:
+        return
+
+    physx_scene_api = PhysxSchema.PhysxSceneAPI.Apply(physics_scene_prim)
+
+    temp_attr = physx_scene_api.GetGpuTempBufferCapacityAttr()
+    if not temp_attr or not temp_attr.IsValid():
+        temp_attr = physx_scene_api.CreateGpuTempBufferCapacityAttr()
+    temp_attr.Set(int(gpu_temp_buffer_capacity))
+
+    heap_attr = physx_scene_api.GetGpuHeapCapacityAttr()
+    if not heap_attr or not heap_attr.IsValid():
+        heap_attr = physx_scene_api.CreateGpuHeapCapacityAttr()
+    heap_attr.Set(int(gpu_heap_capacity))
+
+    patch_attr = physx_scene_api.GetGpuMaxRigidPatchCountAttr()
+    if not patch_attr or not patch_attr.IsValid():
+        patch_attr = physx_scene_api.CreateGpuMaxRigidPatchCountAttr()
+    patch_attr.Set(int(gpu_max_rigid_patch_count))
 
 
 def resample_goal_region_on_reset(

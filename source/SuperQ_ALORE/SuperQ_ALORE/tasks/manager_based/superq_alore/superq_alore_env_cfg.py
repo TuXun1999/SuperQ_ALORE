@@ -453,6 +453,16 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
+    configure_physx_scene_gpu_buffers = EventTerm(
+        func=mdp.configure_physx_scene_gpu_buffers,
+        mode="startup",
+        params={
+            "gpu_temp_buffer_capacity": 64 * 1024 * 1024,
+            "gpu_heap_capacity": 256 * 1024 * 1024,
+            "gpu_max_rigid_patch_count": 1_048_576,
+        },
+    )
+
     # reset
     reset_base = EventTerm(
         func=isaac_mdp.reset_root_state_uniform,
@@ -519,12 +529,23 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
+    sparse_completion = RewTerm(
+        func=mdp.sparse_completion_reward,
+        weight=10.0,
+        params={
+            "goal_term_name": "goal_pose",
+            "dist_error": 0.05,
+            "angular_error": 5.0,
+            "success_reward": 1.0,
+        },
+    ) # Sparse success bonus when object-goal position and yaw errors are both within threshold
+
     keypoint_pose_match_exp = RewTerm(
         func=mdp.keypoint_pose_match_exp,
         weight=8.0,
         params={
             "goal_term_name": "goal_pose",
-            "sigma3": 1.5,
+            "sigma3": 1.0,
         },
     ) # Encourage object-goal pose matching using world-frame keypoint distance
 
@@ -653,7 +674,6 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         # Import the robot (behind the chair)
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None
-        self.sim.physx.gpu_max_rigid_patch_count = 4096 * 4096 * 4 # increase the max rigid patch count to avoid potential physics explosion when many objects are spawned
 
     # Create a new buffer to store the previous object velocities & actions
     def _pre_physics_step(self, action):
