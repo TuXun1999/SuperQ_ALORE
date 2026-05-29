@@ -653,8 +653,8 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         # Import the robot (behind the chair)
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None
-        
-        
+        self.sim.physx.gpu_max_rigid_patch_count = 4096 * 4096 * 4 # increase the max rigid patch count to avoid potential physics explosion when many objects are spawned
+
     # Create a new buffer to store the previous object velocities & actions
     def _pre_physics_step(self, action):
         # Cache the current velocity before it gets updated
