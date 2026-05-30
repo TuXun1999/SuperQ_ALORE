@@ -55,7 +55,6 @@ class PhysicActorCritic(ActorCritic):
         # Hard-coded attributes...
         self.history_length = 10
         
-        
         if not hasattr(self, 'device'):
             self.device = kwargs.get('device', 'cpu')
 
@@ -71,8 +70,8 @@ class PhysicActorCritic(ActorCritic):
             num_critic_obs += obs[obs_group].shape[-1]
         
         # Actor obs (per environment)
-        self.num_actor_obs = int(num_actor_obs / self.history_length)
-
+        self.num_actor_obs = int(num_actor_obs / self.history_length)  
+        
         activation = resolve_nn_activation(activation)
 
         
@@ -99,7 +98,7 @@ class PhysicActorCritic(ActorCritic):
 
         # Add a physic estimator
         self.physic_estimator = PhysicEstimator(
-            input_dim = self.num_actor_obs,  # Assuming actor obs is used for estimation
+            input_dim = self.num_vel_est_obs,  # Assuming actor obs is used for estimation
             output_dim=3,  # [vx, vy, omega] ## TODO: with only physical estimation
             device=self.device
         )
@@ -141,7 +140,6 @@ class PhysicActorCritic(ActorCritic):
         obs_augmented = torch.cat((obs_seq, lin_vel_x_pre, lin_vel_y_pre, ang_vel_z_pre), dim=-1)  
 
         ## interactive GNN processing
-        # TODO: figure out why nan in GNN construction
         # node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
         # z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
         z = torch.zeros(B, 128, device=obs_augmented.device)  # (B, 128) -- ablation without GNN features, to test the effect of velocity prediction alone
@@ -153,18 +151,7 @@ class PhysicActorCritic(ActorCritic):
         base_mean = self.base_head(shared_feat)
         arm_mean = self.arm_head(shared_feat)
         mean = torch.cat([base_mean, arm_mean], dim=-1)
-        if torch.isnan(mean).any():
-            print("NaN detected in mean before action scaling!")
-            print(f"Shared features: {shared_feat[0]}")
-            print(f"Base head output: {base_mean[0]}")
-            print(f"Arm head output: {arm_mean[0]}")
-            print("Physical estimator?", physic_estimated[0])
-            print("GT object velocities: ", obj_lin_vel_x_gt[0], obj_lin_vel_y_gt[0], obj_ang_vel_z_gt[0])
-            print("Actor input contains large values?", (actor_input > 1e3).any())
-            print("shared_mlp contains nan?", any(torch.isnan(param).any() for param in self.shared_mlp.parameters()))
-            print("base_head contains nan?", any(torch.isnan(param).any() for param in self.base_head.parameters()))
-            print("arm_head contains nan?", any(torch.isnan(param).any() for param in self.arm_head.parameters()))
-            raise ValueError("NaN detected in mean before action scaling!")
+        
         # Pad the actions to match the 12D action space accepted by the environment
         mean = torch.cat([mean, torch.zeros(mean.shape[0], 3, device=mean.device)], dim=-1)
         
@@ -206,6 +193,7 @@ class PhysicActorCritic(ActorCritic):
         # Separate obs out
         observations = obs["policy"]
         critic_observations = obs["critic"]
+
         # velocity prediction
         physic_estimator = self.physic_estimator(observations)
 
@@ -257,7 +245,7 @@ class PhysicActorCritic(ActorCritic):
 
 
         # interactive GNN processing
-        # TODO: figure out why nan in GNN construction
+        
         # node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
         # z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
 

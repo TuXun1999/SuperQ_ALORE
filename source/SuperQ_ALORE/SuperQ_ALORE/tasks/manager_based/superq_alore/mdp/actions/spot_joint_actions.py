@@ -13,6 +13,15 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
     from . import spot_actions_cfg
+from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene import \
+    OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS
+from SuperQ_ALORE.assets.object_catalog import (
+    ARM_JOINT_NAMES_IN_ORDER,
+    OBJECT_CATALOG,
+    OBJECT_IDS,
+    POSE_IDS_BY_OBJECT,
+    PoseEntry,
+)
 from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
 from SuperQ_ALORE.assets.spot.constants import HIP_STIFFNESS, HIP_DAMPING, KNEE_STIFFNESS, KNEE_DAMPING
 # Input: high-level controller action
@@ -148,6 +157,8 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         arm_joint_names = [joint_name for joint_name in GRASP_POSE_1_JOINT_POS.keys() if joint_name.startswith("arm")]
         # leg_joint_names = ["fl_hx", "fr_hx", "hl_hx", "hr_hx", "fl_hy", "fr_hy", "hl_hy", "hr_hy", "fl_kn", "fr_kn", "hl_kn", "hr_kn"]
         arm_grasp_pose_by_default = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in arm_joint_names], device=self._env.unwrapped.device)
+        
+        
         if start_moving_mask.any():
             # leg_grasp_pose_by_default = torch.tensor([GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in leg_joint_names], device=self._env.unwrapped.device)
 

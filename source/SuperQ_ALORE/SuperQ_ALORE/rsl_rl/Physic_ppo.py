@@ -192,7 +192,7 @@ class PhysicPPO(PPO):
                         param_group["lr"] = self.learning_rate
 
             # Physic Estimator update
-            estimation_loss = self.policy.physic_estimator.update(obs_batch["policy"], obs_batch["critic"])
+            estimation_loss = self.policy.physic_estimator.update(obs_batch["velocity_estimation"], obs_batch["critic"])
 
             # Surrogate loss
             # NOTE: clamp the ratio

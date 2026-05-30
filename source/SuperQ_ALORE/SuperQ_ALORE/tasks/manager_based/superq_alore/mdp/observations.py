@@ -8,7 +8,7 @@ import isaaclab.utils.math as math_utils
 from isaaclab.utils.math import quat_apply, quat_mul
 from isaaclab.envs import ManagerBasedRLEnv
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as isaac_mdp
-
+from SuperQ_ALORE.assets.object_catalog import OBJECT_CATALOG
 def known_external_force_torque(
     env: ManagerBasedRLEnv,
     event_name: str,
@@ -131,14 +131,20 @@ def ee_pose_in_robot_frame(
 def obj_pose_in_robot_frame(
     env: ManagerBasedRLEnv,
     robot_name: str = "robot",
-    object_name: str = "target_object",
 ) -> torch.Tensor:
     robot = env.scene[robot_name]
-    obj = env.scene[object_name]
-
+    obj_pos_w = []
+    obj_quat_w = []
+    obj_num = len(OBJECT_CATALOG)
+    for i in range(obj_num):
+        # Assume the objects are arranged in order by their IDs
+        obj = env.scene[f"target_object_{i}"]
+        obj_pos_w.append(obj.data.root_pos_w)  # shape (N_envs_obj, 3)
+        obj_quat_w.append(obj.data.root_quat_w)  # shape (N_envs_obj, 4)
+    
     # Obtain the object pose in world frame
-    obj_pos_w = obj.data.root_pos_w  # shape (N_envs, 3)
-    obj_quat_w = obj.data.root_quat_w  # shape (N_envs, 4)
+    obj_pos_w = torch.cat(obj_pos_w, dim=0)  # shape (N_envs, 3)
+    obj_quat_w = torch.cat(obj_quat_w, dim=0)  # shape (N_envs, 4)
 
     # Obtain the robot base pos & quat in world frame
     robot_base_pos = robot.data.root_pos_w  # (num_envs, 3)
@@ -225,11 +231,17 @@ def default_joint_pos(
 
 def object_velocity(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object",
 ) -> torch.Tensor:
-    obj = env.scene[asset_name]
-    obj_lin_vel = obj.data.root_lin_vel_b[:, :2]  # shape (N_envs, 2)
-    obj_ang_vel = obj.data.root_ang_vel_b[:, 2:]  # shape (N_envs, 1)
+    obj_num = len(OBJECT_CATALOG)
+    obj_lin_vel_list = []
+    obj_ang_vel_list = []
+    for i in range(obj_num):
+        # Assume the objects are arranged in order by their IDs
+        obj = env.scene[f"target_object_{i}"]
+        obj_lin_vel_list.append(obj.data.root_lin_vel_b[:, :2])  # shape (N_envs_obj, 2)
+        obj_ang_vel_list.append(obj.data.root_ang_vel_b[:, 2:])  # shape (N_envs_obj, 1)
+    obj_lin_vel = torch.cat(obj_lin_vel_list, dim=0)  # shape (N_envs, 2)
+    obj_ang_vel = torch.cat(obj_ang_vel_list, dim=0)  # shape (N_envs, 1)
     return torch.cat([obj_lin_vel, obj_ang_vel], dim=-1).to(env.device)  # shape (N_envs, 3)
 
 def last_high_level_action(
@@ -268,25 +280,46 @@ def ee_contact_state(
 
 def obj_lin_vel_in_body_frame(
     env: ManagerBasedRLEnv,
-    object_name: str = "target_object",
 ) -> torch.Tensor:
-    obj_lin_vel_b = env.scene[object_name].data.root_lin_vel_b  # shape (N_envs, 3)
+    obj_lin_vel_b_list = []
+    for i in range(len(OBJECT_CATALOG)):
+        # Assume the objects are arranged in order by their IDs
+        obj = env.scene[f"target_object_{i}"]
+        obj_lin_vel_b = obj.data.root_lin_vel_b # shape (N_envs_obj, 3)
+        obj_lin_vel_b_list.append(obj_lin_vel_b)
+    obj_lin_vel_b = torch.cat(obj_lin_vel_b_list, dim = 0)  # shape (N_envs, 3)
     return obj_lin_vel_b
 
 def obj_ang_vel_in_body_frame(
     env: ManagerBasedRLEnv,
-    object_name: str = "target_object",
 ) -> torch.Tensor:
-    obj_ang_vel_b = env.scene[object_name].data.root_ang_vel_b  # shape (N_envs, 3)
+    obj_ang_vel_b_list = []
+    for i in range(len(OBJECT_CATALOG)):
+        # Assume the objects are arranged in order by their IDs
+        obj = env.scene[f"target_object_{i}"]
+        obj_ang_vel_b = obj.data.root_ang_vel_b # shape (N_envs_obj, 3)
+        obj_ang_vel_b_list.append(obj_ang_vel_b)
+    obj_ang_vel_b = torch.cat(obj_ang_vel_b_list, dim = 0)  # shape (N_envs, 3)
     return obj_ang_vel_b
 
 def obj_physical_properties(
     env: ManagerBasedRLEnv,
-    object_name: str = "target_object",
 ) -> torch.Tensor:
-    obj = env.scene[object_name]
-    # Assuming the physical properties we want are mass, friction, and restitution
-    mass = torch.sum(obj.root_physx_view.get_masses(), dim=1).unsqueeze(-1)  # shape (num_envs, 1)  
-    static_friction = obj.root_physx_view.get_material_properties()[:, 0, 0].unsqueeze(-1)  # shape (num_envs, 1)
-    dynamic_friction = obj.root_physx_view.get_material_properties()[:, 0, 1].unsqueeze(-1)  # shape (num_envs, 1)
+    mass_list = []
+    static_friction_list = []
+    dynamic_friction_list = []
+    for i in range(len(OBJECT_CATALOG)):
+        # Assume the objects are arranged in order by their IDs
+        object_name = f"target_object_{i}"
+        obj = env.scene[object_name]
+        # Assuming the physical properties we want are mass, friction, and restitution
+        mass = torch.sum(obj.root_physx_view.get_masses(), dim=1).unsqueeze(-1)  # shape (num_envs_obj, 1)  
+        static_friction = obj.root_physx_view.get_material_properties()[:, 0, 0].unsqueeze(-1)  # shape (num_envs_obj, 1)
+        dynamic_friction = obj.root_physx_view.get_material_properties()[:, 0, 1].unsqueeze(-1)  # shape (num_envs_obj, 1)
+        mass_list.append(mass)
+        static_friction_list.append(static_friction)
+        dynamic_friction_list.append(dynamic_friction)
+    mass = torch.cat(mass_list, dim=0)  # shape (num_envs, 1)
+    static_friction = torch.cat(static_friction_list, dim=0)  # shape (num_envs, 1)
+    dynamic_friction = torch.cat(dynamic_friction_list, dim=0)  # shape (num_envs, 1)
     return torch.cat([static_friction, mass, dynamic_friction], dim=-1).to(env.device)  # shape (num_envs, 3)

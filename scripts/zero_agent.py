@@ -85,7 +85,7 @@ def main():
             # actions[:, -2:] = torch.tensor([-0.0,  0.55], device=env.unwrapped.device) #
             obs, _, _, _, _ = env.step(actions)
             timestep += 1
-
+            
             timestep = timestep % steps
 
     # close the simulator

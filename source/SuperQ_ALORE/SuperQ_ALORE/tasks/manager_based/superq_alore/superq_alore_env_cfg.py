@@ -8,7 +8,7 @@ from dataclasses import MISSING
 
 import torch
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -30,8 +30,18 @@ from isaaclab.actuators import ActuatorNetMLPCfg, DCMotorCfg, ImplicitActuatorCf
 ##
 from SuperQ_ALORE.assets.spot.spot import SPOT_ARM_CFG  # isort: skip
 from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES, FEET_NAMES, SPOT_BODY_LINKS
+from SuperQ_ALORE.assets.object_catalog import (
+    ARM_JOINT_NAMES_IN_ORDER,
+    OBJECT_CATALOG,
+    OBJECT_IDS,
+    POSE_IDS_BY_OBJECT,
+    PoseEntry,
+)
+
 from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
-import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
+from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene import \
+    build_target_objects, OBJECT_IDX_ENVS, CATALOG_OBJECT_CFGS
+import numpy as np
 ##
 # Scene definition
 ##
@@ -69,10 +79,26 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
     # robots
     robot: ArticulationCfg = MISSING
     
-    # target objects to manipulate
-    target_object = scene.CHAIR_RIGID_CFG
+    # target objects to manipulate\
+    # objects: we spawn all objects in the catalog, but only the active object will be actually placed at its active pose.
+    # create a local variable to store all objects defined in the catalog, 
+    _target_object_cfgs = {
+        # dictionary comprehension to create multiple target objects based on the catalog configs
+        f"target_object_{idx}": cfg for idx, cfg in enumerate(CATALOG_OBJECT_CFGS)
+    }
+
+    # stores type hint
+    __annotations__.update({name: RigidObjectCfg for name in _target_object_cfgs})
+
+    # dynamically create class variable to the local symbol table 
+    # so that the keys from the dictionary become actual local variable.
+    locals().update(_target_object_cfgs)
+
+    # remove the local variable from the namespace after using it.
+    del _target_object_cfgs
+    
     # contact sensors
-    # TODO: are they really... helpful?
+    # Contact sensors for the robot
     contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
     )
@@ -103,7 +129,7 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
     object_velocity = isaac_mdp.UniformVelocityCommandCfg(
-        asset_name="target_object",
+        asset_name="robot",
         resampling_time_range=(100.0, 100.0), # No need to change the command
         rel_standing_envs=0.0,
         rel_heading_envs=0.0,
@@ -215,9 +241,6 @@ class ObservationsCfg:
             self.enable_corruption = False
             self.history_length = 10
             self.concatenate_terms = True
-        
-
-
     @configclass
     class CriticCfg(ObsGroup):
         """Observations for critic."""
@@ -317,7 +340,6 @@ class ObservationsCfg:
         # Object physical properties (Static fric, mass, dynamic fric)
         obj_physical_properties = ObsTerm(
             func = mdp.obj_physical_properties,
-            params={"object_name": "target_object"},
             scale = 1.0,
         ) # dim: 3
         
@@ -376,7 +398,6 @@ class ObservationsCfg:
             func=mdp.object_velocity,
             history_length = 2,
             flatten_history_dim = False,
-            params={"asset_name": "target_object"},
         ) # dim: 3
         applied_actions = ObsTerm(
             func = mdp.last_high_level_action, 
@@ -388,7 +409,7 @@ class ObservationsCfg:
             self.enable_corruption = False
             self.concatenate_terms = False
     policy: PolicyCfg = PolicyCfg()
-    
+
     # policy_deployable: PolicyDeployableCfg = PolicyDeployableCfg()
     critic: CriticCfg = CriticCfg()
     # adapt_teacher: AdaptTeacherCfg = AdaptTeacherCfg()
@@ -426,13 +447,11 @@ class EventCfg:
             },
         },
     )
+    
+    # reset the object to the assigned pose
     reset_object = EventTerm(
-        func=mdp.reset_target_object_position,
+        func=mdp.reset_target_object_pose,
         mode="reset",
-        params = {
-            "asset_name": "target_object",
-            "offset": (0.05, 0.0)
-        }
     )
     
     # TODO: figure out how to reset the initial grasp poses at different locations
@@ -442,7 +461,6 @@ class EventCfg:
         params={
             "position_range": (-0.0, 0.0),
             "velocity_range": (-0.0, 0.0),
-            "joint_position_ref": GRASP_POSE_1_JOINT_POS,
         },
     )
     # reset_robot_joints = EventTerm(
@@ -484,44 +502,40 @@ class RewardsCfg:
     
     
     # Smooth movement of the object
-    yaw_alignment = RewTerm(
-        func=mdp.yaw_alignment_reward, 
-        weight=5.0,
-        params={
-            "asset_name": "target_object",
-            "robot_name": "robot",
-        },
-    ) # Align the yaw of the object with the desired direction (if applicable)
+    # yaw_alignment = RewTerm(
+    #     func=mdp.yaw_alignment_reward, 
+    #     weight=5.0,
+    #     params={
+    #         "asset_name": "target_object",
+    #         "robot_name": "robot",
+    #     },
+    # ) # Align the yaw of the object with the desired direction (if applicable)
 
     
     lin_vel_z_l2 = RewTerm(
         func=mdp.lin_vel_z_l2,
         weight=2.0,
-        params = {"asset_name": "target_object"}
     ) # Penalize the vertical velocity of the object to encourage it to stay on the ground
     
     ang_vel_xy_l2 = RewTerm(
         func=mdp.ang_vel_xy_l2,
         weight=2.0,
-        params = {"asset_name": "target_object"}
     ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
     
-    flat_orientation_l2 = RewTerm(
-        func=mdp.flat_orientation_l2,
-        weight=10.0,
-        params = {"asset_name": "target_object"}
-    ) # Encourage the object to maintain a flat orientation (if applicable)
+    # flat_orientation_l2 = RewTerm(
+    #     func=mdp.flat_orientation_l2,
+    #     weight=10.0,
+    #     params = {"asset_name": "target_object"}
+    # ) # Encourage the object to maintain a flat orientation (if applicable)
     
     lin_vel_change_penalty = RewTerm(
         func=mdp.lin_vel_change_penalty,
         weight=2.0,
-        params = {"asset_name": "target_object"}
     ) # Penalize the change in linear velocity of the object to encourage smooth motion
     
     ang_vel_change_penalty = RewTerm(
         func=mdp.ang_vel_change_penalty,
         weight=2.0,
-        params = {"asset_name": "target_object"}
     ) # Penalize the change in angular velocity of the object to encourage smooth motion
     
     # TODO: the distance may be tricky
@@ -636,7 +650,7 @@ class TerminationsCfg:
 @configclass
 class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
     # Scene settings
-    scene: SuperqAloreSceneCfg = SuperqAloreSceneCfg(num_envs=4096, env_spacing=4.0)
+    scene: SuperqAloreSceneCfg = SuperqAloreSceneCfg(num_envs=20, env_spacing=4.0, replicate_physics=False)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -657,22 +671,11 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation
-        
-        # Import the robot (behind the chair)
+
+
+        # Import the robot
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None
         
         
-    # Create a new buffer to store the previous object velocities & actions
-    # def _pre_physics_step(self, action):
-    #     # Cache the current velocity before it gets updated
-    #     prev_obj_lin_vel = self.scene["target_object"].data.root_lin_vel_b.clone()[:, :2]
-    #     prev_obj_ang_vel = self.scene["target_object"].data.root_ang_vel_b.clone()[:, 2]
-    #     self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
-    
-    # # After the physics step, update prev_action and prev_prev_action for the next step
-    # def _post_physics_step(self, action):
-    #     # Update the observed actions as well
-    #     self.prev_prev_action = getattr(self, "prev_action", torch.zeros_like(action))
-    #     self.prev_action = action.clone()
 

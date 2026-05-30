@@ -43,7 +43,7 @@ class OnPolicyRunnerSuperQALORE():
 
         # Query observations from environment for algorithm construction
         obs = self.env.get_observations()
-        default_sets = ["critic"]
+        default_sets = ["critic", "velocity_estimation"]  # velocity estimation obs group is required for PhysicActorCritic
         if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
             default_sets.append("rnd_state")
         self.cfg["obs_groups"] = resolve_obs_groups(obs, self.cfg["obs_groups"], default_sets)
