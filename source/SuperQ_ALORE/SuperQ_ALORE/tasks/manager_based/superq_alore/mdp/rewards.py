@@ -10,26 +10,153 @@ from isaaclab.sensors import ContactSensor
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import RewardTermCfg
 from isaaclab.envs import ManagerBasedRLEnv
-from isaaclab.utils.math import quat_rotate, quat_mul
+from isaaclab.utils.math import quat_apply, quat_mul
+
+from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management as om
+from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import keypoints as keypoints_mdp
 
 
 """
 Group 1: Object related rewards (primary task)
 """
+
+
+def _cached_keypoints_pair(
+    env: ManagerBasedRLEnv,
+    goal_term_name: str = "goal_pose",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return (object_keypoints_w, goal_keypoints_w) with robust goal-term fallback."""
+    k_obj_w = keypoints_mdp.pushable_keypoints_w(env)
+
+    term_candidates = []
+    for name in (goal_term_name, "goal_pose", "goal_region"):
+        if name not in term_candidates:
+            term_candidates.append(name)
+
+    last_err = None
+    for name in term_candidates:
+        try:
+            k_goal_w = keypoints_mdp.goal_keypoints_w(env, goal_term_name=name)
+            return k_obj_w, k_goal_w
+        except Exception as err:
+            last_err = err
+
+    raise RuntimeError(
+        f"Failed to resolve goal keypoints for terms {term_candidates}."
+    ) from last_err
+
+
+def _get_goal_pose(
+    env: ManagerBasedRLEnv,
+    goal_term_name: str = "goal_pose",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Return (goal_pos_w, goal_quat_w) with robust goal-term fallback."""
+    term_candidates = []
+    for name in (goal_term_name, "goal_pose", "goal_region"):
+        if name not in term_candidates:
+            term_candidates.append(name)
+
+    last_err = None
+    for name in term_candidates:
+        try:
+            term = env.command_manager.get_term(name)
+            goal_pos_w = term.goal_w if hasattr(term, "goal_w") else term.command[:, :3]
+            if hasattr(term, "goal_quat_w"):
+                goal_quat_w = term.goal_quat_w
+            else:
+                goal_quat_w = torch.zeros((goal_pos_w.shape[0], 4), device=goal_pos_w.device, dtype=goal_pos_w.dtype)
+                goal_quat_w[:, 0] = 1.0
+            return goal_pos_w, goal_quat_w
+        except Exception as err:
+            last_err = err
+
+    raise RuntimeError(
+        f"Failed to resolve goal pose for terms {term_candidates}."
+    ) from last_err
+
+
+def _sigma_denom(env: ManagerBasedRLEnv, sigma3: float, metric_name: str) -> torch.Tensor:
+    """Return safe sigma^2 denominator for exponential rewards."""
+    sigma_sq = max(float(sigma3) ** 2, 1.0e-8)
+    return torch.full((env.num_envs,), sigma_sq, device=env.device, dtype=torch.float32)
+
+
+def keypoint_pose_match_exp(
+    env: ManagerBasedRLEnv,
+    goal_term_name: str = "goal_pose",
+    sigma3: float = 0.38,
+) -> torch.Tensor:
+    """Dense keypoint pose-match reward: exp(-||Kg-Ko||/sigma^2)."""
+    k_obj_w, k_goal_w = _cached_keypoints_pair(env, goal_term_name=goal_term_name)
+    ko = k_obj_w.reshape(env.num_envs, -1)
+    kg = k_goal_w.reshape(env.num_envs, -1)
+
+    dist = torch.norm(kg - ko, dim=-1)
+    denom = _sigma_denom(env, sigma3, "keypoint_pose_match_exp")
+    return torch.exp(-dist / denom)
+
+
+def velocity_toward_goal_exp(
+    env: ManagerBasedRLEnv,
+    box_name: str = "target_object",
+    goal_term_name: str = "goal_pose",
+    sigma2: float = 1.0,
+    use_unit_vel: bool = True,
+    use_xy: bool = False,
+) -> torch.Tensor:
+    """Velocity-toward-goal reward: exp((v·p_hat)/sigma^2 - 1)."""
+    obj_pos_w = om.get_active_object_state_attr(env, "root_pos_w")
+    vel_w = om.get_active_object_state_attr(env, "root_lin_vel_w")
+    goal_pos_w, _ = _get_goal_pose(env, goal_term_name)
+
+    dir_vec = goal_pos_w - obj_pos_w
+    if use_xy:
+        dir_vec = dir_vec.clone()
+        dir_vec[:, 2] = 0.0
+    dir_hat = dir_vec / (torch.linalg.norm(dir_vec, dim=1, keepdim=True) + 1.0e-6)
+
+    vel = vel_w
+    if use_unit_vel:
+        if use_xy:
+            vel = vel.clone()
+            vel[:, 2] = 0.0
+        vel = vel / (torch.linalg.norm(vel, dim=1, keepdim=True) + 1.0e-6)
+
+    dot = torch.sum(vel * dir_hat, dim=1)
+    denom = _sigma_denom(env, sigma2, "velocity_toward_goal_exp")
+    return torch.exp(dot / denom - 1.0)
+
+
+def sparse_completion_reward(
+    env: ManagerBasedRLEnv,
+    goal_term_name: str = "goal_pose",
+    dist_error: float = 0.10,
+    angular_error: float = 10.0,
+    success_reward: float = 1.0,
+) -> torch.Tensor:
+    """Sparse completion reward when object-goal distance and angular error are both within thresholds."""
+    obj_pos_w = om.get_active_object_state_attr(env, "root_pos_w")
+    goal_pos_w, _ = _get_goal_pose(env, goal_term_name)
+
+    pos_dist = torch.linalg.norm((goal_pos_w - obj_pos_w)[:, :2], dim=1)
+    k_obj_w, k_goal_w = _cached_keypoints_pair(env, goal_term_name=goal_term_name)
+    keypoint_angle_err_deg = torch.abs(keypoints_mdp.keypoint_yaw_error_deg_xy(k_obj_w, k_goal_w))
+
+    success = (pos_dist <= float(dist_error)) & (keypoint_angle_err_deg <= float(angular_error))
+    return success.to(torch.float32) * float(success_reward)
+
 ## (1) Command tracking rewards
 # Linear velocity tracking (object velocity in robot frame)
 def track_lin_vel_xy_exp(
     env: ManagerBasedRLEnv,
     command_name: str = "object_velocity",
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Reward tracking of linear velocity commands (xy axes) using abs exponential kernel."""
-    # extract the used quantities (to enable type-hinting)
-    asset: RigidObject = env.scene[asset_name]
     # compute the error
     target = env.command_manager.get_command(command_name)[:, :2]
     lin_vel_error = torch.linalg.norm(
-        (target - asset.data.root_lin_vel_b[:, :2]), dim=1
+        (target - om.get_active_object_state_attr(env, "root_lin_vel_b")[:, :2]), dim=1
     )
     return torch.exp(-lin_vel_error / 0.25)
 
@@ -37,15 +164,13 @@ def track_lin_vel_xy_exp(
 def track_ang_vel_yaw_exp(
     env: ManagerBasedRLEnv,
     command_name: str = "object_velocity",
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Reward tracking of angular velocity commands (yaw) using abs exponential kernel."""
-    # extract the used quantities (to enable type-hinting)
-    asset: RigidObject = env.scene[asset_name]
     # compute the error
     target = env.command_manager.get_command(command_name)[:, 2]
     ang_vel_error = torch.linalg.norm(
-        (target - asset.data.root_ang_vel_b[:, 2]).unsqueeze(1), dim=1
+        (target - om.get_active_object_state_attr(env, "root_ang_vel_b")[:, 2]).unsqueeze(1), dim=1
     )
     return torch.exp(-ang_vel_error / 0.25)
 
@@ -101,18 +226,17 @@ def _euler_from_quat(quat_angle: torch.Tensor) -> torch.Tensor:
 
 def yaw_alignment_reward(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object",
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
     robot_name: str = "robot"
     ):
     """Encourage the object to be aligned with the robot in the yaw direction."""
     # Extract the assets
     robot = env.scene[robot_name]
-    asset = env.scene[asset_name]
-    
-    # Find the relative yaw different between the object & the robot
+    # Find the relative yaw difference between the object & the robot
     yaw_diff = (
         (_euler_from_quat(asset.data.root_quat_w)[2] -         # asset.data.root_quat_w
-        _euler_from_quat(robot.data.root_quat_w)[2] + torch.pi)
+         # in our setting, the offset should be pi / 2
+        _euler_from_quat(robot.data.root_quat_w)[2] + torch.pi / 2.0)
         % (2 * torch.pi) - torch.pi
     )
     yaw_alignment_reward = -torch.abs(yaw_diff) / torch.pi
@@ -122,48 +246,58 @@ def yaw_alignment_reward(
 # Velocity along the z-direction (to discourage lifting or digging the object)
 def lin_vel_z_l2(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Penalize linear velocity along the z-direction."""
-    asset: RigidObject = env.scene[asset_name]
-    lin_vel_z = asset.data.root_lin_vel_b[:, 2]
+    lin_vel_z = om.get_active_object_state_attr(env, "root_lin_vel_b")[:, 2]
     return -torch.square(lin_vel_z)
+
+# Linear velocity along the robot y-direction (to discourage lateral slipping)
+def lin_vel_y_l2(
+    env: ManagerBasedRLEnv,
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
+) -> torch.Tensor:
+    """Penalize linear velocity along the robot y-direction in robot frame."""
+    lin_vel_y = om.get_active_object_state_attr(env, "root_lin_vel_b")[:, 1]
+    return -torch.square(lin_vel_y)
 
 # Angular velocity along the x/y-direction (to discourage flipping the object)
 def ang_vel_xy_l2(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Penalize angular velocity along the x/y-direction."""
-    asset: RigidObject = env.scene[asset_name]
-    ang_vel_xy = asset.data.root_ang_vel_b[:, :2]
+    ang_vel_xy = om.get_active_object_state_attr(env, "root_ang_vel_b")[:, :2]
     return -torch.sum(torch.square(ang_vel_xy), dim=1)
 
 # Flat orientation (to discourage flipping the object)
 def flat_orientation_l2(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
+    flat_threshold: float = 0,
 ) -> torch.Tensor:
-    """Penalize deviation from flat orientation."""
-    asset: RigidObject = env.scene[asset_name]
-    flat_orientation = torch.sum(torch.square(asset.data.projected_gravity_b[:, :2]), dim=1)
-    return -flat_orientation
+    """Indicator-style non-flat penalty: 1 if not flat, else 0."""
+    tilt_l2 = torch.sum(
+        torch.square(om.get_active_object_state_attr(env, "projected_gravity_b")[:, :2]), dim=1
+    )
+    return (tilt_l2 > float(flat_threshold)).to(torch.float32)
+
+
+def flat_orientation(
+    env: ManagerBasedRLEnv,
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
+    flat_threshold: float = 1.0e-3,
+) -> torch.Tensor:
+    """Backward-compatible alias for flat-orientation indicator penalty."""
+    return flat_orientation_l2(env, asset_name=asset_name, flat_threshold=flat_threshold)
 
 # Velocity change penalty (to encourage smooth motion)
 def lin_vel_change_penalty(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Penalize change in linear velocity."""
-    # asset: RigidObject = env.scene[asset_name]
-    # current_lin_vel = asset.data.root_lin_vel_b[:, :2]  # (vx, vy)
-    
-    # # Calculate the penalty
-    # lin_vel_change_penalty = torch.norm(current_lin_vel - env.prev_obj_vel[:, :2], dim=-1)
-
-    # return -lin_vel_change_penalty
-    asset: RigidObject = env.scene[asset_name]
-    current_lin_vel = asset.data.root_lin_vel_b[:, :2]  # (vx, vy)
+    current_lin_vel = om.get_active_object_state_attr(env, "root_lin_vel_b")[:, :2]  # (vx, vy)
     prev_lin_vel = env.observation_manager.compute_group("reward_calculation")["object_velocity"][:, 0, :2]  # (vx, vy)
     lin_vel_change_penalty = torch.norm(current_lin_vel - prev_lin_vel, dim=-1)
     return -lin_vel_change_penalty
@@ -171,11 +305,10 @@ def lin_vel_change_penalty(
 
 def ang_vel_change_penalty(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object"
+    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     """Penalize change in angular velocity."""
-    asset: RigidObject = env.scene[asset_name]
-    current_ang_vel = asset.data.root_ang_vel_b[:, 2]  # yaw velocity
+    current_ang_vel = om.get_active_object_state_attr(env, "root_ang_vel_b")[:, 2]  # yaw velocity
     prev_ang_vel = env.observation_manager.compute_group("reward_calculation")["object_velocity"][:, 0, 2]  # yaw velocity
     ang_vel_change_penalty = torch.abs(current_ang_vel - prev_ang_vel)
     return -ang_vel_change_penalty
@@ -206,7 +339,7 @@ def distance_penalty(
 
     # Calculate the relative displacement
     ee_pos_relative = ee_pos_w - robot_base_pos  # (num_envs, 3)
-    ee_pos_in_robot_frame = quat_rotate(robot_quat_inv, ee_pos_relative)  # (num_envs, 3)
+    ee_pos_in_robot_frame = quat_apply(robot_quat_inv, ee_pos_relative)  # (num_envs, 3)
     distance_ee2base_x = ee_pos_in_robot_frame[:, 0]
 
     # Calculate the penalty
@@ -263,22 +396,30 @@ def joint_positions_wrt_reference(
     env: ManagerBasedRLEnv,
     arm_joint_names: tuple[str, ...],
     robot_name: str = "robot",
-    reference_joint_positions: dict = None
 ) -> torch.Tensor:
-    """Penalize large deviations from reference joint positions."""
-    robot = env.scene[robot_name]
-    arm_joint_ids, _ = robot.find_joints(
-            arm_joint_names
-        )
-    reference_joints_positions_tensor = torch.zeros((len(arm_joint_names)), dtype=robot.data.joint_pos.dtype, device=robot.data.joint_pos.device)
-    idx = 0
-    for joint_name in arm_joint_names:
-        if joint_name not in reference_joint_positions:
-            raise ValueError(f"Reference joint positions must be provided for all arm joints. Missing: {joint_name}")
-        reference_joints_positions_tensor[idx] = reference_joint_positions[joint_name]
-        idx += 1
+    """Penalize large deviations from reference joint positions.
     
-    joint_diff = robot.data.joint_pos[:, arm_joint_ids] - reference_joints_positions_tensor
+    Uses per-env reference from env.active_arm_joint_reference, which is updated
+    each episode to match the sampled target pose from the catalog.
+    This enables multi-pose training where each env can have a different
+    target reference pose depending on the sampled object/grasp.
+    """
+    robot = env.scene[robot_name]
+    arm_joint_ids, _ = robot.find_joints(arm_joint_names)
+    
+    # Fetch per-env reference: shape [num_envs, 7] (all arm joints including gripper)
+    # env.active_arm_joint_reference is updated in sample_target_assignments()
+    # Slice to first len(arm_joint_ids) columns to match arm_joint_names (gripper excluded)
+    reference_joint_positions_tensor = env.active_arm_joint_reference[:, :len(arm_joint_ids)]  # [num_envs, 6]
+    
+    # robot.data.joint_pos has shape [num_envs, num_total_joints]
+    # We extract only arm joint columns: [num_envs, len(arm_joint_ids)]
+    current_arm_positions = robot.data.joint_pos[:, arm_joint_ids]
+    
+    # Compute per-env difference: [num_envs, len(arm_joint_ids)]
+    joint_diff = current_arm_positions - reference_joint_positions_tensor
+    
+    # Sum absolute differences across joints for each env: [num_envs]
     joint_reference_pos_reward = torch.sum(torch.abs(joint_diff), dim=1)
     return -joint_reference_pos_reward
 

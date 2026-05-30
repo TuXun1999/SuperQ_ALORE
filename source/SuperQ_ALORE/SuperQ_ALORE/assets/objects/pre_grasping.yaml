@@ -1,0 +1,20 @@
+objects:
+  chair_1:
+    asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/armchair_with_contact_sensor.usda"
+    poses:
+      back:
+        position: [0.0, 0.0, 0.0]
+        orientation: [0.707, 0.0, 0.0, 0.707] # match with the RigidBodyCfg
+        joint_configuration: [0.00, -1.3206, 1.5866, 0.0, 1.0781, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+      handle:
+        position: [0.15, 0.0, 0.0]
+        orientation: [1.0, 0.0, 0.0, 0.0]
+        joint_configuration: [0.00, -0.70, 1.1866, 0.00, 1.2281, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  
+  # chair_2:
+  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/Shorter_Office_Chair.usd"
+  #   poses:
+  #     handle:
+  #       position: [0.15, 0.0, 0.0]
+  #       orientation: [0.707, 0.0, 0.0, 0.707]
+  #       joint_configuration: [0.0, -1.05, 1.3366, 0.0, 1.2281, 0.0, -0.9] 

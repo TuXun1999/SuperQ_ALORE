@@ -32,13 +32,15 @@ def illegal_ground_contact(
     """Terminate when the contact force on the sensor exceeds the force threshold."""
     # extract the used quantities (to enable type-hinting)
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    contact_forces_with_ground = contact_sensor.data.force_matrix_w[
-        :, sensor_cfg.body_ids, ...
-    ].squeeze()
+    contact_forces_with_ground = contact_sensor.data.force_matrix_w[:, sensor_cfg.body_ids, ...]
+
+    # Compute vector norm of force and flatten all non-batch dimensions, so this
+    # works for both single-body and multi-body sensor selections.
+    force_norm = torch.linalg.vector_norm(contact_forces_with_ground, dim=-1)
+    force_norm = force_norm.reshape(force_norm.shape[0], -1)
+
     # check if any contact force with the ground exceeds the threshold
-    return (
-        torch.max(torch.norm(contact_forces_with_ground, dim=-1), dim=1)[0] > threshold
-    )
+    return torch.any(force_norm > threshold, dim=1)
     
 def joint_velocity_limits(
     env: ManagerBasedRLEnv,

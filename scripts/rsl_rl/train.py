@@ -9,6 +9,8 @@
 
 import argparse
 import sys
+import time
+from collections import defaultdict
 
 from isaaclab.app import AppLauncher
 
@@ -33,6 +35,18 @@ parser.add_argument(
 parser.add_argument("--export_io_descriptors", action="store_true", default=False, help="Export IO descriptors.")
 parser.add_argument(
     "--ray-proc-id", "-rid", type=int, default=None, help="Automatically configured by Ray integration, otherwise None."
+)
+parser.add_argument(
+    "--profile_iteration_timing",
+    action="store_true",
+    default=False,
+    help="Enable per-iteration timing breakdown for the active RL pipeline.",
+)
+parser.add_argument(
+    "--profile_interval",
+    type=int,
+    default=1,
+    help="Print timing breakdown every N learning iterations when profiling is enabled.",
 )
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -95,7 +109,7 @@ from isaaclab_rl.rsl_rl import RslRlBaseRunnerCfg, RslRlVecEnvWrapper
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
-
+# from SuperQ_ALORE.rsl_rl.on_policy_runner_physics import PhysicsOnPolicyRunner
 # import logger
 logger = logging.getLogger(__name__)
 
@@ -188,7 +202,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     env = RslRlVecEnvWrapper(env, clip_actions=agent_cfg.clip_actions)
 
     # create runner from rsl-rl
-    if agent_cfg.class_name == "OnPolicyRunner": # This is the default choice for PPO algorithm
+    if agent_cfg.class_name == "OnPolicyRunner": # This is the default choice for PPO agent
         runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     elif agent_cfg.class_name == "DistillationRunner":
         runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
@@ -201,6 +215,128 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
         runner.load(resume_path)
+
+    # Wrap the runner's act method to apply action clipping
+    # This ensures stock RSL-RL PPO actions are clipped to safe bounds from PhysicActorCritic
+    action_clip = torch.tensor(
+        [0.6, 0.0, 0.6, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0],
+        device=agent_cfg.device
+    )
+    original_act = runner.alg.act
+    
+    def clipped_act(obs, **kwargs):
+        """Wrapper that clips actor output to safe bounds."""
+        actions = original_act(obs, **kwargs)
+        actions = torch.clamp(actions, -action_clip.to(actions.device), action_clip.to(actions.device))
+        return actions
+    
+    runner.alg.act = clipped_act
+    print(f"[INFO] Action clipping enabled with bounds: {action_clip.cpu().numpy()}")
+
+    def _set_env_learning_iteration(iter_idx: int) -> None:
+        """Helper function to set the current PPO learning iteration index in the environment for curriculum scheduling."""
+        value = int(iter_idx)
+
+        # Attempt to set the learning iteration index in both the environment and its unwrapped version (if it exists).
+        for target in (env, getattr(env, "unwrapped", None)):
+            if target is None:
+                continue
+            try:
+                # attempt to set the learning iteration index in the environment for curriculum scheduling
+                setattr(target, "learning_iteration", value)
+            except Exception:
+                pass
+
+    # Initialize to the first PPO learning iteration.
+    _set_env_learning_iteration(0)
+
+    # saves the original logging function so that we can call it after injecting the learning iteration index update for curriculum scheduling
+    original_log_for_curriculum = runner.log
+
+    def log_with_learning_iteration(*call_args, **call_kwargs):
+        """Wrapper around the runner's log function to update the environment with the current learning iteration index for curriculum scheduling."""
+        locs = call_args[0] if len(call_args) > 0 else call_kwargs.get("locs", {})
+        it = int(locs.get("it", 0))
+        # runner.log() is called after rollout+update for iteration `it`.
+        # Set the env-side counter to `it + 1` so the next rollout uses the next PPO iteration index.
+        _set_env_learning_iteration(it + 1)
+        return original_log_for_curriculum(*call_args, **call_kwargs)
+
+    # replace the runner's log function with the wrapped version that updates the environment with the current learning iteration index for curriculum scheduling
+    runner.log = log_with_learning_iteration
+
+    if args_cli.profile_iteration_timing:
+        print("[INFO] Per-iteration timing profiler enabled.")
+
+        timing = defaultdict(float)
+        profile_interval = max(1, int(args_cli.profile_interval))
+
+        def _sync_for_timing():
+            if torch.cuda.is_available() and "cuda" in str(agent_cfg.device):
+                torch.cuda.synchronize()
+
+        def _timed_call(label, fn, *call_args, **call_kwargs):
+            _sync_for_timing()
+            t0 = time.perf_counter()
+            result = fn(*call_args, **call_kwargs)
+            _sync_for_timing()
+            timing[label] += time.perf_counter() - t0
+            return result
+
+        # Wrap the active pipeline calls.
+        original_act = runner.alg.act
+        original_env_step = env.step
+        original_process_env_step = runner.alg.process_env_step
+        original_compute_returns = runner.alg.compute_returns
+        original_update = runner.alg.update
+        original_log = runner.log
+
+        def profiled_act(*call_args, **call_kwargs):
+            return _timed_call("act", original_act, *call_args, **call_kwargs)
+
+        def profiled_env_step(*call_args, **call_kwargs):
+            return _timed_call("env_step", original_env_step, *call_args, **call_kwargs)
+
+        def profiled_process_env_step(*call_args, **call_kwargs):
+            return _timed_call("process_env_step", original_process_env_step, *call_args, **call_kwargs)
+
+        def profiled_compute_returns(*call_args, **call_kwargs):
+            return _timed_call("compute_returns", original_compute_returns, *call_args, **call_kwargs)
+
+        def profiled_update(*call_args, **call_kwargs):
+            return _timed_call("update", original_update, *call_args, **call_kwargs)
+
+        def profiled_log(*call_args, **call_kwargs):
+            # Print and log the previous iteration's measured timings once per iteration.
+            locs = call_args[0] if len(call_args) > 0 else call_kwargs.get("locs", {})
+            it = locs.get("it", -1)
+            total = sum(timing.values())
+
+            if total > 0 and it % profile_interval == 0:
+                ordered_keys = ["env_step", "update", "act", "process_env_step", "compute_returns"]
+                summary = [
+                    f"{key}={timing.get(key, 0.0):.4f}s ({100.0 * timing.get(key, 0.0) / total:5.1f}%)"
+                    for key in ordered_keys
+                ]
+                print("[TIMING] iteration {} :: total={:.4f}s :: {}".format(it, total, " | ".join(summary)))
+
+                if getattr(runner, "writer", None) is not None:
+                    for key in ordered_keys:
+                        value = timing.get(key, 0.0)
+                        runner.writer.add_scalar(f"Timing/{key}", value, it)
+                        runner.writer.add_scalar(f"TimingPct/{key}", 100.0 * value / total, it)
+                    runner.writer.add_scalar("Timing/total_profiled", total, it)
+
+            result = _timed_call("log", original_log, *call_args, **call_kwargs)
+            timing.clear()
+            return result
+
+        runner.alg.act = profiled_act
+        env.step = profiled_env_step
+        runner.alg.process_env_step = profiled_process_env_step
+        runner.alg.compute_returns = profiled_compute_returns
+        runner.alg.update = profiled_update
+        runner.log = profiled_log
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)

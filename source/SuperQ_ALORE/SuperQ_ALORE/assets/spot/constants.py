@@ -205,12 +205,12 @@ NEG_TORQUE_SPEED_LIMIT: list[list[float]] = [
 # Pre-calculated joint positions for SPOT at the first grasp pose
 GRASP_POSE_1_JOINT_POS: dict[str, float] = {
     # Arm joints
-    "arm_sh0": 0.00,
-    "arm_sh1": -1.3206,
-    "arm_el0": 1.5866,
+    "arm_sh0": 0.0,
+    "arm_sh1": -0.45,
+    "arm_el0": 1.9866,
     "arm_el1": -0.00,
-    "arm_wr0": 1.0781,
-    "arm_wr1": -0.00,
+    "arm_wr0": -1.2219,
+    "arm_wr1": 0.00,
     "arm_f1x": -0.9,
     
     # SPOT's default leg joint positions in experiments

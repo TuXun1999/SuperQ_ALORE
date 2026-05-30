@@ -8,7 +8,7 @@ from dataclasses import MISSING
 
 import torch
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg
+from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -30,7 +30,6 @@ from isaaclab.actuators import ActuatorNetMLPCfg, DCMotorCfg, ImplicitActuatorCf
 ##
 from SuperQ_ALORE.assets.spot.spot import SPOT_ARM_CFG  # isort: skip
 from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES, FEET_NAMES, SPOT_BODY_LINKS
-from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
 import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 ##
 # Scene definition
@@ -40,6 +39,7 @@ import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 @configclass
 class SuperqAloreSceneCfg(InteractiveSceneCfg):
     """Configuration for a cart-pole scene."""
+
 
     # ground plane
     # ground = AssetBaseCfg(
@@ -69,8 +69,22 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
     # robots
     robot: ArticulationCfg = MISSING
     
-    # target objects to manipulate
-    target_object = scene.CHAIR_RIGID_CFG
+    # objects: we spawn all objects in the catalog, but only the active object will be actually placed at its active pose.
+    # create a local variable to store all objects defined in the catalog, 
+    _target_object_cfgs = {
+        # dictionary comprehension to create multiple target objects based on the catalog configs
+        f"target_object_{idx}": cfg for idx, cfg in enumerate(scene.CATALOG_OBJECT_CFGS)
+    }
+
+    # stores type hint
+    __annotations__.update({name: RigidObjectCfg for name in _target_object_cfgs})
+
+    # dynamically create class variable to the local symbol table 
+    # so that the keys from the dictionary become actual local variable.
+    locals().update(_target_object_cfgs)
+
+    # remove the local variable from the namespace after using it.
+    del _target_object_cfgs
     # contact sensors
     # TODO: are they really... helpful?
     contact_forces = ContactSensorCfg(
@@ -102,23 +116,45 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
 @configclass
 class CommandsCfg:
     """Command specifications for the MDP."""
-    object_velocity = isaac_mdp.UniformVelocityCommandCfg(
-        asset_name="target_object",
-        resampling_time_range=(100.0, 100.0), # No need to change the command
-        rel_standing_envs=0.0,
-        rel_heading_envs=0.0,
-        heading_command=False,
-        heading_control_stiffness=1.0,
+    goal_pose = mdp.GoalPoseCommandCfg(
+        resampling_time_range=(1e6, 1e6), # No need to change the command
+        enable_yaw_curriculum=True,
+        curriculum_iterations_per_level=1000, # increase one curriculum level every 1000 iterations
+        curriculum_initial_yaw_range=(0.0, 0.0), # start with no yaw displacement
+        curriculum_yaw_step=math.pi / 18.0, # increase yaw range by 10 degrees on each side per curriculum level
+        curriculum_max_yaw=math.pi / 2.0, # maximum yaw range is 90 degrees
         debug_vis=True,
-        # TODO: for objects of different frame conventions, we 
-        # might need to consider different command ranges
-        ranges=isaac_mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.0, 0.0),
-            lin_vel_y=(-0.0, 0.5),
-            ang_vel_z=(-0.5, 0.5),
-            heading=(-math.pi, math.pi), # Not used if heading_command = False
+        debug_vis_keypoints=True,
+        debug_vis_keypoint_radius=0.04,
+        # if enable_yaw_curriculum is set, then the yaw of the goal pose is not actually used. 
+        # Instead, the curriculum will control the yaw range for sampling the goal pose, and 
+        # the actual yaw value in the command will be reset in the constructor.
+        ranges=mdp.GoalPoseCommandCfg.Ranges(
+            pos_x=(-1.5, 1.5),
+            pos_y=(-1.5, 1.5),
+            pos_z=(0.0, 0.0),
+            yaw=(0.0, 0.0),
         ),
     )
+
+    # object_velocity = mdp.ObjectUniformVelocityRobotFrameCommandCfg(
+    #     # Keep target object as the command reference asset.
+    #     asset_name="target_object_0",
+    #     reference_asset_name="robot",
+    #     resampling_time_range=(100.0, 100.0), # No need to change the command
+    #     rel_standing_envs=0.0,
+    #     rel_heading_envs=0.0,
+    #     heading_command=False,
+    #     heading_control_stiffness=1.0,
+    #     debug_vis=True,
+    #     # Linear direction is enforced in command term to robot x-axis.
+    #     ranges=mdp.ObjectUniformVelocityRobotFrameCommandCfg.Ranges(
+    #         lin_vel_x=(-0.5, 0.5),
+    #         lin_vel_y=(0.0, 0.0),
+    #         ang_vel_z=(-0.5, 0.5),
+    #         heading=(-math.pi, math.pi), # Not used if heading_command = False
+    #     ),
+    # )
 
 @configclass
 class ActionsCfg:
@@ -186,12 +222,6 @@ class ObservationsCfg:
             func = mdp.last_high_level_action, params={"clip_limit": 100}
         ) # dim: 9
         
-        # Commands (x, y, omega)
-        commands = ObsTerm(
-            func=isaac_mdp.generated_commands,
-            params={"command_name": "object_velocity"},
-        ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
-        
         # End-effector in robot frame
         ee_pose_in_robot_frame = ObsTerm(
             func = mdp.ee_pose_in_robot_frame,
@@ -204,16 +234,24 @@ class ObservationsCfg:
             func = mdp.obj_pose_in_robot_frame,
             scale = 1.0,
         ) # dim: 7 (position + quat) for the target object
-        
-        # Category code? (TODO: Clarify this... it's constant zero in ALORE)
-        category_encode = ObsTerm(
-            func = mdp.category_encode,
-            scale = 1.0,
-        ) # dim 3, one-hot encoding for object category, not used in ALORE so just return zeros
+
+        # Vector from active object to goal in active object frame.
+        box_to_goal_b = ObsTerm(
+            func=mdp.box_to_goal_vec_b3,
+            params={"goal_term_name": "goal_pose"},
+            noise=Unoise(n_min=-0.02, n_max=0.02),
+        ) # dim: 3
+
+        # Goal orientation represented in active object frame as a flattened 3x3 matrix.
+        goal_rot_mat_in_object = ObsTerm(
+            func=mdp.goal_rot_mat_in_object,
+            params={"goal_term_name": "goal_pose"},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        ) # dim: 9
 
         def __post_init__(self):
             self.enable_corruption = False
-            self.history_length = 10
+            self.history_length = 1
             self.concatenate_terms = True
         
 
@@ -261,10 +299,10 @@ class ObservationsCfg:
         ) # dim: 9
         
         # Commands
-        commands = ObsTerm(
-            func=isaac_mdp.generated_commands,
-            params={"command_name": "object_velocity"},
-        ) # dim: 3 # TODO: Uncomment this term. Now, due to a zero agent, this term is not applicable
+        # commands = ObsTerm(
+        #     func=isaac_mdp.generated_commands,
+        #     params={"command_name": "object_velocity"},
+        # ) # dim: 3
         
         # Link pose in robot frame
         link_pose_in_robot_frame = ObsTerm(
@@ -277,11 +315,12 @@ class ObservationsCfg:
                         "arm_link_wr0",
                         "arm_link_wr1",
                         "arm_link_fngr",
-                        "arm_link_jaw"]
+                        # arm_link_jaw
+                        ]
                     },
             scale = 1.0,
-        ) # dim: 8 *  7 (position + quat) for the arm links
-         
+        ) # dim: 7 *  7 (position + quat) for the arm links
+        
         # End-effector contact state
         ee_contact_state = ObsTerm(
             func = mdp.ee_contact_state,
@@ -294,6 +333,20 @@ class ObservationsCfg:
             func = mdp.obj_pose_in_robot_frame,
             scale = 1.0,
         ) # dim: 7 (position + quat) for the target object
+
+        # Vector from active object to goal in active object frame.
+        box_to_goal_b = ObsTerm(
+            func=mdp.box_to_goal_vec_b3,
+            params={"goal_term_name": "goal_pose"},
+            noise=Unoise(n_min=-0.02, n_max=0.02),
+        ) # dim: 3
+
+        # Goal orientation represented in active object frame as a flattened 3x3 matrix.
+        goal_rot_mat_in_object = ObsTerm(
+            func=mdp.goal_rot_mat_in_object,
+            params={"goal_term_name": "goal_pose"},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        ) # dim: 9
         
         # Robot base velocity
         base_lin_vel = ObsTerm(
@@ -303,20 +356,19 @@ class ObservationsCfg:
         
        # Object velocity in robot frame
         obj_lin_vel_in_robot_frame = ObsTerm(
-            func = mdp.obj_lin_vel_in_robot_frame,
+            func = mdp.obj_lin_vel_in_body_frame,
             scale = 2.0,
         ) # dim: 3
         
         # Object angular velocity in robot frame
         obj_ang_vel_in_robot_frame = ObsTerm(
-            func = mdp.obj_ang_vel_in_robot_frame,
+            func = mdp.obj_ang_vel_in_body_frame,
             scale = 0.25,
         ) # dim: 3
         
         # Object physical properties (Static fric, mass, dynamic fric)
         obj_physical_properties = ObsTerm(
             func = mdp.obj_physical_properties,
-            params={"object_name": "target_object"},
             scale = 1.0,
         ) # dim: 3
         
@@ -375,7 +427,6 @@ class ObservationsCfg:
             func=mdp.object_velocity,
             history_length = 2,
             flatten_history_dim = False,
-            params={"asset_name": "target_object"},
         ) # dim: 3
         applied_actions = ObsTerm(
             func = mdp.last_high_level_action, 
@@ -402,6 +453,16 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
+    configure_physx_scene_gpu_buffers = EventTerm(
+        func=mdp.configure_physx_scene_gpu_buffers,
+        mode="startup",
+        params={
+            "gpu_temp_buffer_capacity": 64 * 1024 * 1024,
+            "gpu_heap_capacity": 256 * 1024 * 1024,
+            "gpu_max_rigid_patch_count": 1_048_576,
+        },
+    )
+
     # reset
     reset_base = EventTerm(
         func=isaac_mdp.reset_root_state_uniform,
@@ -425,23 +486,25 @@ class EventCfg:
             },
         },
     )
-    reset_object = EventTerm(
-        func=mdp.reset_target_object_position,
-        mode="reset",
-        params = {
-            "asset_name": "target_object",
-            "offset": (0.0, 0.0)
-        }
-    )
-    
-    # TODO: figure out how to reset the initial grasp poses at different locations
-    reset_robot_joints = EventTerm(
-        func=mdp.reset_joints_around_grasp_pose,
+
+    # use an atomic function to reset the object and robot together, 
+    # so that we can ensure the consistency between the object pose 
+    # and the pre-grasping robot joint configuration defined in the catalog pose
+    reset_object_and_robot = EventTerm(
+        func=mdp.reset_object_and_robot_from_catalog_pose,
         mode="reset",
         params={
             "position_range": (-0.0, 0.0),
             "velocity_range": (-0.0, 0.0),
-            "joint_position_ref": GRASP_POSE_1_JOINT_POS,
+        },
+    )
+
+    # Explicitly resample goal at episode reset even when command time-based resampling is disabled.
+    reset_goal_region = EventTerm(
+        func=mdp.resample_goal_region_on_reset,
+        mode="reset",
+        params={
+            "goal_term_name": "goal_pose",
         },
     )
     # reset_robot_joints = EventTerm(
@@ -466,96 +529,57 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    ## (1) Group 1: Object related rewards (primary task)
-    # TODO: UUNCOMMENT THEM!!
-    track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp,
-        weight=5.0,
-        params={"command_name": "object_velocity"},
-    ) # Track the xy linear velocity of th object according to the command
-    
-    track_ang_vel_yaw_exp = RewTerm(
-        func=mdp.track_ang_vel_yaw_exp,
-        weight=5.0,
-        params={"command_name": "object_velocity"},
-    ) # Track the yaw angular velocity of the object according to the command
-    
-    is_alive = RewTerm(func=mdp.is_alive, weight=1.0) # The manipulation process should be alive
-    
-    
-    ## Smooth movement of the object
-    yaw_alignment = RewTerm(
-        func=mdp.yaw_alignment_reward, 
-        weight=5.0,
+    sparse_completion = RewTerm(
+        func=mdp.sparse_completion_reward,
+        weight=10.0,
         params={
-            "asset_name": "target_object",
-            "robot_name": "robot",
+            "goal_term_name": "goal_pose",
+            "dist_error": 0.05,
+            "angular_error": 5.0,
+            "success_reward": 1.0,
         },
-    ) # Align the yaw of the object with the desired direction (if applicable)
+    ) # Sparse success bonus when object-goal position and yaw errors are both within threshold
+
+    keypoint_pose_match_exp = RewTerm(
+        func=mdp.keypoint_pose_match_exp,
+        weight=8.0,
+        params={
+            "goal_term_name": "goal_pose",
+            "sigma3": 1.0,
+        },
+    ) # Encourage object-goal pose matching using world-frame keypoint distance
+
+    vel_toward_goal = RewTerm(
+        func=mdp.velocity_toward_goal_exp,
+        weight=1.0,
+        params={
+            "goal_term_name": "goal_pose",
+            "sigma2": 0.7071067812,
+            "use_unit_vel": True,
+            "use_xy": True,
+        },
+    ) # Encourage object velocity to align with the direction from object to goal
     
-    lin_vel_z_l2 = RewTerm(
-        func=mdp.lin_vel_z_l2,
-        weight=2.0,
-        params = {"asset_name": "target_object"}
-    ) # Penalize the vertical velocity of the object to encourage it to stay on the ground
+    # lin_vel_z_l2 = RewTerm(
+    #     func=mdp.lin_vel_z_l2,
+    #     weight=2.0,
+    #     params = {},
+    # ) # Penalize the vertical velocity of the object to encourage it to stay on the ground
     
-    ang_vel_xy_l2 = RewTerm(
-        func=mdp.ang_vel_xy_l2,
-        weight=0.05,
-        params = {"asset_name": "target_object"}
-    ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
-    
+    # ang_vel_xy_l2 = RewTerm(
+    #     func=mdp.ang_vel_xy_l2,
+    #     weight=2.0,
+    #     params = {},
+    # ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
+
     flat_orientation_l2 = RewTerm(
         func=mdp.flat_orientation_l2,
-        weight=10.0,
-        params = {"asset_name": "target_object"}
-    ) # Encourage the object to maintain a flat orientation (if applicable)
-
-    lin_vel_change_penalty = RewTerm(
-        func=mdp.lin_vel_change_penalty,
-        weight=2.0,
-        params = {"asset_name": "target_object"}
-    ) # Penalize the change in linear velocity of the object to encourage smooth motion
-    
-    ang_vel_change_penalty = RewTerm(
-        func=mdp.ang_vel_change_penalty,
-        weight=2.0,
-        params = {"asset_name": "target_object"}
-    ) # Penalize the change in angular velocity of the object to encourage smooth motion
-    
-    # TODO: the distance may be tricky
-    distance_penalty = RewTerm(
-        func=mdp.distance_penalty,
-        weight=10.0,
+        weight=-10.0,
         params={
-            "robot_name": "robot",
-            "end_effector_link_name": "arm_link_jaw",
-            "distance_threshold": 0.6,
+            "flat_threshold": 1e-3,
         },
-    ) # Penalize the distance between the end-effector and the robot
-    
-    ## Group 2: Robot related rewards (auxiliary task, to encourage better robot behavior)
-    action_rate_l2 = RewTerm(
-        func=mdp.action_rate_l2,
-        weight=0.01,
-    ) # Penalize large instantaneous changes in the action output to encourage smoother motion
-    action_rate2_l2 = RewTerm(
-        func=mdp.action_rate2_l2,
-        weight=0.002,
-    ) # Penalize large instantaneous changes in the action changes to encourage smoother motion
-    
-    joint_torques = RewTerm(
-        func=mdp.joint_torques,
-        weight=2.5e-7,
-        params={"arm_joint_names": ARM_JOINT_NAMES, "robot_name": "robot"},
-    ) # Penalize the torques in the arm joints to encourage energy-efficient motion
-    
-    joint_accel = RewTerm(
-        func=mdp.joint_accel,
-        weight=2.5e-7,
-        params={"arm_joint_names": ARM_JOINT_NAMES, "robot_name": "robot"},
-    ) # Penalize the acceleration in the arm joints to encourage smoother motion
-    
+    ) # Indicator penalty: subtract 1 when object is non-flat
+
     joint_positions_wrt_reference = RewTerm(
         func=mdp.joint_positions_wrt_reference,
         weight=5.0,
@@ -568,20 +592,10 @@ class RewardsCfg:
                 "arm_wr0",
                 "arm_wr1",], 
             "robot_name": "robot",
-            # TODO: Adapt it to multiple grasp poses
-            "reference_joint_positions": GRASP_POSE_1_JOINT_POS
         },
-    ) # Penalize the deviation of joint positions from the reference initial grasp pose to encourage a more natural pose
+    ) # Penalize the deviation of joint positions from the per-env active grasp pose reference
     
-    undesired_contact_penalty = RewTerm(
-        func=mdp.undesired_contact_penalty,
-        weight=5.0,
-        params={
-            "undesired_contact_body_names": SPOT_BODY_LINKS,  # Replace with actual body names
-            "contact_sensor_name": "contact_forces",
-            "undesired_contact_threshold": 1.0,
-        },
-    ) # Penalize undesired contacts between the robot and the ground to encourage the robot to
+
 @configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
@@ -612,13 +626,13 @@ class TerminationsCfg:
         },
     )
     
-    # Terminate if any joint velocity exceeds 50.0 rad/s
+    # Terminate if any joint velocity exceeds 30.0 rad/s
     aggressive_joint_velocity = DoneTerm(
         func=mdp.joint_velocity_limits,
         params={"max_vel": 30.0},
     )
 
-    # (3) Terminate if the object falls off the gripper
+    #(3) Terminate if the object falls off the gripper
     object_slide_off = DoneTerm(
         func=mdp.object_slide_off,
         params={
@@ -660,18 +674,17 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         # Import the robot (behind the chair)
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None
-        
-        
+
     # Create a new buffer to store the previous object velocities & actions
     def _pre_physics_step(self, action):
         # Cache the current velocity before it gets updated
-        prev_obj_lin_vel = self.scene["target_object"].data.root_lin_vel_b.clone()[:, :2]
-        prev_obj_ang_vel = self.scene["target_object"].data.root_ang_vel_b.clone()[:, 2]
+        prev_obj_lin_vel = mdp.get_active_object_state_attr(self, "root_lin_vel_b").clone()[:, :2]
+        prev_obj_ang_vel = mdp.get_active_object_state_attr(self, "root_ang_vel_b").clone()[:, 2]
         self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
     
-    # After the physics step, update prev_action and prev_prev_action for the next step
-    def _post_physics_step(self, action):
-        # Update the observed actions as well
-        self.prev_prev_action = getattr(self, "prev_action", torch.zeros_like(action))
-        self.prev_action = action.clone()
+    # # After the physics step, update prev_action and prev_prev_action for the next step
+    # def _post_physics_step(self, action):
+    #     # Update the observed actions as well
+    #     self.prev_prev_action = getattr(self, "prev_action", torch.zeros_like(action))
+    #     self.prev_action = action.clone()
 
