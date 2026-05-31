@@ -13,118 +13,28 @@ from SuperQ_ALORE.assets.object_catalog import OBJECT_CATALOG
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management as om
 
 
-def _resolve_goal_pose_w(
-    env: ManagerBasedRLEnv,
-    goal_term_name: str = "goal_region",
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Resolve goal position/quaternion in world frame with term-name fallback."""
-    term_candidates = []
-    for name in (goal_term_name, "goal_region", "goal_pose"):
-        if name not in term_candidates:
-            term_candidates.append(name)
 
-    last_err = None
-    for name in term_candidates:
-        try:
-            term = env.command_manager.get_term(name)
-            goal_pos_w = term.goal_w if hasattr(term, "goal_w") else term.command[:, :3]
-            if hasattr(term, "goal_quat_w"):
-                goal_quat_w = term.goal_quat_w
-            else:
-                goal_quat_w = torch.zeros((goal_pos_w.shape[0], 4), device=goal_pos_w.device, dtype=goal_pos_w.dtype)
-                goal_quat_w[:, 0] = 1.0
-            return goal_pos_w, goal_quat_w
-        except Exception as err:
-            last_err = err
+"""(DEPRECATED) Original functions from ReLIC. Only for program development purpose"""
+# def known_external_force_torque(
+#     env: ManagerBasedRLEnv,
+#     event_name: str,
+#     scale: bool,
+# ) -> torch.Tensor:
+#     """Known external force torque amount."""
+#     # event_manager is established after first call
+#     if not hasattr(env, "event_manager"):
+#         return torch.zeros((env.num_envs, 3), device=env.device)
 
-    raise RuntimeError(f"Failed to resolve goal term from candidates: {term_candidates}") from last_err
+#     else:
+#         event_term = env.event_manager.get_term_cfg(event_name).func
+#         external_forces = event_term.external_forces.view(env.num_envs, -1)
+#         if scale:
+#             external_forces = math_utils.scale_transform(
+#                 external_forces, event_term.force_range[0], event_term.force_range[1]
+#             )
+#         return external_forces
 
-
-def _quat_to_rot_matrix(quat_wxyz: torch.Tensor) -> torch.Tensor:
-    """Convert batched quaternions (wxyz) to batched rotation matrices [N, 3, 3]."""
-    w, x, y, z = quat_wxyz[:, 0], quat_wxyz[:, 1], quat_wxyz[:, 2], quat_wxyz[:, 3]
-    rot = torch.zeros((quat_wxyz.shape[0], 3, 3), device=quat_wxyz.device, dtype=quat_wxyz.dtype)
-
-    rot[:, 0, 0] = 1.0 - 2.0 * (y * y + z * z)
-    rot[:, 0, 1] = 2.0 * (x * y - z * w)
-    rot[:, 0, 2] = 2.0 * (x * z + y * w)
-    rot[:, 1, 0] = 2.0 * (x * y + z * w)
-    rot[:, 1, 1] = 1.0 - 2.0 * (x * x + z * z)
-    rot[:, 1, 2] = 2.0 * (y * z - x * w)
-    rot[:, 2, 0] = 2.0 * (x * z - y * w)
-    rot[:, 2, 1] = 2.0 * (y * z + x * w)
-    rot[:, 2, 2] = 1.0 - 2.0 * (x * x + y * y)
-    return rot
-
-
-def box_to_goal_vec_b3(
-    env: ManagerBasedRLEnv, goal_term_name: str = "goal_region"
-) -> torch.Tensor:
-    """Vector from active object to goal, expressed in the active object's body frame."""
-    goal_pos_w, _ = _resolve_goal_pose_w(env, goal_term_name=goal_term_name)
-    obj_pos_w = om.get_active_object_state_attr(env, "root_pos_w")
-    obj_quat_w = om.get_active_object_state_attr(env, "root_quat_w")
-
-    vec_w = goal_pos_w - obj_pos_w
-    return math_utils.quat_apply_inverse(obj_quat_w, vec_w)
-
-
-def goal_rot_mat_in_object(
-    env: ManagerBasedRLEnv, goal_term_name: str = "goal_region"
-) -> torch.Tensor:
-    """Goal orientation as a rotation matrix expressed in the active object's frame.
-
-    Returns flattened matrix with shape [num_envs, 9].
-    """
-    _, goal_quat_w = _resolve_goal_pose_w(env, goal_term_name=goal_term_name)
-    obj_quat_w = om.get_active_object_state_attr(env, "root_quat_w")
-
-    obj_quat_inv = quat_inverse_safe(obj_quat_w)
-    rel_quat = quat_mul(obj_quat_inv, goal_quat_w)
-    rel_rot = _quat_to_rot_matrix(rel_quat)
-    return rel_rot.reshape(env.num_envs, 9)
-
-def known_external_force_torque(
-    env: ManagerBasedRLEnv,
-    event_name: str,
-    scale: bool,
-) -> torch.Tensor:
-    """Known external force torque amount."""
-    # event_manager is established after first call
-    if not hasattr(env, "event_manager"):
-        return torch.zeros((env.num_envs, 3), device=env.device)
-
-    else:
-        event_term = env.event_manager.get_term_cfg(event_name).func
-        external_forces = event_term.external_forces.view(env.num_envs, -1)
-        if scale:
-            external_forces = math_utils.scale_transform(
-                external_forces, event_term.force_range[0], event_term.force_range[1]
-            )
-        return external_forces
-
-
-def gait_phase(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """The generated command from command term in the command manager with the given name."""
-    if not hasattr(env, "reward_manager"):
-        return torch.zeros((env.num_envs, 1), device=env.device)
-    else:
-        steps = env.reward_manager.get_term_cfg("gait").func.steps
-        command_leg = env.command_manager.get_term(
-            "arm_leg_joint_base_pose"
-        ).command_leg
-        max_length = (
-            command_leg
-            * env.reward_manager.get_term_cfg("gait").func.three_leg_phase_len
-            + (1 - command_leg.int())
-            * env.reward_manager.get_term_cfg("gait").func.four_leg_phase_len
-        )
-        phase = steps % max_length
-        phase = math_utils.scale_transform(
-            phase, torch.zeros_like(max_length), max_length
-        )
-        return phase.view(-1, 1)
-    
+# Observation for Locomotion policy (low-level controller)
 def last_leg_action(
     env: ManagerBasedRLEnv,
     action_term_name: str = "high_level_action",
@@ -164,6 +74,22 @@ def _euler_from_quat(quat_angle: torch.Tensor) -> torch.Tensor:
     yaw_z = torch.atan2(t3, t4)
     
     return roll_x, pitch_y, yaw_z # in radians
+
+def _quat_to_rot_matrix(quat_wxyz: torch.Tensor) -> torch.Tensor:
+    """Convert batched quaternions (wxyz) to batched rotation matrices [N, 3, 3]."""
+    w, x, y, z = quat_wxyz[:, 0], quat_wxyz[:, 1], quat_wxyz[:, 2], quat_wxyz[:, 3]
+    rot = torch.zeros((quat_wxyz.shape[0], 3, 3), device=quat_wxyz.device, dtype=quat_wxyz.dtype)
+
+    rot[:, 0, 0] = 1.0 - 2.0 * (y * y + z * z)
+    rot[:, 0, 1] = 2.0 * (x * y - z * w)
+    rot[:, 0, 2] = 2.0 * (x * z + y * w)
+    rot[:, 1, 0] = 2.0 * (x * y + z * w)
+    rot[:, 1, 1] = 1.0 - 2.0 * (x * x + z * z)
+    rot[:, 1, 2] = 2.0 * (y * z - x * w)
+    rot[:, 2, 0] = 2.0 * (x * z - y * w)
+    rot[:, 2, 1] = 2.0 * (y * z + x * w)
+    rot[:, 2, 2] = 1.0 - 2.0 * (x * x + y * y)
+    return rot
 
 def get_body_orientation(
     env: ManagerBasedRLEnv,
@@ -206,7 +132,6 @@ def ee_pose_in_robot_frame(
 def obj_pose_in_robot_frame(
     env: ManagerBasedRLEnv,
     robot_name: str = "robot",
-    object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     robot = env.scene[robot_name]
 
@@ -222,6 +147,51 @@ def obj_pose_in_robot_frame(
     obj_quat_in_robot_frame = quat_mul(robot_quat_inv, obj_quat_w)
 
     return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)
+
+def _resolve_goal_pose_w(
+    env: ManagerBasedRLEnv,
+    goal_term_name: str = "goal_pose",
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Resolve goal position/quaternion in world frame with term-name fallback."""
+    term = env.command_manager.get_term(goal_term_name)
+    goal_pos_w = term.goal_w if hasattr(term, "goal_w") else term.command[:, :3]
+    if hasattr(term, "goal_quat_w"):
+        goal_quat_w = term.goal_quat_w
+    else:
+        goal_quat_w = torch.zeros((goal_pos_w.shape[0], 4), device=goal_pos_w.device, dtype=goal_pos_w.dtype)
+        goal_quat_w[:, 0] = 1.0
+    return goal_pos_w, goal_quat_w
+
+
+
+def obj_to_goal_pos_local(
+    env: ManagerBasedRLEnv, goal_term_name: str = "goal_pose"
+) -> torch.Tensor:
+    """Vector from active object to goal, expressed in the active object's body frame."""
+    goal_pos_w, _ = _resolve_goal_pose_w(env, goal_term_name=goal_term_name)
+    obj_pos_w = om.get_active_object_state_attr(env, "root_pos_w")
+    obj_quat_w = om.get_active_object_state_attr(env, "root_quat_w")
+
+    vec_w = goal_pos_w - obj_pos_w
+    
+    # Return the (x,y) components of the relative position of goal pose in object's frame
+    return math_utils.quat_apply_inverse(obj_quat_w, vec_w)[:, :2]
+
+
+def obj_to_goal_rot_local(
+    env: ManagerBasedRLEnv, goal_term_name: str = "goal_pose"
+) -> torch.Tensor:
+    """Goal orientation as a rotation matrix expressed in the active object's frame.
+
+    Returns flattened matrix with shape [num_envs, 9].
+    """
+    _, goal_quat_w = _resolve_goal_pose_w(env, goal_term_name=goal_term_name)
+    obj_quat_w = om.get_active_object_state_attr(env, "root_quat_w")
+
+    obj_quat_inv = quat_inverse_safe(obj_quat_w)
+    rel_quat = quat_mul(obj_quat_inv, goal_quat_w)
+    rel_rot = _euler_from_quat(rel_quat)[2] # Only the yaw difference
+    return rel_rot.unsqueeze(-1)
 
 def link_pose_in_robot_frame(
     env: ManagerBasedRLEnv,
@@ -334,7 +304,6 @@ def default_joint_pos(
 
 def object_velocity(
     env: ManagerBasedRLEnv,
-    asset_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     obj_lin_vel = om.get_active_object_state_attr(env, "root_lin_vel_b")[:, :2]  # (N_envs, 2)
     obj_ang_vel = om.get_active_object_state_attr(env, "root_ang_vel_b")[:, 2:]  # (N_envs, 1)
@@ -376,19 +345,16 @@ def ee_contact_state(
 
 def obj_lin_vel_in_body_frame(
     env: ManagerBasedRLEnv,
-    object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     return om.get_active_object_state_attr(env, "root_lin_vel_b")  # (N_envs, 3)
 
 def obj_ang_vel_in_body_frame(
     env: ManagerBasedRLEnv,
-    object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     return om.get_active_object_state_attr(env, "root_ang_vel_b")  # (N_envs, 3)
 
 def obj_physical_properties(
     env: ManagerBasedRLEnv,
-    object_name: str = "target_object",  # deprecated - ignored, active object used
 ) -> torch.Tensor:
     mass = om.get_active_object_physx_masses(env)              # (num_envs, 1)
     mat = om.get_active_object_physx_material_properties(env)  # (num_envs, 3)

@@ -20,7 +20,7 @@ from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import keypoints as keypo
 Group 1: Object related rewards (primary task)
 """
 
-
+## (1) Command tracking rewards (Object Pose tracking)
 def _cached_keypoints_pair(
     env: ManagerBasedRLEnv,
     goal_term_name: str = "goal_pose",
@@ -51,40 +51,27 @@ def _get_goal_pose(
     goal_term_name: str = "goal_pose",
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Return (goal_pos_w, goal_quat_w) with robust goal-term fallback."""
-    term_candidates = []
-    for name in (goal_term_name, "goal_pose", "goal_region"):
-        if name not in term_candidates:
-            term_candidates.append(name)
-
-    last_err = None
-    for name in term_candidates:
-        try:
-            term = env.command_manager.get_term(name)
-            goal_pos_w = term.goal_w if hasattr(term, "goal_w") else term.command[:, :3]
-            if hasattr(term, "goal_quat_w"):
-                goal_quat_w = term.goal_quat_w
-            else:
-                goal_quat_w = torch.zeros((goal_pos_w.shape[0], 4), device=goal_pos_w.device, dtype=goal_pos_w.dtype)
-                goal_quat_w[:, 0] = 1.0
-            return goal_pos_w, goal_quat_w
-        except Exception as err:
-            last_err = err
-
-    raise RuntimeError(
-        f"Failed to resolve goal pose for terms {term_candidates}."
-    ) from last_err
+    term = env.command_manager.get_term(goal_term_name)
+    goal_pos_w = term.goal_w if hasattr(term, "goal_w") else term.command[:, :3]
+    if hasattr(term, "goal_quat_w"):
+        goal_quat_w = term.goal_quat_w
+    else:
+        goal_quat_w = torch.zeros((goal_pos_w.shape[0], 4), device=goal_pos_w.device, dtype=goal_pos_w.dtype)
+        goal_quat_w[:, 0] = 1.0
+    return goal_pos_w, goal_quat_w
 
 
-def _sigma_denom(env: ManagerBasedRLEnv, sigma3: float, metric_name: str) -> torch.Tensor:
+
+def _sigma_denom(env: ManagerBasedRLEnv, sigma: float, metric_name: str) -> torch.Tensor:
     """Return safe sigma^2 denominator for exponential rewards."""
-    sigma_sq = max(float(sigma3) ** 2, 1.0e-8)
+    sigma_sq = max(float(sigma) ** 2, 1.0e-8)
     return torch.full((env.num_envs,), sigma_sq, device=env.device, dtype=torch.float32)
 
 
 def keypoint_pose_match_exp(
     env: ManagerBasedRLEnv,
     goal_term_name: str = "goal_pose",
-    sigma3: float = 0.38,
+    sigma: float = 0.38,
 ) -> torch.Tensor:
     """Dense keypoint pose-match reward: exp(-||Kg-Ko||/sigma^2)."""
     k_obj_w, k_goal_w = _cached_keypoints_pair(env, goal_term_name=goal_term_name)
@@ -92,18 +79,18 @@ def keypoint_pose_match_exp(
     kg = k_goal_w.reshape(env.num_envs, -1)
 
     dist = torch.norm(kg - ko, dim=-1)
-    denom = _sigma_denom(env, sigma3, "keypoint_pose_match_exp")
+    denom = _sigma_denom(env, sigma, "keypoint_pose_match_exp")
     return torch.exp(-dist / denom)
 
 
 def velocity_toward_goal_exp(
     env: ManagerBasedRLEnv,
-    box_name: str = "target_object",
     goal_term_name: str = "goal_pose",
-    sigma2: float = 1.0,
+    sigma: float = 1.0,
     use_unit_vel: bool = True,
     use_xy: bool = False,
 ) -> torch.Tensor:
+    # TODO: Might be incorrect
     """Velocity-toward-goal reward: exp((v·p_hat)/sigma^2 - 1)."""
     obj_pos_w = om.get_active_object_state_attr(env, "root_pos_w")
     vel_w = om.get_active_object_state_attr(env, "root_lin_vel_w")
@@ -123,7 +110,7 @@ def velocity_toward_goal_exp(
         vel = vel / (torch.linalg.norm(vel, dim=1, keepdim=True) + 1.0e-6)
 
     dot = torch.sum(vel * dir_hat, dim=1)
-    denom = _sigma_denom(env, sigma2, "velocity_toward_goal_exp")
+    denom = _sigma_denom(env, sigma, "velocity_toward_goal_exp")
     return torch.exp(dot / denom - 1.0)
 
 
@@ -145,7 +132,7 @@ def sparse_completion_reward(
     success = (pos_dist <= float(dist_error)) & (keypoint_angle_err_deg <= float(angular_error))
     return success.to(torch.float32) * float(success_reward)
 
-## (1) Command tracking rewards
+## (1) Command tracking rewards (Object Velocity tracking)
 # Linear velocity tracking (object velocity in robot frame)
 def track_lin_vel_xy_exp(
     env: ManagerBasedRLEnv,

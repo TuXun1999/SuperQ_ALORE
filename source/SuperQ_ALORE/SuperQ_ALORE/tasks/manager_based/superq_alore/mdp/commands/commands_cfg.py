@@ -9,17 +9,70 @@ from isaaclab.managers import CommandTermCfg
 from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.markers.config import BLUE_ARROW_X_MARKER_CFG, GREEN_ARROW_X_MARKER_CFG
 from isaaclab.utils import configclass
-from .arm_command import (
-    ArmJointTrajectoryCommand,
-    LegJointTrajectoryCommand,
-    MultiLegJointTrajectoryCommand,
-    BasePoseCommand,
-    ArmLegJointBasePoseCommand,
-)
+"""Deprecated commands from ReLIC"""
+# from .arm_command import (
+#     ArmJointTrajectoryCommand,
+#     LegJointTrajectoryCommand,
+#     MultiLegJointTrajectoryCommand,
+#     BasePoseCommand,
+#     ArmLegJointBasePoseCommand,
+# )
 from .goal_pose_command import GoalPoseCommand
 from .object_velocity_command import ObjectUniformVelocityRobotFrameCommand
 
+@configclass
+class GoalPoseCommandCfg(CommandTermCfg):
+    """Configuration for a per-env sampled goal pose and corresponding object green marker."""
 
+    class_type: type = GoalPoseCommand
+
+    @configclass
+    class Ranges:
+        pos_x: tuple[float, float] = MISSING
+        """Range for the x-coordinate of the goal pose."""
+
+        pos_y: tuple[float, float] = MISSING
+        """Range for the y-coordinate of the goal pose."""
+
+        pos_z: tuple[float, float] = (0.0, 0.0)
+        """Range for the z-coordinate of the goal pose, default to zero."""
+
+        yaw: tuple[float, float] = (-3.141592653589793, 3.141592653589793)
+        """Range for the yaw angle of the goal pose, default to [-pi, pi]."""
+
+    ranges: Ranges = MISSING
+    """Distribution ranges for sampling the goal pose."""
+
+    goal_term_name: str = "goal_pose"
+    """The name of the goal term that this command is associated with. Defaults to "goal_pose"."""
+
+    success_object_to_goal_dist_thresh_m: float = 0.10
+    """Distance threshold (meters) for success-rate computation."""
+
+    success_keypoint_angle_error_thresh_deg: float = 10.0
+    """Keypoint yaw-angle threshold (degrees) for success-rate computation."""
+
+    enable_yaw_curriculum: bool = True
+    """Whether to progressively widen the sampled yaw range using an iteration-based schedule."""
+
+    curriculum_initial_yaw_range: tuple[float, float] = (0.0, 0.0)
+    """Initial yaw range used when the curriculum starts."""
+
+    curriculum_yaw_step: float = math.pi / 3.0
+    """Yaw expansion applied on each side when advancing a curriculum level."""
+
+    curriculum_max_yaw: float = math.pi
+    """Maximum absolute yaw magnitude allowed by the curriculum."""
+
+    curriculum_iterations_per_level: int = 1000
+    """Number of command update iterations required before increasing one yaw curriculum level."""
+
+    debug_vis: bool = True
+    debug_vis_keypoints: bool = True
+    debug_vis_keypoint_radius: float = 0.04
+
+
+# Ablation study: object velocity tracking
 @configclass
 class ObjectUniformVelocityRobotFrameCommandCfg(CommandTermCfg):
     """Configuration for the object velocity command aligned with robot x-axis."""
@@ -89,212 +142,160 @@ class ObjectUniformVelocityRobotFrameCommandCfg(CommandTermCfg):
     goal_vel_visualizer_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
     current_vel_visualizer_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
 
+"""(DEPRECATED) Original codes from ReLIC. Only kept here for development & debugging purpose, not used by the current system. """
+# @configclass
+# class ArmJointTrajectoryCommandCfg(CommandTermCfg):
+#     """Configuration for the uniform 3D orientation command term.
 
-@configclass
-class GoalPoseCommandCfg(CommandTermCfg):
-    """Configuration for a per-env sampled goal pose and corresponding object green marker."""
+#     Please refer to the :class:`InHandReOrientationCommand` class for more details.
+#     """
 
-    class_type: type = GoalPoseCommand
+#     class_type: type = ArmJointTrajectoryCommand
 
-    @configclass
-    class Ranges:
-        pos_x: tuple[float, float] = MISSING
-        """Range for the x-coordinate of the goal pose."""
+#     asset_name: str = MISSING
+#     """Name of the asset in the environment for which the commands are generated."""
 
-        pos_y: tuple[float, float] = MISSING
-        """Range for the y-coordinate of the goal pose."""
+#     trajectory_time: tuple[float, float] = MISSING
+#     """Length of the trajectory in seconds."""
 
-        pos_z: tuple[float, float] = (0.0, 0.0)
-        """Range for the z-coordinate of the goal pose, default to zero."""
+#     hold_time: tuple[float, float] = MISSING
+#     """Length of the arm holding in positon in seconds."""
 
-        yaw: tuple[float, float] = (-3.141592653589793, 3.141592653589793)
-        """Range for the yaw angle of the goal pose, default to [-pi, pi]."""
+#     joint_names: tuple[str, ...] = MISSING
 
-    ranges: Ranges = MISSING
-    """Distribution ranges for sampling the goal pose."""
+#     @configclass
+#     class Ranges:
+#         """Uniform distribution ranges for the gripper commands."""
 
-    goal_term_name: str = "goal_pose"
-    """The name of the goal term that this command is associated with. Defaults to "goal_pose"."""
+#         init_range: float = MISSING
+#         final_range: float = MISSING
+#         noise_range: float = MISSING
 
-    success_object_to_goal_dist_thresh_m: float = 0.10
-    """Distance threshold (meters) for success-rate computation."""
+#     ranges: Ranges = MISSING
 
-    success_keypoint_angle_error_thresh_deg: float = 10.0
-    """Keypoint yaw-angle threshold (degrees) for success-rate computation."""
 
-    enable_yaw_curriculum: bool = True
-    """Whether to progressively widen the sampled yaw range using an iteration-based schedule."""
+# @configclass
+# class LegJointTrajectoryCommandCfg(CommandTermCfg):
+#     """Configuration for the uniform 3D orientation command term.
 
-    curriculum_initial_yaw_range: tuple[float, float] = (0.0, 0.0)
-    """Initial yaw range used when the curriculum starts."""
+#     Please refer to the :class:`InHandReOrientationCommand` class for more details.
+#     """
 
-    curriculum_yaw_step: float = math.pi / 3.0
-    """Yaw expansion applied on each side when advancing a curriculum level."""
+#     class_type: type = LegJointTrajectoryCommand
 
-    curriculum_max_yaw: float = math.pi
-    """Maximum absolute yaw magnitude allowed by the curriculum."""
+#     asset_name: str = MISSING
+#     """Name of the asset in the environment for which the commands are generated."""
 
-    curriculum_iterations_per_level: int = 1000
-    """Number of command update iterations required before increasing one yaw curriculum level."""
+#     trajectory_time: tuple[float, float] = MISSING
+#     """Length of the trajectory in seconds."""
 
-    debug_vis: bool = True
-    debug_vis_keypoints: bool = True
-    debug_vis_keypoint_radius: float = 0.04
+#     hold_time: tuple[float, float] = MISSING
+#     """Length of the arm holding in positon in seconds."""
 
+#     leg_joint_names: tuple[str, ...] = MISSING
 
-@configclass
-class ArmJointTrajectoryCommandCfg(CommandTermCfg):
-    """Configuration for the uniform 3D orientation command term.
+#     @configclass
+#     class Ranges:
+#         """Uniform distribution ranges for the gripper commands."""
 
-    Please refer to the :class:`InHandReOrientationCommand` class for more details.
-    """
+#         init_range: float = MISSING
+#         final_range: float = MISSING
+#         noise_range: float = MISSING
 
-    class_type: type = ArmJointTrajectoryCommand
+#     ranges: Ranges = MISSING
 
-    asset_name: str = MISSING
-    """Name of the asset in the environment for which the commands are generated."""
 
-    trajectory_time: tuple[float, float] = MISSING
-    """Length of the trajectory in seconds."""
+# @configclass
+# class MultiLegJointTrajectoryCommandCfg(CommandTermCfg):
+#     """Configuration for the uniform 3D orientation command term.
 
-    hold_time: tuple[float, float] = MISSING
-    """Length of the arm holding in positon in seconds."""
+#     Please refer to the :class:`InHandReOrientationCommand` class for more details.
+#     """
 
-    joint_names: tuple[str, ...] = MISSING
+#     class_type: type = MultiLegJointTrajectoryCommand
 
-    @configclass
-    class Ranges:
-        """Uniform distribution ranges for the gripper commands."""
+#     asset_name: str = MISSING
+#     """Name of the asset in the environment for which the commands are generated."""
 
-        init_range: float = MISSING
-        final_range: float = MISSING
-        noise_range: float = MISSING
+#     trajectory_time: tuple[float, float] = MISSING
+#     """Length of the trajectory in seconds."""
 
-    ranges: Ranges = MISSING
+#     hold_time: tuple[float, float] = MISSING
+#     """Length of the arm holding in positon in seconds."""
 
+#     leg_joint_names: dict = MISSING
 
-@configclass
-class LegJointTrajectoryCommandCfg(CommandTermCfg):
-    """Configuration for the uniform 3D orientation command term.
+#     no_command_leg_prob: float = MISSING
+#     """Probability of not command any leg."""
 
-    Please refer to the :class:`InHandReOrientationCommand` class for more details.
-    """
+#     @configclass
+#     class Ranges:
+#         """Uniform distribution ranges for the gripper commands."""
 
-    class_type: type = LegJointTrajectoryCommand
+#         init_range: float = MISSING
+#         final_range: float = MISSING
+#         noise_range: float = MISSING
 
-    asset_name: str = MISSING
-    """Name of the asset in the environment for which the commands are generated."""
+#     ranges: Ranges = MISSING
 
-    trajectory_time: tuple[float, float] = MISSING
-    """Length of the trajectory in seconds."""
 
-    hold_time: tuple[float, float] = MISSING
-    """Length of the arm holding in positon in seconds."""
+# @configclass
+# class BasePoseCommandCfg(CommandTermCfg):
+#     """Configuration for the uniform 3D orientation command term.
 
-    leg_joint_names: tuple[str, ...] = MISSING
+#     Please refer to the :class:`InHandReOrientationCommand` class for more details.
+#     """
 
-    @configclass
-    class Ranges:
-        """Uniform distribution ranges for the gripper commands."""
+#     class_type: type = BasePoseCommand
 
-        init_range: float = MISSING
-        final_range: float = MISSING
-        noise_range: float = MISSING
+#     asset_name: str = MISSING
+#     """Name of the asset in the environment for which the commands are generated."""
 
-    ranges: Ranges = MISSING
+#     @configclass
+#     class Ranges:
+#         """Uniform distribution ranges for the gripper commands."""
 
+#         roll: tuple[float, float] = MISSING
+#         pitch: tuple[float, float] = MISSING
+#         height: tuple[float, float] = MISSING
+#         noise_range: float = MISSING
 
-@configclass
-class MultiLegJointTrajectoryCommandCfg(CommandTermCfg):
-    """Configuration for the uniform 3D orientation command term.
+#     ranges: Ranges = MISSING
 
-    Please refer to the :class:`InHandReOrientationCommand` class for more details.
-    """
 
-    class_type: type = MultiLegJointTrajectoryCommand
+# @configclass
+# class ArmLegJointBasePoseCommandCfg(CommandTermCfg):
+#     """Configuration for the uniform 3D orientation command term.
 
-    asset_name: str = MISSING
-    """Name of the asset in the environment for which the commands are generated."""
+#     Please refer to the :class:`InHandReOrientationCommand` class for more details.
+#     """
 
-    trajectory_time: tuple[float, float] = MISSING
-    """Length of the trajectory in seconds."""
+#     class_type: type = ArmLegJointBasePoseCommand
 
-    hold_time: tuple[float, float] = MISSING
-    """Length of the arm holding in positon in seconds."""
+#     asset_name: str = "robot"
+#     """Name of the asset in the environment for which the commands are generated."""
 
-    leg_joint_names: dict = MISSING
+#     trajectory_time: tuple[float, float] = (1.0, 3.0)
+#     """Length of the trajectory in seconds."""
 
-    no_command_leg_prob: float = MISSING
-    """Probability of not command any leg."""
+#     hold_time: tuple[float, float] = (0.5, 2.0)
+#     """Length of the arm holding in positon in seconds."""
 
-    @configclass
-    class Ranges:
-        """Uniform distribution ranges for the gripper commands."""
+#     arm_joint_names: tuple[str, ...] = MISSING
+#     leg_joint_names: dict = MISSING
 
-        init_range: float = MISSING
-        final_range: float = MISSING
-        noise_range: float = MISSING
+#     command_range_roll: tuple[float, float] = (-0.35, 0.35)
+#     command_range_pitch: tuple[float, float] = (-0.35, 0.35)
+#     command_range_height: tuple[float, float] = (0.25, 0.65)
+#     command_range_arm_joint: tuple[list[float, ...], list[float, ...]] = (
+#         [-2.61799, -3.14159, 0.0, -2.79252, -1.8326, -2.87988, -1.5708],
+#         [3.14157, 0.52359, 3.14158, 2.79252, 1.83259, 2.87979, 0.0],
+#     )
+#     command_range_leg_joint: tuple[list[float, ...], list[float, ...]] = (
+#         [-0.7854, -0.89884, -2.7929],
+#         [0.78539, 2.29511, 0.0],
+#     )
+#     """Command sample ranges."""
 
-    ranges: Ranges = MISSING
-
-
-@configclass
-class BasePoseCommandCfg(CommandTermCfg):
-    """Configuration for the uniform 3D orientation command term.
-
-    Please refer to the :class:`InHandReOrientationCommand` class for more details.
-    """
-
-    class_type: type = BasePoseCommand
-
-    asset_name: str = MISSING
-    """Name of the asset in the environment for which the commands are generated."""
-
-    @configclass
-    class Ranges:
-        """Uniform distribution ranges for the gripper commands."""
-
-        roll: tuple[float, float] = MISSING
-        pitch: tuple[float, float] = MISSING
-        height: tuple[float, float] = MISSING
-        noise_range: float = MISSING
-
-    ranges: Ranges = MISSING
-
-
-@configclass
-class ArmLegJointBasePoseCommandCfg(CommandTermCfg):
-    """Configuration for the uniform 3D orientation command term.
-
-    Please refer to the :class:`InHandReOrientationCommand` class for more details.
-    """
-
-    class_type: type = ArmLegJointBasePoseCommand
-
-    asset_name: str = "robot"
-    """Name of the asset in the environment for which the commands are generated."""
-
-    trajectory_time: tuple[float, float] = (1.0, 3.0)
-    """Length of the trajectory in seconds."""
-
-    hold_time: tuple[float, float] = (0.5, 2.0)
-    """Length of the arm holding in positon in seconds."""
-
-    arm_joint_names: tuple[str, ...] = MISSING
-    leg_joint_names: dict = MISSING
-
-    command_range_roll: tuple[float, float] = (-0.35, 0.35)
-    command_range_pitch: tuple[float, float] = (-0.35, 0.35)
-    command_range_height: tuple[float, float] = (0.25, 0.65)
-    command_range_arm_joint: tuple[list[float, ...], list[float, ...]] = (
-        [-2.61799, -3.14159, 0.0, -2.79252, -1.8326, -2.87988, -1.5708],
-        [3.14157, 0.52359, 3.14158, 2.79252, 1.83259, 2.87979, 0.0],
-    )
-    command_range_leg_joint: tuple[list[float, ...], list[float, ...]] = (
-        [-0.7854, -0.89884, -2.7929],
-        [0.78539, 2.29511, 0.0],
-    )
-    """Command sample ranges."""
-
-    command_which_leg: int = 4
-    """Which leg to command: -1: no leg; [0, 1, 2, 3]: [FL, FR, HL, HR]; 4: all leg"""
+#     command_which_leg: int = 4
+#     """Which leg to command: -1: no leg; [0, 1, 2, 3]: [FL, FR, HL, HR]; 4: all leg"""

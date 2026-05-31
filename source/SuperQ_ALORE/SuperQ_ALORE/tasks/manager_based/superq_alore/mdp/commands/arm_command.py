@@ -1,6 +1,10 @@
 # Copyright (c) 2024 Robotics and AI Institute LLC dba RAI Institute. All rights reserved.
 
-"""Sub-module containing command generators for pose tracking."""
+"""
+(DEPRECATED)
+Original program from ReLIC. 
+Only kept here for programming debugging purpose, not used by the system.
+Sub-module containing command generators for pose tracking."""
 
 from __future__ import annotations
 

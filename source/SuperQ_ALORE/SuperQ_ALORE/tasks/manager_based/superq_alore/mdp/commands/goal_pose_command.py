@@ -14,7 +14,7 @@ from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 
 from SuperQ_ALORE.assets.object_catalog import OBJECT_CATALOG
 from .. import keypoints as keypoints_mdp
-from .. import object_management as object_mgmt
+from .. import object_management as object_management
 
 # When the program executes, it will not import the following modules at runtime, 
 # but they are imported only for type checking, and not imported at runtime 
@@ -34,6 +34,7 @@ class GoalPoseCommand(CommandTerm):
         self._kps_vis = None
         super().__init__(cfg, env)
 
+        # Curriculum learning (gradually increase the yaw sampling range over training iterations)
         self._curriculum_level = 0
         self._curriculum_yaw_step = float(getattr(self.cfg, "curriculum_yaw_step", 0.0))
         self._curriculum_max_yaw = float(getattr(self.cfg, "curriculum_max_yaw", 0.0))
@@ -46,11 +47,12 @@ class GoalPoseCommand(CommandTerm):
             self._active_yaw_range = self._sanitize_yaw_range(*initial_yaw_range)
             self.cfg.ranges.yaw = self._active_yaw_range
 
-        # stores the goal pose in world frame for each environment, represented as (x, y, z) position and (x, y, z, w) quaternion. 
+        # Goal pose in world frame for each environment, represented as (x, y, z) position and (x, y, z, w) quaternion. 
         self.goal_w = torch.zeros((self.num_envs, 3), device=self.device)
         self.goal_quat_w = torch.zeros((self.num_envs, 4), device=self.device)
         self.goal_quat_w[:, 0] = 1.0
 
+        # Visualization configurations for debugging purposes
         if self.cfg.debug_vis:
 
             # initialize the goal material (green)
@@ -145,8 +147,7 @@ class GoalPoseCommand(CommandTerm):
         self._resample_command(env_ids)
 
     def _resample_command(self, env_ids: Sequence[int]):
-
-        # normalize env_ids to a device tensor
+        """Resample a new goal pose for the specified environment indices, and update the internal tensors for the goal pose in world frame accordingly."""
         env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
 
         # null check
@@ -156,31 +157,24 @@ class GoalPoseCommand(CommandTerm):
         # reads per-environment world origins offsets
         origins = self._env.scene.env_origins[env_ids]
 
-        # for each environment index, sample a random goal pose by sampling offsets from the specified ranges in the configuration,
-        # then add those offsets to the environment origins to get the final goal positions in world frame
+        # Sample a random goal pose
         samples = torch.empty((env_ids.numel(), 4), device=self.device)
         samples[:, 0].uniform_(*self.cfg.ranges.pos_x)
         samples[:, 1].uniform_(*self.cfg.ranges.pos_y)
         samples[:, 2].uniform_(*self.cfg.ranges.pos_z)
         samples[:, 3].uniform_(*self._active_yaw_range)
 
+        # Add the GLOBAL offsets to the position
         self.goal_w[env_ids, 0] = origins[:, 0] + samples[:, 0]
         self.goal_w[env_ids, 1] = origins[:, 1] + samples[:, 1]
         self.goal_w[env_ids, 2] = origins[:, 2] + samples[:, 2]
 
-        base_yaw = torch.zeros(env_ids.numel(), device=self.device, dtype=self.goal_w.dtype)
-        try:
-            if hasattr(self._env, "target_assignment_ready"):
-                ready_mask = self._env.target_assignment_ready[env_ids]
-                if torch.any(ready_mask):
-                    ready_env_ids = env_ids[ready_mask]
-                    _, pose_rot = object_mgmt.get_active_pose_position_orientation_tensors(self._env, ready_env_ids)
-                    _, _, pose_yaw = math_utils.euler_xyz_from_quat(pose_rot)
-                    base_yaw[ready_mask] = pose_yaw.to(dtype=self.goal_w.dtype)
-        except Exception:
-            # Keep zero-reference yaw if catalog pose is unavailable.
-            pass
-
+        # Obtain the initial orientations for all objects
+        _, pose_rot = object_management.get_active_pose_position_orientation_tensors(self._env, env_ids)
+        _, _, pose_yaw = math_utils.euler_xyz_from_quat(pose_rot)
+        base_yaw = pose_yaw.to(dtype=self.goal_w.dtype)
+        
+        # Add the LOCAL yaw offset to the base yaw of the object
         goal_yaw = base_yaw + samples[:, 3]
         zeros = torch.zeros(env_ids.numel(), device=self.device, dtype=self.goal_w.dtype)
         self.goal_quat_w[env_ids] = math_utils.quat_from_euler_xyz(zeros, zeros, goal_yaw)
@@ -189,61 +183,38 @@ class GoalPoseCommand(CommandTerm):
         return
 
     def _update_metrics(self):
-        # object-to-goal distance in XY plane
+        # Calculate object-to-goal distance in XY plane
         goal_xy = self.goal_w[:, :2]
-        obj_pos_w = object_mgmt.get_active_object_state_attr(self._env, "root_pos_w")
+        obj_pos_w = object_management.get_active_object_state_attr(self._env, "root_pos_w")
         obj_xy = obj_pos_w[:, :2]
         object_to_goal_dist = torch.linalg.norm(goal_xy - obj_xy, dim=1)
 
-        # keypoint alignment angle error (degrees)
+        # Calculate the yaw difference
+        goal_yaw = math_utils.euler_xyz_from_quat(self.goal_quat_w)[2]
+        obj_rot_w = object_management.get_active_object_state_attr(self._env, "root_quat_w")
+        obj_and_goal_yaw = math_utils.euler_xyz_from_quat(obj_rot_w)[2]
+        angle_diff = goal_yaw - obj_and_goal_yaw
+        angle_diff = angle_diff - 2 * torch.pi * torch.floor((angle_diff + torch.pi) / (2 * torch.pi))
+        object_to_goal_yaw_diff = torch.abs(angle_diff)
+
+        # Obtain the keypoints
         keypoint_angle_error_degree = torch.full(
             (self.num_envs,),
             180.0,
             device=self.device,
             dtype=self.goal_w.dtype,
         )
-        push_kps = None
-        goal_kps = None
-        try:
-            push_kps = keypoints_mdp.pushable_keypoints_w(self._env)
-        except Exception:
-            push_kps = None
+        obj_kps = keypoints_mdp.pushable_keypoints_w(self._env)
+        goal_kps = keypoints_mdp.goal_keypoints_w(self._env, goal_term_name="goal_pose")
+        
 
-        term_candidates = []
-        configured_term = getattr(self.cfg, "goal_term_name", "goal_pose")
-        for term_name in (configured_term, "goal_pose", "goal_region"):
-            if term_name not in term_candidates:
-                term_candidates.append(term_name)
-
-        for term_name in term_candidates:
-            try:
-                goal_kps = keypoints_mdp.goal_keypoints_w(self._env, goal_term_name=term_name)
-                break
-            except Exception:
-                goal_kps = None
-
-        if push_kps is not None and goal_kps is not None:
-            try:
-                keypoint_angle_error_degree = torch.abs(
-                    keypoints_mdp.keypoint_yaw_error_deg_xy(push_kps, goal_kps)
+        # Calculate the keypoint alignment error
+        if obj_kps is not None and goal_kps is not None:
+            keypoint_angle_error_degree = torch.abs(
+                    keypoints_mdp.keypoint_yaw_error_deg_xy(obj_kps, goal_kps)
                 )
-            except Exception:
-                pass
-
-        # object and robot speed (m/s)
-        obj_lin_vel_w = object_mgmt.get_active_object_state_attr(self._env, "root_lin_vel_w")
-        object_speed = torch.linalg.norm(obj_lin_vel_w, dim=1)
-
-        robot = self._env.scene["robot"]
-        robot_lin_vel_w = robot.data.root_lin_vel_w
-        robot_speed = torch.linalg.norm(robot_lin_vel_w, dim=1)
-
-        # robot yaw in degree
-        try:
-            _, _, robot_yaw = math_utils.euler_xyz_from_quat(robot.data.root_quat_w)
-            robot_yaw_degree = torch.rad2deg(robot_yaw)
-        except Exception:
-            robot_yaw_degree = torch.zeros(self.num_envs, device=self.device, dtype=self.goal_w.dtype)
+        else:
+            raise ValueError("Keypoints are required for calculating keypoint angle error, but got None.")
 
         # success rate (1.0 success, 0.0 failure) using configurable thresholds
         success_dist_thresh = float(getattr(self.cfg, "success_object_to_goal_dist_thresh_m", 0.10))
@@ -253,12 +224,10 @@ class GoalPoseCommand(CommandTerm):
             & (keypoint_angle_error_degree <= success_angle_thresh)
         ).to(torch.float32)
 
-        # requested metric names
+        # Obtain requested metric names
         self.metrics["object_to_goal_dist"] = object_to_goal_dist
+        self.metrics["object_to_goal_yaw_diff"] = object_to_goal_yaw_diff
         self.metrics["keypoint_angle_error_degree"] = keypoint_angle_error_degree
-        self.metrics["object_speed"] = object_speed
-        self.metrics["robot_speed"] = robot_speed
-        self.metrics["robot_yaw_degree"] = robot_yaw_degree
         self.metrics["success_rate"] = success_rate
         self.metrics["goal_yaw_curriculum_level"] = torch.full(
             (self.num_envs,),
@@ -282,7 +251,7 @@ class GoalPoseCommand(CommandTerm):
         return (min(yaw_min, yaw_max), max(yaw_min, yaw_max))
 
     def _maybe_advance_yaw_curriculum(self) -> None:
-
+        """Whether to advance the curriculum level in training"""
         # return immediately if the yaw curriculum is not enabled in the configuration.
         if not self._yaw_curriculum_enabled:
             return
@@ -330,14 +299,14 @@ class GoalPoseCommand(CommandTerm):
             )
 
     def _set_debug_vis_impl(self, debug_vis: bool):
-        """set the visibility of the goal pose and keypoint visualizers based on the debug_vis flag."""
+        """Set the visibility of the goal pose and keypoint visualizers based on the debug_vis flag."""
         if self._goal_vis is not None:
             self._goal_vis.set_visibility(debug_vis)
         if self._kps_vis is not None:
             self._kps_vis.set_visibility(debug_vis)
 
     def _debug_vis_callback(self, event):
-        """visualize the goal pose and keypoints in the simulation for debugging purposes."""
+        """Visualize the goal pose and keypoints in the simulation for debugging purposes."""
         if self._goal_vis is None and self._kps_vis is None:
             return
 

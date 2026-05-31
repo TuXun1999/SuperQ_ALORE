@@ -118,9 +118,9 @@ class CommandsCfg:
     """Command specifications for the MDP."""
     goal_pose = mdp.GoalPoseCommandCfg(
         resampling_time_range=(1e6, 1e6), # No need to change the command
-        enable_yaw_curriculum=True,
+        enable_yaw_curriculum=False,
         curriculum_iterations_per_level=1000, # increase one curriculum level every 1000 iterations
-        curriculum_initial_yaw_range=(0.0, 0.0), # start with no yaw displacement
+        curriculum_initial_yaw_range=(-math.pi/6, math.pi/6), # start with no yaw displacement
         curriculum_yaw_step=math.pi / 18.0, # increase yaw range by 10 degrees on each side per curriculum level
         curriculum_max_yaw=math.pi / 2.0, # maximum yaw range is 90 degrees
         debug_vis=True,
@@ -136,25 +136,6 @@ class CommandsCfg:
             yaw=(0.0, 0.0),
         ),
     )
-
-    # object_velocity = mdp.ObjectUniformVelocityRobotFrameCommandCfg(
-    #     # Keep target object as the command reference asset.
-    #     asset_name="target_object_0",
-    #     reference_asset_name="robot",
-    #     resampling_time_range=(100.0, 100.0), # No need to change the command
-    #     rel_standing_envs=0.0,
-    #     rel_heading_envs=0.0,
-    #     heading_command=False,
-    #     heading_control_stiffness=1.0,
-    #     debug_vis=True,
-    #     # Linear direction is enforced in command term to robot x-axis.
-    #     ranges=mdp.ObjectUniformVelocityRobotFrameCommandCfg.Ranges(
-    #         lin_vel_x=(-0.5, 0.5),
-    #         lin_vel_y=(0.0, 0.0),
-    #         ang_vel_z=(-0.5, 0.5),
-    #         heading=(-math.pi, math.pi), # Not used if heading_command = False
-    #     ),
-    # )
 
 @configclass
 class ActionsCfg:
@@ -236,18 +217,19 @@ class ObservationsCfg:
         ) # dim: 7 (position + quat) for the target object
 
         # Vector from active object to goal in active object frame.
-        box_to_goal_b = ObsTerm(
-            func=mdp.box_to_goal_vec_b3,
+        # TODO: do we need 3D pos & 3D rotation?
+        obj_to_goal_pos_local = ObsTerm(
+            func=mdp.obj_to_goal_pos_local,
             params={"goal_term_name": "goal_pose"},
             noise=Unoise(n_min=-0.02, n_max=0.02),
-        ) # dim: 3
+        ) # dim: 2 (only xy components in active object frame, since we want to encourage the agent to align the object to the goal along the ground plane)
 
-        # Goal orientation represented in active object frame as a flattened 3x3 matrix.
-        goal_rot_mat_in_object = ObsTerm(
-            func=mdp.goal_rot_mat_in_object,
+        # Goal orientation represented in active object frame as a yaw angle.
+        obj_to_goal_rot_local = ObsTerm(
+            func=mdp.obj_to_goal_rot_local,
             params={"goal_term_name": "goal_pose"},
-            noise=Unoise(n_min=-0.01, n_max=0.01),
-        ) # dim: 9
+            noise=Unoise(n_min=-0.0, n_max=0.0),
+        ) # dim: 1 (Yaw error in active object frame)
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -335,18 +317,18 @@ class ObservationsCfg:
         ) # dim: 7 (position + quat) for the target object
 
         # Vector from active object to goal in active object frame.
-        box_to_goal_b = ObsTerm(
-            func=mdp.box_to_goal_vec_b3,
+        obj_to_goal_pos_local = ObsTerm(
+            func=mdp.obj_to_goal_pos_local,
             params={"goal_term_name": "goal_pose"},
-            noise=Unoise(n_min=-0.02, n_max=0.02),
-        ) # dim: 3
+            noise=Unoise(n_min=-0.0, n_max=0.0),
+        ) # dim: 2
 
-        # Goal orientation represented in active object frame as a flattened 3x3 matrix.
-        goal_rot_mat_in_object = ObsTerm(
-            func=mdp.goal_rot_mat_in_object,
+        # Goal orientation represented in active object frame as a yaw angle.
+        obj_to_goal_rot_local = ObsTerm(
+            func=mdp.obj_to_goal_rot_local,
             params={"goal_term_name": "goal_pose"},
-            noise=Unoise(n_min=-0.01, n_max=0.01),
-        ) # dim: 9
+            noise=Unoise(n_min=-0.0, n_max=0.0),
+        ) # dim: 1
         
         # Robot base velocity
         base_lin_vel = ObsTerm(
@@ -354,7 +336,7 @@ class ObservationsCfg:
             scale = 2.0,
         ) # dim: 3
         
-       # Object velocity in robot frame
+        # Object velocity in robot frame
         obj_lin_vel_in_robot_frame = ObsTerm(
             func = mdp.obj_lin_vel_in_body_frame,
             scale = 2.0,
@@ -516,14 +498,6 @@ class EventCfg:
     #     },
     # )
 
-    
-    # Move the object closer after a delay
-    # move_object_delayed = EventTerm(
-    #     func=mdp.move_target_object_closer,
-    #     mode="interval",
-    #     interval_range_s=(1.0, 1.0),
-    #     params = {"asset_name": "target_object"},
-    # )
 
 @configclass
 class RewardsCfg:
@@ -545,7 +519,7 @@ class RewardsCfg:
         weight=8.0,
         params={
             "goal_term_name": "goal_pose",
-            "sigma3": 1.0,
+            "sigma": 1.0,
         },
     ) # Encourage object-goal pose matching using world-frame keypoint distance
 
@@ -554,12 +528,13 @@ class RewardsCfg:
         weight=1.0,
         params={
             "goal_term_name": "goal_pose",
-            "sigma2": 0.7071067812,
+            "sigma": 0.7071067812,
             "use_unit_vel": True,
             "use_xy": True,
         },
     ) # Encourage object velocity to align with the direction from object to goal
     
+    # Ablation study: object velocity tracking
     # lin_vel_z_l2 = RewTerm(
     #     func=mdp.lin_vel_z_l2,
     #     weight=2.0,
@@ -674,17 +649,4 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         # Import the robot (behind the chair)
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None
-
-    # Create a new buffer to store the previous object velocities & actions
-    def _pre_physics_step(self, action):
-        # Cache the current velocity before it gets updated
-        prev_obj_lin_vel = mdp.get_active_object_state_attr(self, "root_lin_vel_b").clone()[:, :2]
-        prev_obj_ang_vel = mdp.get_active_object_state_attr(self, "root_ang_vel_b").clone()[:, 2]
-        self.prev_obj_vel = torch.cat([prev_obj_lin_vel, prev_obj_ang_vel.unsqueeze(-1)], dim=-1)
-    
-    # # After the physics step, update prev_action and prev_prev_action for the next step
-    # def _post_physics_step(self, action):
-    #     # Update the observed actions as well
-    #     self.prev_prev_action = getattr(self, "prev_action", torch.zeros_like(action))
-    #     self.prev_action = action.clone()
 
