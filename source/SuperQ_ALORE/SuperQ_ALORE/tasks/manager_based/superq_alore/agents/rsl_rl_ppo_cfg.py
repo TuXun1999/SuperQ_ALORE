@@ -40,3 +40,37 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
+
+
+@configclass
+class PPOSuperQALORERunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 24
+    max_iterations = 6000
+    save_interval = 100
+    experiment_name = "SuperQ_ALORE_GNN"
+    empirical_normalization = False
+    class_name = "OnPolicyRunnerSuperQALORE"
+    policy = RslRlPpoActorCriticCfg(
+        class_name = "PhysicActorCritic",
+        init_noise_std=1.0,
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        noise_std_type="scalar",
+        activation="elu",
+    )
+    algorithm = RslRlPpoAlgorithmCfg(
+        class_name = "PhysicPPO",
+        value_loss_coef=1.0,
+        use_clipped_value_loss=True,
+        clip_param=0.2,
+        entropy_coef=0.005,
+        num_learning_epochs=5,
+        num_mini_batches=4,
+        learning_rate=1.0e-3,
+        schedule="adaptive",
+        gamma=0.99,
+        lam=0.95,
+        desired_kl=0.01,
+        max_grad_norm=1.0,
+        # normalize_advantage_per_mini_batch=True,
+    )

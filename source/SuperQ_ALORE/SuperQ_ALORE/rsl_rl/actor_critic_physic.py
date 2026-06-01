@@ -53,16 +53,11 @@ class PhysicActorCritic(ActorCritic):
         )
 
         # Hard-coded attributes...
-        self.history_length = 10
-        
+        self.history_length = 1
         
         if not hasattr(self, 'device'):
             self.device = kwargs.get('device', 'cpu')
 
-        # Pre-process the actions
-        # (x, y, omega) for the base, 6 joint angles for the arm (the last three are forced to be 0)
-        self.action_scale = torch.tensor([0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0], device=self.device)  # scale the action output to a reasonable range for the environment, especially for the arm joints
-        self.action_clip = torch.tensor([0.6, 0.0, 0.6, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0], device=self.device)  # clip the action output to ensure safety (especially for the base)
         
         self.obs_groups = obs_groups
         num_actor_obs = 0
@@ -75,15 +70,16 @@ class PhysicActorCritic(ActorCritic):
             num_critic_obs += obs[obs_group].shape[-1]
         
         # Actor obs (per environment)
-        self.num_actor_obs = int(num_actor_obs / self.history_length)
-
+        self.num_actor_obs = int(num_actor_obs / self.history_length)  
+        
         activation = resolve_nn_activation(activation)
 
         
         # The input to the actor predictor consists of raw env observations and the 
         # estimated object base velocities and the graph neural network output
-        mlp_input_dim_a = num_actor_obs + self.history_length*3 + 128 
-        # history_length*3 for velocity prediction, 128 for GNN output 
+        # mlp_input_dim_a = num_actor_obs + self.history_length*3 + 128
+        mlp_input_dim_a = num_actor_obs + 128
+        # history_length*3 for velocity prediction (Optional), 128 for GNN output 
 
         mlp_input_dim_c = num_critic_obs
 
@@ -102,12 +98,12 @@ class PhysicActorCritic(ActorCritic):
         self.arm_head = nn.Linear(actor_hidden_dims[-1], 6)
 
         # Add a physic estimator
-        self.physic_estimator = PhysicEstimator(
-            input_dim = self.num_actor_obs,  # Assuming actor obs is used for estimation
-            output_dim=3,  # [vx, vy, omega] ## TODO: with only physical estimation
-            device=self.device
-        )
-        print(f'Estimator: {self.physic_estimator}')
+        # self.physic_estimator = PhysicEstimator(
+        #     input_dim = self.num_vel_est_obs,  # Assuming actor obs is used for estimation
+        #     output_dim=3,  # [vx, vy, omega] ## TODO: with only physical estimation
+        #     device=self.device
+        # )
+        # print(f'Estimator: {self.physic_estimator}')
 
         ## add the interactive GNN
         self.interactive_gnn = InteractiveGNN(
@@ -123,35 +119,36 @@ class PhysicActorCritic(ActorCritic):
 
     def update_distribution(self, observations, critic_observations):
         # velocity prediction
-        with torch.no_grad():
-            physic_estimator = self.physic_estimator(observations)
+        # with torch.no_grad():
+        #     physic_estimated = self.physic_estimator(observations)
 
         B = observations.shape[0]
         T = self.history_length
         D = self.num_actor_obs
         obs_seq = observations.view(B, T, D)  # (B, T, D)
 
-        obj_ang_vel_z_gt = critic_observations[:, -4].view(B, 1, 1).expand(-1, T, -1) # (B, T, 1)
-        obj_lin_vel_x_gt = critic_observations[:, -9].view(B, 1, 1).expand(-1, T, -1)
-        obj_lin_vel_y_gt = critic_observations[:, -8].view(B, 1, 1).expand(-1, T, -1)
+        # NOTE: Ablation study: object velocity
+        # obj_ang_vel_z_gt = critic_observations[:, -4].view(B, 1, 1)
+        # obj_lin_vel_x_gt = critic_observations[:, -9].view(B, 1, 1)
+        # obj_lin_vel_y_gt = critic_observations[:, -8].view(B, 1, 1)
 
-        lin_vel_x_pre = physic_estimator[:, :1]
-        lin_vel_y_pre = physic_estimator[:, 1:2]
-        ang_vel_z_pre = physic_estimator[:, 2:3]
-        lin_vel_x_pre = lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        lin_vel_y_pre = lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        ang_vel_z_pre = ang_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+        # lin_vel_x_pre = physic_estimated[:, :1]
+        # lin_vel_y_pre = physic_estimated[:, 1:2]
+        # ang_vel_z_pre = physic_estimated[:, 2:3]
+        # lin_vel_x_pre = lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+        # lin_vel_y_pre = lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+        # ang_vel_z_pre = ang_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
 
-        obs_augmented = torch.cat((obs_seq, lin_vel_x_pre, lin_vel_y_pre, ang_vel_z_pre), dim=-1)  
-
+        # obs_augmented = torch.cat((obs_seq, lin_vel_x_pre, lin_vel_y_pre, ang_vel_z_pre), dim=-1)  
+        obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
         ## interactive GNN processing
         node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
         z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
-
-        actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)  # (B, 634)
-
-        # actor_input = obs_augmented.reshape(B, -1)  # (B, 506)
-
+        
+        actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)
+        
+        
+        
         shared_feat = self.shared_mlp(actor_input)
         base_mean = self.base_head(shared_feat)
         arm_mean = self.arm_head(shared_feat)
@@ -183,19 +180,22 @@ class PhysicActorCritic(ActorCritic):
         The last dimensions are forced to be 0
         """
         self.update_distribution(observations, critic_observations)
-        actions_raw = self.distribution.sample() 
-        
-        # Scale & Clip
-        actions = actions_raw * self.action_scale.to(actions_raw.device)
-        actions = torch.clamp(actions, -self.action_clip.to(actions_raw.device), self.action_clip.to(actions_raw.device))
+        try:
+            actions_raw = self.distribution.sample() 
+        except Exception as e:
+            print(f"Error during action sampling: {e}")
+            print(f"Mean: {self.distribution.mean[0]}")
+            print(f"Std: {self.distribution.stddev[0]}")
+            raise e
 
-        return actions
+        return actions_raw
 
 
     def act_inference(self, obs, **kwargs):
         # Separate obs out
         observations = obs["policy"]
         critic_observations = obs["critic"]
+
         # velocity prediction
         physic_estimator = self.physic_estimator(observations)
 
@@ -204,99 +204,61 @@ class PhysicActorCritic(ActorCritic):
         D = self.num_actor_obs
         obs_seq = observations.view(B, T, D)  # (B, T, D)
 
-        obj_lin_vel_x_pre = physic_estimator[:, :1]  
-        obj_lin_vel_y_pre = physic_estimator[:, 1:2]  
-        obj_lin_vel_z_pre = physic_estimator[:, 2:3]
+    
+        # NOTE: Ablation study: object velocity
+        # obj_lin_vel_x_pre = physic_estimator[:, :1]  
+        # obj_lin_vel_y_pre = physic_estimator[:, 1:2]  
+        # obj_lin_vel_z_pre = physic_estimator[:, 2:3]
         
 
-        # print("plan_vel predict", obj_lin_vel_x_pre/2., obj_lin_vel_y_pre/2., obj_lin_vel_z_pre*4.0)
+        # # print("plan_vel predict", obj_lin_vel_x_pre/2., obj_lin_vel_y_pre/2., obj_lin_vel_z_pre*4.0)
 
-        obj_ang_vel_z_gt = critic_observations[:, -4].view(B, 1, 1).expand(-1, T, -1) # (B, T, 1)
-        obj_lin_vel_x_gt = critic_observations[:, -9].view(B, 1, 1).expand(-1, T, -1)
-        obj_lin_vel_y_gt = critic_observations[:, -8].view(B, 1, 1).expand(-1, T, -1)
+        # obj_ang_vel_z_gt = critic_observations[:, -4].view(B, 1, 1).expand(-1, T, -1) # (B, T, 1)
+        # obj_lin_vel_x_gt = critic_observations[:, -9].view(B, 1, 1).expand(-1, T, -1)
+        # obj_lin_vel_y_gt = critic_observations[:, -8].view(B, 1, 1).expand(-1, T, -1)
     
 
-        obj_ang_vel_z_gt = critic_observations[:, -4]  # (B,)
-        obj_lin_vel_x_gt = critic_observations[:, -9]  # (B,)
-        obj_lin_vel_y_gt = critic_observations[:, -8]  # (B,)
+        # obj_ang_vel_z_gt = critic_observations[:, -4]  # (B,)
+        # obj_lin_vel_x_gt = critic_observations[:, -9]  # (B,)
+        # obj_lin_vel_y_gt = critic_observations[:, -8]  # (B,)
 
-        # print("obj_ang_vel_xyz_gt", obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
-
-
-        obj_lin_vel_x_pre_s = physic_estimator[:, :1].flatten()   # (B, 1) -> (B,)
-        obj_lin_vel_y_pre_s = physic_estimator[:, 1:2].flatten()  # (B, 1) -> (B,)
-        obj_lin_vel_z_pre_s = physic_estimator[:, 2:3].flatten()  # (B, 1) -> (B,)
-        # print("obj_lin_vel_x_pre_s", obj_lin_vel_x_pre_s[0])
+        # # print("obj_ang_vel_xyz_gt", obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
 
 
-         
-        # self._save_predictions_and_gt_to_csv(obj_lin_vel_x_pre_s/2, obj_lin_vel_y_pre_s/2, obj_lin_vel_z_pre_s*4.0, 
-        #                                  obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
+        # obj_lin_vel_x_pre_s = physic_estimator[:, :1].flatten()   # (B, 1) -> (B,)
+        # obj_lin_vel_y_pre_s = physic_estimator[:, 1:2].flatten()  # (B, 1) -> (B,)
+        # obj_lin_vel_z_pre_s = physic_estimator[:, 2:3].flatten()  # (B, 1) -> (B,)
+        # # print("obj_lin_vel_x_pre_s", obj_lin_vel_x_pre_s[0])
+
+
+        
+        # # self._save_predictions_and_gt_to_csv(obj_lin_vel_x_pre_s/2, obj_lin_vel_y_pre_s/2, obj_lin_vel_z_pre_s*4.0, 
+        # #                                  obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
     
 
-        obj_lin_vel_x_pre = obj_lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        obj_lin_vel_y_pre = obj_lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        obj_lin_vel_z_pre = obj_lin_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        obs_augmented = torch.cat((obs_seq, obj_lin_vel_x_pre, obj_lin_vel_y_pre, obj_lin_vel_z_pre), dim=-1)  # TODO: (B, T, 46)
+        # obj_lin_vel_x_pre = obj_lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+        # obj_lin_vel_y_pre = obj_lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+        # obj_lin_vel_z_pre = obj_lin_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+        # obs_augmented = torch.cat((obs_seq, obj_lin_vel_x_pre, obj_lin_vel_y_pre, obj_lin_vel_z_pre), dim=-1)  # TODO: (B, T, 46)
 
 
-        # obj_lin_vel_x_pre_zero = torch.zeros_like(obj_lin_vel_x_pre)  # (B, T, 1)
-        # obj_lin_vel_y_pre_zero = torch.zeros_like(obj_lin_vel_y_pre)  # (B, T, 1)
-        # obj_lin_vel_z_pre_zero = torch.zeros_like(obj_lin_vel_z_pre)  # (B, T, 1)
-        # obs_augmented = torch.cat((obs_seq, obj_lin_vel_x_pre_zero, obj_lin_vel_y_pre_zero, obj_lin_vel_z_pre_zero), dim=-1)  # TODO: (B, T, 46)
-
-
+        obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
         # interactive GNN processing
         node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
         z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
-
-        # if hasattr(self, 'visualization_counter'):
-        #     self.visualization_counter += 1
-        # else:
-        #     self.visualization_counter = 0
-
-        # if self.visualization_counter % 200 == 0:  
-        #     try:
-        #         env_labels = torch.arange(z.shape[0]) // (z.shape[0] // 3)
-                
-        #         if z.shape[0] >= 5:
-        #             
-        #            results = self.visualize_gnn_features_pca_only(
-        #                 z, labels=env_labels.cpu().numpy(), 
-        #                 crop_mode='break',  
-        #                 # break_x=((0.5, 1.5),), 
-        #                 # break_y=((-0.2, 0.2),),
-        #                 save_path=f'gnn_pca_broken_step_{self.visualization_counter}.png'
-        #             )
-                    
-        #            
-        #             # if results:
-        #             #     np.savez(f'gnn_pca_analysis_step_{self.visualization_counter}.npz', **results)
-        #         else:
-        #             print(f"Skipping visualization: only {z.shape[0]} samples")
-                    
-        #     except Exception as e:
-        #         print(f"PCA visualization failed: {e}")
- 
+        actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)
         
-        actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)  # (B, 634)
-
-        # actor_input = obs_augmented.reshape(B, -1)  # (B, 506)
 
         shared_feat = self.shared_mlp(actor_input)
         base_mean = self.base_head(shared_feat)
         arm_mean = self.arm_head(shared_feat)
         actions_mean = torch.cat([base_mean, arm_mean], dim=-1)
+        
+        # Pad three zeros for the last three dimensions of the action
+        actions_mean = torch.cat([actions_mean, torch.zeros(actions_mean.shape[0], 3, device=actions_mean.device)], dim=-1)
 
-        # Scale & Clip
-        actions = actions_mean * self.action_scale.to(actions_mean.device)
-        actions = torch.clamp(actions, -self.action_clip.to(actions_mean.device), self.action_clip.to(actions_mean.device))
-        """
-        actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
-        (Forced to match 12D action space of the pretrained locomotion policy)
-        """
-        actions = torch.cat([actions, torch.zeros(actions.shape[0], 3, device=actions.device)], dim=-1)
-        return actions
+        
+        return actions_mean
     
 
     """(DEPRECATED) Saving to csv may not be demanded yet..."""
