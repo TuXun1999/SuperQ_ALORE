@@ -217,7 +217,6 @@ class ObservationsCfg:
         ) # dim: 7 (position + quat) for the target object
 
         # Vector from active object to goal in active object frame.
-        # TODO: do we need 3D pos & 3D rotation?
         obj_to_goal_pos_local = ObsTerm(
             func=mdp.obj_to_goal_pos_local,
             params={"goal_term_name": "goal_pose"},

@@ -117,7 +117,7 @@ class InteractiveGNN(nn.Module):
         
         joint1_feat = torch.cat([
             # link pose in robot frame
-            critic_obs[:, 89:96], 
+            critic_obs[:, 86:93], 
             # q
             critic_obs[:,joint1_q_idx:joint1_q_idx+1], 
             # default_q
@@ -136,7 +136,7 @@ class InteractiveGNN(nn.Module):
         
         joint2_feat = torch.cat([
             # link pose in robot frame
-            critic_obs[:, 96:103], 
+            critic_obs[:, 93:100], 
             # q
             critic_obs[:,joint2_q_idx:joint2_q_idx+1], 
             # default_q
@@ -155,7 +155,7 @@ class InteractiveGNN(nn.Module):
         
         joint3_feat = torch.cat([
             # link pose in robot frame
-            critic_obs[:, 103:110], 
+            critic_obs[:, 100:107], 
             # q
             critic_obs[:,joint3_q_idx:joint3_q_idx+1], 
             # default_q
@@ -174,7 +174,7 @@ class InteractiveGNN(nn.Module):
         
         joint4_feat = torch.cat([
             # link pose in robot frame
-            critic_obs[:, 110:117], 
+            critic_obs[:, 107:114], 
             # q
             critic_obs[:,joint4_q_idx:joint4_q_idx+1], 
             # default_q
@@ -194,7 +194,7 @@ class InteractiveGNN(nn.Module):
         
         joint5_feat = torch.cat([
             # link pose in robot frame
-            critic_obs[:, 117:124], 
+            critic_obs[:, 114:121], 
             # q
             critic_obs[:,joint5_q_idx:joint5_q_idx+1], 
             # default_q
@@ -213,7 +213,7 @@ class InteractiveGNN(nn.Module):
         
         joint6_feat = torch.cat([
             # link pose in robot frame
-            critic_obs[:, 124:131], 
+            critic_obs[:, 121:128], 
             # q
             critic_obs[:,joint6_q_idx:joint6_q_idx+1], 
             # default_q
@@ -225,12 +225,12 @@ class InteractiveGNN(nn.Module):
         dim=-1)  # [num_envs, 11]
         
         # End-effector features: end-effector pose (7) + contact state (1)
-        ee_feat = critic_obs[:, 131:139]  # [num_envs, 8]                                  
+        ee_feat = critic_obs[:, 128:136]  # [num_envs, 8]                                  
         
         # Object features:  
         # object pose in base frame (7) + goal_vel (vx, vy, vomega) (3)
         # # TODO: modify it with our own shape encoder
-        object_feat = torch.cat([critic_obs[:, 139:146], critic_obs[:, 86:89]], dim=-1)  # [num_envs, 10]  
+        object_feat = torch.cat([critic_obs[:, 136:143], critic_obs[:, 143:146]], dim=-1)  # [num_envs, 10]  
 
         
         # Padding to ensure all node features have the same dimension
