@@ -120,7 +120,7 @@ class CommandsCfg:
         resampling_time_range=(1e6, 1e6), # No need to change the command
         enable_yaw_curriculum=False,
         curriculum_iterations_per_level=1000, # increase one curriculum level every 1000 iterations
-        curriculum_initial_yaw_range=(-math.pi/6, math.pi/6), # start with no yaw displacement
+        curriculum_initial_yaw_range=(0, 0), # start with no yaw displacement
         curriculum_yaw_step=math.pi / 18.0, # increase yaw range by 10 degrees on each side per curriculum level
         curriculum_max_yaw=math.pi / 2.0, # maximum yaw range is 90 degrees
         debug_vis=True,
@@ -130,10 +130,10 @@ class CommandsCfg:
         # Instead, the curriculum will control the yaw range for sampling the goal pose, and 
         # the actual yaw value in the command will be reset in the constructor.
         ranges=mdp.GoalPoseCommandCfg.Ranges(
-            pos_x=(-1.5, 1.5),
-            pos_y=(-1.5, 1.5),
+            pos_x=(-1.0, 1.0),
+            pos_y=(-1.0, 1.0),
             pos_z=(0.0, 0.0),
-            yaw=(0.0, 0.0),
+            yaw=(-math.pi/4, math.pi/4),
         ),
     )
 
@@ -486,6 +486,16 @@ class EventCfg:
         mode="reset",
         params={
             "goal_term_name": "goal_pose",
+        },
+    )
+    
+    # Resample the mass & friction & com of the object
+    reset_object_physical_properties = EventTerm(
+        func=mdp.reset_object_physical_properties,
+        mode="reset",
+        params={
+            "mass_range": (5, 15),
+            "friction_range": (0.1, 0.6),
         },
     )
     # reset_robot_joints = EventTerm(

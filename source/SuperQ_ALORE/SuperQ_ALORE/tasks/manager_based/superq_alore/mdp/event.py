@@ -266,6 +266,66 @@ def reset_joints_around_grasp_pose(
     asset.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
 
 
+def reset_object_physical_properties(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    mass_range: tuple[float, float],
+    friction_range: tuple[float, float],
+    num_buckets: int = 64
+) -> None:
+    """
+    Reset the physical properties of the object by sampling from the given ranges.
+    """
+    object_management.ensure_catalog_state(env)
 
+    # Objects are spawned as per-object subsets of environments
+    env_ids_cpu = env_ids.detach().cpu().tolist()
+    
+    # List out the active indices for each object
+    obj_idx_reset = env.active_object_indices[env_ids_cpu]
+    
+    # For each object in the selected envs, find the local indices & reset the states
+    for obj_id in range(len(OBJECT_CATALOG)):
+        # The rows corresponding to the current object in the selected batch of envs
+        selected_rows = torch.where(obj_idx_reset == obj_id)[0]
+        
+        # If in the selected envs, no env matched this object, skip to the next one
+        if selected_rows.size == 0:
+            continue
+        
+        # The env indices/indices of the selected object in the global pool of envs
+        target_object = env.scene[f"target_object_{obj_id}"]
+
+        global_to_local = env.global_to_local_mapping[f"target_object_{obj_id}"]
+
+        # Within the selected envs, find the global env indices of the object
+        global_env_ids_for_obj = [env_ids_cpu[row] for row in selected_rows.tolist()]
+
+            
+        # Find the local env indices of the object in the current batch of env_ids
+        local_env_ids_list = [global_to_local[g] for g in global_env_ids_for_obj]
+        local_env_ids = torch.tensor(local_env_ids_list, device=env.device, dtype=torch.long)
+
+        # Sample mass and friction values from the given ranges
+        mass_values = sample_uniform(
+            torch.tensor(mass_range[0], device=env.device),
+            torch.tensor(mass_range[1], device=env.device),
+            (len(local_env_ids),),
+            device=env.device,
+        )
+        
+        # For simplicity, we assume the static & dynamic friction coefficients are the same and sample one value for both
+        static_friction_range = (friction_range[0], friction_range[1])
+        dynamic_friction_range = (friction_range[0], friction_range[1])
+        restitution_range = (0.0, 0.0) # No restitution for the target object
+        range_list = [static_friction_range, dynamic_friction_range, restitution_range]
+        ranges = torch.tensor(range_list, device=env.device)
+        materials = sample_uniform(ranges[:, 0], ranges[:, 1], (num_buckets, 3), device=env.device)
+        
+        # Wrap up the material properties
+        materials_idx = torch.randint(0, num_buckets, (len(local_env_ids),), device=env.device)
+        # Set the sampled mass and friction values into the physics simulation for the current batch of sub-envs
+        target_object.root_physx_view.set_masses(mass_values, local_env_ids)
+        target_object.root_physx_view.set_material_properties(materials[materials_idx], local_env_ids)
 
 
