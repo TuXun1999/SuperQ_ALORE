@@ -192,8 +192,11 @@ class PhysicPPO(PPO):
                         param_group["lr"] = self.learning_rate
 
             # NOTE: Ablation study: Physic Estimator (on object velocity) update
-            # estimation_loss = self.policy.physic_estimator.update(obs_batch["velocity_estimation"], obs_batch["critic"])
-
+            if self.policy.physic_estimator is not None:
+                estimation_loss = self.policy.physic_estimator.update(obs_batch["policy"], obs_batch["critic"])
+            else:
+                estimation_loss = 0
+            
             # Surrogate loss
             # NOTE: clamp the ratio
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
@@ -293,7 +296,7 @@ class PhysicPPO(PPO):
             mean_surrogate_loss += surrogate_loss.item()
             mean_entropy += entropy_batch.mean().item()
             # NOTE: object velocity tracking is disabled currently
-            # mean_estimation_loss += estimation_loss
+            mean_estimation_loss += estimation_loss
             
 
             # -- RND loss

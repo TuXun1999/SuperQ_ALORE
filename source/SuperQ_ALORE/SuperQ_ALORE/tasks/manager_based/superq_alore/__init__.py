@@ -30,5 +30,6 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": f"{__name__}.joint_teleoperation_env:JointTeleoperationEnvCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+        "rsl_rl_superqalore_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPOSuperQALORERunnerCfg", 
     },
 )

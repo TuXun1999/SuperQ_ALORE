@@ -37,9 +37,10 @@ class PhysicActorCritic(ActorCritic):
         activation="elu",
         init_noise_std=1.0,
         noise_std_type: str = "scalar",
+        velocity_estimation_enabled=False,
+        GNN_enabled=True,
         **kwargs,
     ):
- 
         super().__init__(
             obs=obs,
             obs_groups=obs_groups,
@@ -74,12 +75,21 @@ class PhysicActorCritic(ActorCritic):
         
         activation = resolve_nn_activation(activation)
 
+        ## The ablation study on velocity estimation & GNN features
+        self.velocity_estimation_enabled = velocity_estimation_enabled
+        self.GNN_enabled = GNN_enabled
         
         # The input to the actor predictor consists of raw env observations and the 
         # estimated object base velocities and the graph neural network output
         # mlp_input_dim_a = num_actor_obs + self.history_length*3 + 128
-        mlp_input_dim_a = num_actor_obs + 128
-        # history_length*3 for velocity prediction (Optional), 128 for GNN output 
+        if velocity_estimation_enabled and GNN_enabled:
+            mlp_input_dim_a = num_actor_obs + self.history_length * 3 + 128
+        elif velocity_estimation_enabled and not GNN_enabled:
+            mlp_input_dim_a = num_actor_obs + self.history_length * 3
+        elif not velocity_estimation_enabled and GNN_enabled:
+            mlp_input_dim_a = num_actor_obs + 128
+        else:
+            mlp_input_dim_a = num_actor_obs 
 
         mlp_input_dim_c = num_critic_obs
 
@@ -98,57 +108,70 @@ class PhysicActorCritic(ActorCritic):
         self.arm_head = nn.Linear(actor_hidden_dims[-1], 6)
 
         # Add a physic estimator
-        # self.physic_estimator = PhysicEstimator(
-        #     input_dim = self.num_vel_est_obs,  # Assuming actor obs is used for estimation
-        #     output_dim=3,  # [vx, vy, omega] ## TODO: with only physical estimation
-        #     device=self.device
-        # )
-        # print(f'Estimator: {self.physic_estimator}')
+        if velocity_estimation_enabled:
+            self.physic_estimator = PhysicEstimator(
+                input_dim = self.num_actor_obs,  # Assuming actor obs is used for estimation
+                output_dim=3,  # [vx, vy, omega] ## TODO: with only physical estimation
+                device=self.device,
+                history_length=self.history_length
+            )
+            print(f'Estimator: {self.physic_estimator}')
+        else:
+            self.physic_estimator = None
 
         ## add the interactive GNN
-        self.interactive_gnn = InteractiveGNN(
-            node_dim=15, # node feature dimension
-            edge_dim=7,  # edge feature dimension
-            hidden_dim=64,
-            out_dim=128
-        )
+        if GNN_enabled:
+            print("Interactive GNN enabled in ActorCritic")
+            self.interactive_gnn = InteractiveGNN(
+                node_dim=15, # node feature dimension
+                edge_dim=7,  # edge feature dimension
+                hidden_dim=64,
+                out_dim=128
+            )
+        else:            
+            print("Interactive GNN disabled in ActorCritic")
+            self.interactive_gnn = None
 
         self.num_one_step_obs = num_actor_obs  # Number of observations used for one-step prediction
 
 
 
     def update_distribution(self, observations, critic_observations):
-        # velocity prediction
-        # with torch.no_grad():
-        #     physic_estimated = self.physic_estimator(observations)
-
         B = observations.shape[0]
         T = self.history_length
         D = self.num_actor_obs
         obs_seq = observations.view(B, T, D)  # (B, T, D)
 
-        # NOTE: Ablation study: object velocity
+        ## Ablation study: object velocity
         # obj_ang_vel_z_gt = critic_observations[:, -4].view(B, 1, 1)
         # obj_lin_vel_x_gt = critic_observations[:, -9].view(B, 1, 1)
         # obj_lin_vel_y_gt = critic_observations[:, -8].view(B, 1, 1)
+        
+        if self.velocity_estimation_enabled:
+            # velocity prediction
+            with torch.no_grad():
+                physic_estimated = self.physic_estimator(observations)
 
-        # lin_vel_x_pre = physic_estimated[:, :1]
-        # lin_vel_y_pre = physic_estimated[:, 1:2]
-        # ang_vel_z_pre = physic_estimated[:, 2:3]
-        # lin_vel_x_pre = lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        # lin_vel_y_pre = lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        # ang_vel_z_pre = ang_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+            lin_vel_x_pre = physic_estimated[:, :1]
+            lin_vel_y_pre = physic_estimated[:, 1:2]
+            ang_vel_z_pre = physic_estimated[:, 2:3]
+            lin_vel_x_pre = lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+            lin_vel_y_pre = lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+            ang_vel_z_pre = ang_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
 
-        # obs_augmented = torch.cat((obs_seq, lin_vel_x_pre, lin_vel_y_pre, ang_vel_z_pre), dim=-1)  
-        obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
+            obs_augmented = torch.cat((obs_seq, lin_vel_x_pre, lin_vel_y_pre, ang_vel_z_pre), dim=-1)  
+        else:
+            obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
+        
         ## interactive GNN processing
-        node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
-        z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
+        if self.GNN_enabled:
+            node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
+            z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
+            actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)
+        else:
+            actor_input = obs_augmented.reshape(B, -1)  # If GNN is disabled, just use the augmented observations
         
-        actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)
-        
-        
-        
+        # Feed the input to the MLPs
         shared_feat = self.shared_mlp(actor_input)
         base_mean = self.base_head(shared_feat)
         arm_mean = self.arm_head(shared_feat)
@@ -195,60 +218,67 @@ class PhysicActorCritic(ActorCritic):
         # Separate obs out
         observations = obs["policy"]
         critic_observations = obs["critic"]
-
-        # velocity prediction
-        physic_estimator = self.physic_estimator(observations)
-
+        
+        # Reshape the observations to (B, T, D)
         B = observations.shape[0]
         T = self.history_length
         D = self.num_actor_obs
         obs_seq = observations.view(B, T, D)  # (B, T, D)
 
-    
-        # NOTE: Ablation study: object velocity
-        # obj_lin_vel_x_pre = physic_estimator[:, :1]  
-        # obj_lin_vel_y_pre = physic_estimator[:, 1:2]  
-        # obj_lin_vel_z_pre = physic_estimator[:, 2:3]
+
+        if self.velocity_estimation_enabled:
+            ## Velocity prediction
+            physic_estimator = self.physic_estimator(observations)
+            
+            # NOTE: Ablation study: object velocity
+            obj_lin_vel_x_pre = physic_estimator[:, :1]  
+            obj_lin_vel_y_pre = physic_estimator[:, 1:2]  
+            obj_lin_vel_z_pre = physic_estimator[:, 2:3]
+            
+
+            # # print("plan_vel predict", obj_lin_vel_x_pre/2., obj_lin_vel_y_pre/2., obj_lin_vel_z_pre*4.0)
+
+            # obj_ang_vel_z_gt = critic_observations[:, -4].view(B, 1, 1).expand(-1, T, -1) # (B, T, 1)
+            # obj_lin_vel_x_gt = critic_observations[:, -9].view(B, 1, 1).expand(-1, T, -1)
+            # obj_lin_vel_y_gt = critic_observations[:, -8].view(B, 1, 1).expand(-1, T, -1)
         
 
-        # # print("plan_vel predict", obj_lin_vel_x_pre/2., obj_lin_vel_y_pre/2., obj_lin_vel_z_pre*4.0)
+            # obj_ang_vel_z_gt = critic_observations[:, -4]  # (B,)
+            # obj_lin_vel_x_gt = critic_observations[:, -9]  # (B,)
+            # obj_lin_vel_y_gt = critic_observations[:, -8]  # (B,)
 
-        # obj_ang_vel_z_gt = critic_observations[:, -4].view(B, 1, 1).expand(-1, T, -1) # (B, T, 1)
-        # obj_lin_vel_x_gt = critic_observations[:, -9].view(B, 1, 1).expand(-1, T, -1)
-        # obj_lin_vel_y_gt = critic_observations[:, -8].view(B, 1, 1).expand(-1, T, -1)
-    
-
-        # obj_ang_vel_z_gt = critic_observations[:, -4]  # (B,)
-        # obj_lin_vel_x_gt = critic_observations[:, -9]  # (B,)
-        # obj_lin_vel_y_gt = critic_observations[:, -8]  # (B,)
-
-        # # print("obj_ang_vel_xyz_gt", obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
+            # # print("obj_ang_vel_xyz_gt", obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
 
 
-        # obj_lin_vel_x_pre_s = physic_estimator[:, :1].flatten()   # (B, 1) -> (B,)
-        # obj_lin_vel_y_pre_s = physic_estimator[:, 1:2].flatten()  # (B, 1) -> (B,)
-        # obj_lin_vel_z_pre_s = physic_estimator[:, 2:3].flatten()  # (B, 1) -> (B,)
-        # # print("obj_lin_vel_x_pre_s", obj_lin_vel_x_pre_s[0])
+            # obj_lin_vel_x_pre_s = physic_estimator[:, :1].flatten()   # (B, 1) -> (B,)
+            # obj_lin_vel_y_pre_s = physic_estimator[:, 1:2].flatten()  # (B, 1) -> (B,)
+            # obj_lin_vel_z_pre_s = physic_estimator[:, 2:3].flatten()  # (B, 1) -> (B,)
+            # print("obj_lin_vel_x_pre_s", obj_lin_vel_x_pre_s[0])
 
 
+            
+            # # self._save_predictions_and_gt_to_csv(obj_lin_vel_x_pre_s/2, obj_lin_vel_y_pre_s/2, obj_lin_vel_z_pre_s*4.0, 
+            # #                                  obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
         
-        # # self._save_predictions_and_gt_to_csv(obj_lin_vel_x_pre_s/2, obj_lin_vel_y_pre_s/2, obj_lin_vel_z_pre_s*4.0, 
-        # #                                  obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
-    
 
-        # obj_lin_vel_x_pre = obj_lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        # obj_lin_vel_y_pre = obj_lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        # obj_lin_vel_z_pre = obj_lin_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-        # obs_augmented = torch.cat((obs_seq, obj_lin_vel_x_pre, obj_lin_vel_y_pre, obj_lin_vel_z_pre), dim=-1)  # TODO: (B, T, 46)
+            obj_lin_vel_x_pre = obj_lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+            obj_lin_vel_y_pre = obj_lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+            obj_lin_vel_z_pre = obj_lin_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
+            obs_augmented = torch.cat((obs_seq, obj_lin_vel_x_pre, obj_lin_vel_y_pre, obj_lin_vel_z_pre), dim=-1)  # TODO: (B, T, 46)
 
-
-        obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
+        else:
+            obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
+        
         # interactive GNN processing
-        node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
-        z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
-        actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)
+        if self.GNN_enabled:
+            node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
+            z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
+            # Concatenate the augmented observations and GNN output for action prediction
+            actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)
+        else:
+            actor_input = obs_augmented.reshape(B, -1)  # If GNN is disabled, just use the augmented observations
         
-
+            
         shared_feat = self.shared_mlp(actor_input)
         base_mean = self.base_head(shared_feat)
         arm_mean = self.arm_head(shared_feat)

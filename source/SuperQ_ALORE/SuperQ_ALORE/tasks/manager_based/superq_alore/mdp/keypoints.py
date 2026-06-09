@@ -30,24 +30,6 @@ def pushable_keypoints_w(env) -> torch.Tensor:
     # transform the local keypoints to world frame using the object's pose
     keypoints_w = _transform_points(local_kps, pos_w, quat_w)
 
-    # Debug print for validating per-env keypoint handling during tests.
-    # active_indices = env.active_object_indices.detach().cpu().tolist()
-    # local_kps_cpu = local_kps.detach().cpu()
-    # keypoints_cpu = keypoints_w.detach().cpu()
-    # pos_w_cpu = pos_w.detach().cpu()
-    # quat_w_cpu = quat_w.detach().cpu()
-    # for env_idx, object_idx in enumerate(active_indices):
-    #     local_z = local_kps_cpu[env_idx, :, 2]
-    #     world_z = keypoints_cpu[env_idx, :, 2]
-    #     print(
-    #         f"[DEBUG][pushable_keypoints_w] env={env_idx} active_object={object_idx} "
-    #         f"root_pos_w={pos_w_cpu[env_idx].tolist()} "
-    #         f"root_quat_w={quat_w_cpu[env_idx].tolist()} "
-    #         f"local_z_range=({float(local_z.min()):.6f}, {float(local_z.max()):.6f}) "
-    #         f"world_z_range=({float(world_z.min()):.6f}, {float(world_z.max()):.6f}) "
-    #         f"keypoints_w={keypoints_cpu[env_idx].tolist()}"
-    #     )
-
     return keypoints_w
 
 

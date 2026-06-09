@@ -40,56 +40,13 @@ GROUND_PATCH_CFG = RigidObjectCfg(
 )
 
 
-# The chair => spawn the chairs in order
-# Global variable to store the object & pose in each parallel sub-env
-OBJECT_IDX_ENVS = []
-POSE_IDX_LOCAL_ENVS = []
-GRASP_POSE_JOINT_POSITIONS = []
-def build_target_objects(pool_size = 4096):
-    pool_size = int(pool_size)
-    # Step 1: Determine the number of poses initialized in the environment
-    # OBJECT_CATALOG: a tuple of ObjectEntry,
-    # each containing 
-    # object_id, asset_path, and 
-    # a tuple of PoseEntry (pose_id, position, orientation, joint_configuration)
-    pose_num = []
-    for obj in OBJECT_CATALOG:
-        pose_num.append(len(obj.poses))
-    pose_num = np.array(pose_num)
-
-    total_pose_num = np.sum(pose_num)
-    pose_num_cumsum = np.cumsum(pose_num)
-    pose_idx_global = np.resize(np.arange(total_pose_num), pool_size) # global pose idx across all objects, resized to the pool size of envs
-    pose_idx_global = np.sort(pose_idx_global) # sort to ensure the same object and pose are assigned together in adjacent envs, which can help with debugging and visualization
-    # Step 2: Map the pose IDXs to object IDs and pose IDs within that object
-    for pose_idx in pose_idx_global:
-        obj_idx = np.searchsorted(pose_num_cumsum, pose_idx, side='right')
-        pose_idx_within_obj = pose_idx - (pose_num_cumsum[obj_idx - 1] if obj_idx > 0 else 0)
-        OBJECT_IDX_ENVS.append(obj_idx)
-        POSE_IDX_LOCAL_ENVS.append(pose_idx_within_obj)
-        joint_position = OBJECT_CATALOG[obj_idx].poses[pose_idx_within_obj].joint_positions
-        joint_angle_val = [joint_position[name] for name in ARM_JOINT_NAMES_IN_ORDER]
-        GRASP_POSE_JOINT_POSITIONS.append(joint_angle_val)
-
-
-
-def create_target_object_cfg(pool_size = 4096):
-    # assign object ids & pose ids to each environment
-    build_target_objects(pool_size)
+# Create the configuration for each object
+def create_target_object_cfg():
     target_obj_cfgs = []
     for obj_id in range(len(OBJECT_CATALOG)):
-
-        env_ids = np.where(np.array(OBJECT_IDX_ENVS) == obj_id)[0]
-        #
-        # Build regex:
-        #
-        # /World/envs/(env_0|env_1|env_2)/target_object
-        #
-        env_regex = "|".join([f"env_{i}" for i in env_ids])
-
-        prim_path = (
-            f"/World/envs/({env_regex})/target_object"
-        )
+        # Spawn each catalog object across all envs. Activation is handled at reset-time
+        # using OBJECT_IDX_ENVS, while non-active objects are moved away.
+        prim_path = f"{{ENV_REGEX_NS}}/target_object_{obj_id}"
 
 
         target_obj_cfgs.append(
@@ -97,11 +54,43 @@ def create_target_object_cfg(pool_size = 4096):
                 prim_path=prim_path,
                 spawn=sim_utils.UsdFileCfg(
                     usd_path=OBJECT_CATALOG[obj_id].asset_path,
+                    rigid_props=DEFAULT_RIGID_PROPS,
+                    collision_props=DEFAULT_COLLISION_PROPS,
 
                     # VERY important for multi-env USD spawning
                     copy_from_source=True,
                 ),
             )
         )
+    # print(len(target_obj_cfgs))
+    # input("Press to continue...")
     return target_obj_cfgs
-CATALOG_OBJECT_CFGS = create_target_object_cfg(4096)
+CATALOG_OBJECT_CFGS = create_target_object_cfg()
+
+
+# Only for the teleoperation environment, where only one object is used
+def create_target_obj_teleoperation_cfg(object_idx = 0, pose_idx = 0):
+    # Object init pos & rot
+    obj_pos = OBJECT_CATALOG[object_idx].poses[pose_idx].position
+    obj_rot = OBJECT_CATALOG[object_idx].poses[pose_idx].orientation
+    # Construct the object
+    target_obj_cfg = RigidObjectCfg(
+        prim_path=f"/World/envs/env_0/target_object",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=OBJECT_CATALOG[object_idx].asset_path,
+            rigid_props=DEFAULT_RIGID_PROPS,
+            collision_props=DEFAULT_COLLISION_PROPS,
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=obj_pos,
+            rot=obj_rot,
+        ),
+    )
+    joint_position = OBJECT_CATALOG[object_idx].poses[pose_idx].joint_positions
+    
+    # An initial value to rise the robotic arm
+    joint_angle_val = [0.0, -2.05, 1.3366, 0.0, 1.2281, 0.0, -0.9]
+    joint_angle_ref = {ARM_JOINT_NAMES_IN_ORDER[i]: joint_angle_val[i] for i in range(len(ARM_JOINT_NAMES_IN_ORDER))}
+    return [target_obj_cfg, joint_angle_ref, obj_pos, obj_rot]
+
+OBJECT_TELEOPERATION_INFO = create_target_obj_teleoperation_cfg(0, 0)

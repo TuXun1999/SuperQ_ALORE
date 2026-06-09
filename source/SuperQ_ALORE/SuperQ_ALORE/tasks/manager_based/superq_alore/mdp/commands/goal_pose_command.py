@@ -171,14 +171,14 @@ class GoalPoseCommand(CommandTerm):
 
         # Obtain the initial orientations for all objects
         _, pose_rot = object_management.get_active_pose_position_orientation_tensors(self._env, env_ids)
-        _, _, pose_yaw = math_utils.euler_xyz_from_quat(pose_rot)
-        base_yaw = pose_yaw.to(dtype=self.goal_w.dtype)
         
         # Add the LOCAL yaw offset to the base yaw of the object
-        goal_yaw = base_yaw + samples[:, 3]
         zeros = torch.zeros(env_ids.numel(), device=self.device, dtype=self.goal_w.dtype)
-        self.goal_quat_w[env_ids] = math_utils.quat_from_euler_xyz(zeros, zeros, goal_yaw)
+        
+        sample_yaw_rot = math_utils.quat_from_euler_xyz(zeros, zeros, samples[:, 3])
+        self.goal_quat_w[env_ids] = math_utils.quat_mul(sample_yaw_rot, pose_rot)
 
+        # input("Press Enter to continue...")
     def _update_command(self):
         return
 
@@ -317,7 +317,6 @@ class GoalPoseCommand(CommandTerm):
 
         if self._goal_vis is not None:
             self._goal_vis.visualize(self.goal_w, self.goal_quat_w, marker_indices=marker_indices)
-
         if self._kps_vis is None:
             return
 

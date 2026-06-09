@@ -13,12 +13,13 @@ class PhysicEstimator(nn.Module):
                  mlp_hidden_dim=64,
                  learning_rate=1e-3,
                  max_grad_norm=10.0,
+                 history_length=10, # Assuming the history length is 10
                  device=None):
         super().__init__()
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         self.num_actor_obs = input_dim  # Number of observations used for one-step prediction
-        self.history_length = 10  # Assuming the history length is 10
+        self.history_length = history_length 
 
         # LSTM encoder
         self.lstm = nn.LSTM(

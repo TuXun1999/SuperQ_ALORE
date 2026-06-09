@@ -11,8 +11,7 @@ from SuperQ_ALORE.assets.object_catalog import (
     POSE_IDS_BY_OBJECT,
     PoseEntry,
 )
-from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene import \
-    OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
@@ -36,6 +35,39 @@ def _resolve_pose_filter(env: ManagerBasedEnv, object_id: str) -> tuple[str, ...
         return POSE_IDS_BY_OBJECT[object_id]
     return tuple(global_filter)
 
+import numpy as np
+# Global variable to store the object & pose in each parallel sub-env
+def build_target_objects(pool_size = 4096):
+    pool_size = int(pool_size)
+    # Step 1: Determine the number of poses initialized in the environment
+    # OBJECT_CATALOG: a tuple of ObjectEntry,
+    # each containing 
+    # object_id, asset_path, and 
+    # a tuple of PoseEntry (pose_id, position, orientation, joint_configuration)
+    pose_num = []
+    for obj in OBJECT_CATALOG:
+        pose_num.append(len(obj.poses))
+    pose_num = np.array(pose_num)
+
+    total_pose_num = np.sum(pose_num)
+    pose_num_cumsum = np.cumsum(pose_num)
+    pose_idx_global = np.resize(np.arange(total_pose_num), pool_size) # global pose idx across all objects, resized to the pool size of envs
+    pose_idx_global = np.sort(pose_idx_global) # sort to ensure the same object and pose are assigned together in adjacent envs, which can help with debugging and visualization
+    
+    OBJECT_IDX_ENVS = []
+    POSE_IDX_LOCAL_ENVS = []
+    GRASP_POSE_JOINT_POSITIONS = []
+    # Step 2: Map the pose IDXs to object IDs and pose IDs within that object
+    for pose_idx in pose_idx_global:
+        obj_idx = np.searchsorted(pose_num_cumsum, pose_idx, side='right')
+        pose_idx_within_obj = pose_idx - (pose_num_cumsum[obj_idx - 1] if obj_idx > 0 else 0)
+        OBJECT_IDX_ENVS.append(obj_idx)
+        POSE_IDX_LOCAL_ENVS.append(pose_idx_within_obj)
+        joint_position = OBJECT_CATALOG[obj_idx].poses[pose_idx_within_obj].joint_positions
+        joint_angle_val = [joint_position[name] for name in ARM_JOINT_NAMES_IN_ORDER]
+        GRASP_POSE_JOINT_POSITIONS.append(joint_angle_val)
+        
+    return OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS
 
 def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     """Initialise all per-env catalog tensors on env."""
@@ -48,6 +80,9 @@ def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     # obtain the number of objects from the object_catalog.py that processes the YAML file.
     num_objects = len(OBJECT_CATALOG)
 
+    # create the table for envs
+    OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS = build_target_objects(pool_size = env.num_envs)
+    
     # active_object_indices is the idx of the assigned object in each sub-env
     env.active_object_indices = torch.tensor(OBJECT_IDX_ENVS, dtype=torch.long, device=env.device)
 
@@ -57,17 +92,6 @@ def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     # Arm joint targets [num_envs, 7], matching ARM_JOINT_NAMES_IN_ORDER
     env.active_arm_joint_reference = torch.tensor(GRASP_POSE_JOINT_POSITIONS, dtype=torch.float32, device=env.device)
 
-    # Build global->local index mapping for this object view.
-    env.global_to_local_mapping = {}
-    for obj_id in range(num_objects):
-        all_envs_for_obj = torch.where(env.active_object_indices == obj_id)[0]
-        
-        # For example, there are two objects and 20 envs
-        # object 1 is at 11th sub-env, 
-        # then its global index is 11, but its local index is 1 (the first 10 envs belong to object 0)
-        global_to_local = {int(g): int(i) for i, g in enumerate(all_envs_for_obj.tolist())}
-        env.global_to_local_mapping[f"target_object_{obj_id}"] = global_to_local
-    
     # next time when the function is called, the first "if" condition will be true 
     # and the function will return immediately
     env._catalog_ready = True
@@ -166,16 +190,17 @@ def get_active_object_state_attr(
     ensure_catalog_state(env)
     n_catalog = len(OBJECT_CATALOG)
 
-    # Collect the requested attribute from all objects into a list of tensors,
-    # NOTE: The envs are already initialized in the order of i, so just stack them directly
+    # Collect all object views and pick per-env values using active_object_indices.
     tensors = [
         getattr(env.scene[f"target_object_{i}"].data, attr_name)
         for i in range(n_catalog)
     ]
-    # stacked: [num_envs, attr_dim]
-    stacked = torch.cat(tensors, dim=0)
+    # stacked: [num_objects, num_envs, ...]
+    stacked = torch.stack(tensors, dim=0)
+    env_indices = torch.arange(stacked.shape[1], device=stacked.device)
+    active_object_indices = env.active_object_indices.to(device=stacked.device)
 
-    return stacked    # shape: [num_envs, attr_dim]    
+    return stacked[active_object_indices, env_indices]
 
 
 def get_active_object_physx_masses(env: ManagerBasedEnv) -> torch.Tensor:
@@ -189,9 +214,11 @@ def get_active_object_physx_masses(env: ManagerBasedEnv) -> torch.Tensor:
         torch.sum(env.scene[f"target_object_{i}"].root_physx_view.get_masses(), dim=1).unsqueeze(-1)
         for i in range(n_catalog)
     ]
-    stacked = torch.cat(tensors, dim=0)  # [num_envs, 1]
-    
-    return stacked  # [num_envs, 1]
+    stacked = torch.stack(tensors, dim=0)  # [num_objects, num_envs, 1]
+    env_indices = torch.arange(stacked.shape[1], device=stacked.device)
+    active_object_indices = env.active_object_indices.to(device=stacked.device)
+
+    return stacked[active_object_indices, env_indices]  # [num_envs, 1]
 
 
 def get_active_object_physx_material_properties(env: ManagerBasedEnv) -> torch.Tensor:
@@ -206,6 +233,8 @@ def get_active_object_physx_material_properties(env: ManagerBasedEnv) -> torch.T
         env.scene[f"target_object_{i}"].root_physx_view.get_material_properties()[:, 0, :]
         for i in range(n_catalog)
     ]  # each: [num_envs, 3]
-    stacked = torch.cat(tensors, dim=0)  # [num_envs, 3]
-    return stacked  # [num_envs, 3]
+    stacked = torch.stack(tensors, dim=0)  # [num_objects, num_envs, 3]
+    env_indices = torch.arange(stacked.shape[1], device=stacked.device)
+    active_object_indices = env.active_object_indices.to(device=stacked.device)
+    return stacked[active_object_indices, env_indices]  # [num_envs, 3]
 

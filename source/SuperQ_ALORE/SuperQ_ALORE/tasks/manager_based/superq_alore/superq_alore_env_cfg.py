@@ -131,7 +131,7 @@ class CommandsCfg:
         # the actual yaw value in the command will be reset in the constructor.
         ranges=mdp.GoalPoseCommandCfg.Ranges(
             pos_x=(-1.0, 1.0),
-            pos_y=(-1.0, 1.0),
+            pos_y=(-0.2, 0.2),
             pos_z=(0.0, 0.0),
             yaw=(-math.pi/4, math.pi/4),
         ),
@@ -335,14 +335,14 @@ class ObservationsCfg:
             scale = 2.0,
         ) # dim: 3
         
-        # Object velocity in robot frame
-        obj_lin_vel_in_robot_frame = ObsTerm(
+        # Object velocity in body frame
+        obj_lin_vel_in_body_frame = ObsTerm(
             func = mdp.obj_lin_vel_in_body_frame,
             scale = 2.0,
         ) # dim: 3
         
-        # Object angular velocity in robot frame
-        obj_ang_vel_in_robot_frame = ObsTerm(
+        # Object angular velocity in body frame
+        obj_ang_vel_in_body_frame = ObsTerm(
             func = mdp.obj_ang_vel_in_body_frame,
             scale = 0.25,
         ) # dim: 3
@@ -440,9 +440,12 @@ class EventCfg:
         params={
             "gpu_temp_buffer_capacity": 64 * 1024 * 1024,
             "gpu_heap_capacity": 256 * 1024 * 1024,
-            "gpu_max_rigid_patch_count": 1_048_576,
+            "gpu_found_lost_pairs_capacity": 4_194_304,
+            # Keep headroom above observed minimum (~1,325,656 at 4096 envs).
+            "gpu_max_rigid_patch_count": 3_000_000,
         },
     )
+    
 
     # reset
     reset_base = EventTerm(
@@ -494,7 +497,7 @@ class EventCfg:
         func=mdp.reset_object_physical_properties,
         mode="reset",
         params={
-            "mass_range": (5, 15),
+            "mass_range": (7, 15),
             "friction_range": (0.1, 0.6),
         },
     )
@@ -511,7 +514,9 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
-
+    """
+    Section I: Task specific Rewards
+    """
     sparse_completion = RewTerm(
         func=mdp.sparse_completion_reward,
         weight=10.0,
@@ -543,6 +548,7 @@ class RewardsCfg:
         },
     ) # Encourage object velocity to align with the direction from object to goal
     
+    is_alive = RewTerm(func=mdp.is_alive, weight=2.0) # The manipulation process should be alive
     # Ablation study: object velocity tracking
     # lin_vel_z_l2 = RewTerm(
     #     func=mdp.lin_vel_z_l2,
@@ -556,6 +562,19 @@ class RewardsCfg:
     #     params = {},
     # ) # Penalize the angular velocity in x and y axes to encourage the object not to topple
 
+    """
+    Section II: Smooth motion rewards
+    """
+    lin_vel_change_penalty = RewTerm(
+        func=mdp.lin_vel_change_penalty,
+        weight=2.0,
+    ) # Penalize the change in linear velocity of the object to encourage smooth motion
+    
+    ang_vel_change_penalty = RewTerm(
+        func=mdp.ang_vel_change_penalty,
+        weight=2.0,
+    ) # Penalize the change in angular velocity of the object to encourage smooth motion
+    
     flat_orientation_l2 = RewTerm(
         func=mdp.flat_orientation_l2,
         weight=-10.0,
@@ -579,7 +598,15 @@ class RewardsCfg:
         },
     ) # Penalize the deviation of joint positions from the per-env active grasp pose reference
     
-
+    undesired_contact_penalty = RewTerm(
+        func=mdp.undesired_contact_penalty,
+        weight=7.0,
+        params={
+            "undesired_contact_body_names": SPOT_BODY_LINKS,  # Replace with actual body names
+            "contact_sensor_name": "contact_forces",
+            "undesired_contact_threshold": 1.0,
+        },
+    ) # Penalize undesired contacts between the robot and the ground to encourage the robot to
 @configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
@@ -642,7 +669,7 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
     commands: CommandsCfg = CommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
-
+        
     # Post initialization
     def __post_init__(self) -> None:
         """Post initialization."""
@@ -654,6 +681,15 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation
+
+        # Apply GPU broadphase/narrowphase capacities directly on SimulationCfg.
+        # These values affect the PhysX scene descriptor used at sim startup.
+        if getattr(self.sim, "physx", None) is not None:
+            self.sim.physx.gpu_max_rigid_patch_count = 3_000_000
+            self.sim.physx.gpu_found_lost_pairs_capacity = 4_194_304
+            self.sim.physx.gpu_heap_capacity = 256 * 1024 * 1024
+            self.sim.physx.gpu_temp_buffer_capacity = 64 * 1024 * 1024
+        
         
         # Import the robot (behind the chair)
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")

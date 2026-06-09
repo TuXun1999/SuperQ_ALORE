@@ -5,6 +5,7 @@ from __future__ import annotations
 import torch
 from typing import TYPE_CHECKING
 from pxr import PhysxSchema, UsdPhysics
+import isaaclab.sim as sim_utils
 
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
@@ -22,6 +23,7 @@ def configure_physx_scene_gpu_buffers(
     env_ids: torch.Tensor,
     gpu_temp_buffer_capacity: int = 64 * 1024 * 1024,
     gpu_heap_capacity: int = 256 * 1024 * 1024,
+    gpu_found_lost_pairs_capacity: int = 4_194_304,
     gpu_max_rigid_patch_count: int = 1_048_576,
 ) -> None:
     """Apply PhysX GPU capacities on the live PhysicsScene prim at startup."""
@@ -50,11 +52,15 @@ def configure_physx_scene_gpu_buffers(
         heap_attr = physx_scene_api.CreateGpuHeapCapacityAttr()
     heap_attr.Set(int(gpu_heap_capacity))
 
+    found_lost_attr = physx_scene_api.GetGpuFoundLostPairsCapacityAttr()
+    if not found_lost_attr or not found_lost_attr.IsValid():
+        found_lost_attr = physx_scene_api.CreateGpuFoundLostPairsCapacityAttr()
+    found_lost_attr.Set(int(gpu_found_lost_pairs_capacity))
+
     patch_attr = physx_scene_api.GetGpuMaxRigidPatchCountAttr()
     if not patch_attr or not patch_attr.IsValid():
         patch_attr = physx_scene_api.CreateGpuMaxRigidPatchCountAttr()
     patch_attr.Set(int(gpu_max_rigid_patch_count))
-
 
 def resample_goal_region_on_reset(
     env: ManagerBasedEnv,
@@ -78,6 +84,56 @@ def resample_goal_region_on_reset(
     raise RuntimeError(f"Unable to resample goal term from candidates: {term_candidates}")
 
 
+# (DEPRECATED) Will cause observations to fail
+# def disable_inactive_object_collisions(
+#     env: ManagerBasedEnv,
+#     env_ids: torch.Tensor,
+# ) -> None:
+#     """Disable collisions for object instances that are inactive in each env.
+
+#     This is intended to run at startup once after scene creation.
+#     """
+
+#     if hasattr(env, "_inactive_object_collisions_disabled"):
+#         return
+
+#     object_management.ensure_catalog_state(env)
+#     disable_collision_cfg = sim_utils.CollisionPropertiesCfg(collision_enabled=False)
+
+#     active_object_indices = env.active_object_indices.detach().cpu()
+#     num_envs = int(env.num_envs)
+
+#     for obj_id in range(len(OBJECT_CATALOG)):
+#         target_object = env.scene[f"target_object_{obj_id}"]
+#         prim_paths = list(target_object.root_physx_view.prim_paths)
+#         print(len(prim_paths))
+#         input("Press to continue...")
+#         # root_physx_view.prim_paths is expected to be aligned with env index ordering.
+#         max_envs = min(num_envs, len(prim_paths))
+#         for env_idx in range(max_envs):
+#             if int(active_object_indices[env_idx].item()) != obj_id:
+#                 sim_utils.modify_collision_properties(prim_paths[env_idx], disable_collision_cfg)
+#                 print(env_idx)
+#         input("Press to continue...")
+#     env._inactive_object_collisions_disabled = True
+
+def reset_target_object_pose(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    asset_name: str = "target_object",
+    offset: tuple[float, float] = (0.0, 0.0),
+    rotation: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0),
+):
+    # target objects to manipulate
+    target_object = env.scene[asset_name]
+    target_object_state = env.scene[asset_name].data.default_root_state[env_ids].clone()
+    origins = env.scene.env_origins[env_ids]
+    target_object_state[:, 0] = origins[:, 0] + offset[0]
+    target_object_state[:, 1] = origins[:, 1] + offset[1]
+    target_object_state[:, 3:7] = torch.tensor(rotation, device=target_object_state.device)
+    target_object.write_root_state_to_sim(target_object_state, env_ids=env_ids)
+
+
 def reset_object_and_robot_from_catalog_pose(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
@@ -91,14 +147,13 @@ def reset_object_and_robot_from_catalog_pose(
     """
     object_management.ensure_catalog_state(env)
 
-    # Objects are spawned as per-object subsets of environments
+    # Objects are spawned in all environments with per-env activation.
     env_ids_cpu = env_ids.detach().cpu().tolist()
     
     # List out the active indices for each object
+    # N
     obj_idx_reset = env.active_object_indices[env_ids_cpu]
     pose_idx_reset = env.active_pose_indices[env_ids_cpu]
-    global_to_local_mapping = env.global_to_local_mapping
-    
     # Find the env origins
     origins = env.scene.env_origins[env_ids]
 
@@ -108,24 +163,14 @@ def reset_object_and_robot_from_catalog_pose(
         selected_rows = torch.where(obj_idx_reset == obj_id)[0]
         
         # If in the selected envs, no env matched this object, skip to the next one
-        if selected_rows.size == 0:
+        if selected_rows.numel() == 0:
             continue
         
-        # The env indices/indices of the selected object in the global pool of envs
         target_object = env.scene[f"target_object_{obj_id}"]
-
-        global_to_local = global_to_local_mapping[f"target_object_{obj_id}"]
-
-        # Within the selected envs, find the global env indices of the object
-        global_env_ids_for_obj = [env_ids_cpu[row] for row in selected_rows.tolist()]
-
-            
-        # Find the local env indices of the object in the current batch of env_ids
-        local_env_ids_list = [global_to_local[g] for g in global_env_ids_for_obj]
-        local_env_ids = torch.tensor(local_env_ids_list, device=env.device, dtype=torch.long)
+        active_env_ids_for_obj = env_ids[selected_rows]
 
         # Reset the object states in the current batch of sub-envs
-        target_object_state = target_object.data.default_root_state[local_env_ids].clone()
+        target_object_state = target_object.data.default_root_state[active_env_ids_for_obj].clone()
 
         for j, row in enumerate(selected_rows.tolist()):
             pose_entry: object_management.PoseEntry = OBJECT_CATALOG[obj_id].poses[int(pose_idx_reset[row])]
@@ -135,7 +180,20 @@ def reset_object_and_robot_from_catalog_pose(
             quat = pose_entry.orientation  # w, x, y, z
             target_object_state[j, 3:7] = torch.tensor(quat, device=target_object_state.device)
 
-        target_object.write_root_state_to_sim(target_object_state, env_ids=local_env_ids)
+        target_object.write_root_state_to_sim(target_object_state, env_ids=active_env_ids_for_obj)
+
+        # Move non-active instances of this object away so each env has one active object.
+        inactive_rows = torch.where(obj_idx_reset != obj_id)[0]
+        if inactive_rows.numel() > 0:
+            inactive_env_ids_for_obj = env_ids[inactive_rows]
+            inactive_state = target_object.data.default_root_state[inactive_env_ids_for_obj].clone()
+            # Keep inactive objects well outside the task workspace and high enough
+            # to avoid any ground contact within normal episode horizons.
+            inactive_state[:, 0] = origins[inactive_rows, 0] + 50000.0 + float(obj_id) * 20.0
+            inactive_state[:, 1] = origins[inactive_rows, 1] + 50000.0
+ 
+            inactive_state[:, 7:13] = 0.0
+            target_object.write_root_state_to_sim(inactive_state, env_ids=inactive_env_ids_for_obj)
     
 
     # reset robot joints using the sampled pose-specific joint references
@@ -278,7 +336,7 @@ def reset_object_physical_properties(
     """
     object_management.ensure_catalog_state(env)
 
-    # Objects are spawned as per-object subsets of environments
+    # Objects are spawned in all environments with per-env activation.
     env_ids_cpu = env_ids.detach().cpu().tolist()
     
     # List out the active indices for each object
@@ -290,42 +348,42 @@ def reset_object_physical_properties(
         selected_rows = torch.where(obj_idx_reset == obj_id)[0]
         
         # If in the selected envs, no env matched this object, skip to the next one
-        if selected_rows.size == 0:
+        if selected_rows.numel() == 0:
             continue
         
-        # The env indices/indices of the selected object in the global pool of envs
         target_object = env.scene[f"target_object_{obj_id}"]
-
-        global_to_local = env.global_to_local_mapping[f"target_object_{obj_id}"]
-
-        # Within the selected envs, find the global env indices of the object
-        global_env_ids_for_obj = [env_ids_cpu[row] for row in selected_rows.tolist()]
-
-            
-        # Find the local env indices of the object in the current batch of env_ids
-        local_env_ids_list = [global_to_local[g] for g in global_env_ids_for_obj]
-        local_env_ids = torch.tensor(local_env_ids_list, device=env.device, dtype=torch.long)
+        local_env_ids = env_ids[selected_rows].to(device="cpu", dtype=torch.long)
 
         # Sample mass and friction values from the given ranges
         mass_values = sample_uniform(
-            torch.tensor(mass_range[0], device=env.device),
-            torch.tensor(mass_range[1], device=env.device),
-            (len(local_env_ids),),
-            device=env.device,
+            torch.tensor(mass_range[0], device="cpu"),
+            torch.tensor(mass_range[1], device="cpu"),
+            (len(local_env_ids), target_object.num_bodies),
+            device="cpu",
         )
+
         
         # For simplicity, we assume the static & dynamic friction coefficients are the same and sample one value for both
         static_friction_range = (friction_range[0], friction_range[1])
         dynamic_friction_range = (friction_range[0], friction_range[1])
         restitution_range = (0.0, 0.0) # No restitution for the target object
         range_list = [static_friction_range, dynamic_friction_range, restitution_range]
-        ranges = torch.tensor(range_list, device=env.device)
-        materials = sample_uniform(ranges[:, 0], ranges[:, 1], (num_buckets, 3), device=env.device)
+        ranges = torch.tensor(range_list, device="cpu")
+        materials = sample_uniform(ranges[:, 0], ranges[:, 1], (num_buckets, 3), device="cpu")
         
         # Wrap up the material properties
-        materials_idx = torch.randint(0, num_buckets, (len(local_env_ids),), device=env.device)
-        # Set the sampled mass and friction values into the physics simulation for the current batch of sub-envs
-        target_object.root_physx_view.set_masses(mass_values, local_env_ids)
-        target_object.root_physx_view.set_material_properties(materials[materials_idx], local_env_ids)
+        total_num_shapes = target_object.root_physx_view.max_shapes
+        materials_idx = torch.randint(0, num_buckets, (len(local_env_ids), total_num_shapes), device="cpu")
+        
+        mass = target_object.root_physx_view.get_masses().clone()
+        mass[local_env_ids] = mass_values
+        material_properties = target_object.root_physx_view.get_material_properties().clone()
+        material_properties[local_env_ids] = materials[materials_idx]
 
+        # Set the sampled mass and friction values into the physics simulation for the current batch of sub-envs
+        # NOTE: To avoid the issue of squeeze()
+        target_object.root_physx_view.set_masses(mass, torch.arange(mass.shape[0]))
+        
+        target_object.root_physx_view.set_material_properties(material_properties, torch.arange(material_properties.shape[0]))
+        
 

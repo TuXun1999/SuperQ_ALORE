@@ -42,7 +42,28 @@ class MixedPDArmMultiLegJointPositionActionCfg(JointActionCfg):
     from the articulation asset.
     """
 
+@configclass
+class MixedPDArmMultiLegJointPositionActionTeleCfg(JointActionCfg):
+    """Configuration for the joint position action term used in teleoperation.
 
+    See :class:`MixedPDArmMultiLegJointPositionActionCfg` for more details.
+    """
+
+    class_type: type[ActionTerm] = (
+        spot_joint_actions.MixedPDArmMultiLegJointPositionActionTele
+    )
+
+    arm_joint_names: tuple[str, ...] = MISSING
+    leg_joint_names: dict = MISSING
+
+    command_name: str = MISSING
+
+    use_default_offset: bool = True
+    
+    locomotion_policy_path = "./source/SuperQ_ALORE/SuperQ_ALORE/assets/spot/pretrained_relic/policy.pt"
+    locomotion_obs_group: str = "locomotion_policy"
+    
+    # Remove the gripper-related attributes
 
 """
 (DEPRECATED)
