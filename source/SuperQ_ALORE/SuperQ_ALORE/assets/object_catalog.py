@@ -49,6 +49,7 @@ class PoseEntry:
 class ObjectEntry:
     object_id: str
     asset_path: str
+    decomposition_path: str | None
     poses: tuple[PoseEntry, ...]
 
 
@@ -104,6 +105,9 @@ def load_pregrasp_catalog(catalog_path: Path | None = None) -> tuple[ObjectEntry
             raise ValueError(f"Object '{object_id}' is missing asset_path.")
         asset_path = _resolve_asset_path(raw_path)
 
+        # resolve the path of the file containing the locations of the key nodes to represent the object shape
+        key_nodes_path = obj_data.get("decomposition_path")
+        key_nodes_path = _resolve_asset_path(key_nodes_path) if key_nodes_path else None
         # iterate through all the defined poses for this object (pose_1, pose_2, etc. in the YAML)
         poses_raw = obj_data.get("poses", {})
         if not poses_raw:
@@ -136,6 +140,7 @@ def load_pregrasp_catalog(catalog_path: Path | None = None) -> tuple[ObjectEntry
         object_entries.append(ObjectEntry(
             object_id=object_id,
             asset_path=asset_path,
+            decomposition_path=key_nodes_path,
             poses=tuple(pose_entries),
         ))
 

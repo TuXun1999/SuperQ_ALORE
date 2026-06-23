@@ -418,6 +418,15 @@ class ObservationsCfg:
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = False
+    @configclass
+    class ObjectIdxCfg(ObsGroup):
+        object_idx = ObsTerm(
+            func = mdp.object_idx,
+        ) # dim: 1, the index of the object in the idx
+        def __post_init__(self):
+                self.enable_corruption = False
+                self.concatenate_terms = True
+        
     policy: PolicyCfg = PolicyCfg()
     
     # policy_deployable: PolicyDeployableCfg = PolicyDeployableCfg()
@@ -426,7 +435,7 @@ class ObservationsCfg:
     # adapt_student: AdaptStudentCfg = AdaptStudentCfg()
     locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
     reward_calculation: RewardCalculationCfg = RewardCalculationCfg()
-    
+    object_idx: ObjectIdxCfg = ObjectIdxCfg()
     
 
 

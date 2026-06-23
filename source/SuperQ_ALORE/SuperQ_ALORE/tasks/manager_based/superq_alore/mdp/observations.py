@@ -309,6 +309,11 @@ def object_velocity(
     obj_ang_vel = om.get_active_object_state_attr(env, "root_ang_vel_b")[:, 2:]  # (N_envs, 1)
     return torch.cat([obj_lin_vel, obj_ang_vel], dim=-1).to(env.device)  # (N_envs, 3)
 
+def object_idx(
+    env: ManagerBasedRLEnv,
+) -> torch.Tensor:
+    return env.active_object_indices.unsqueeze(-1).long()  # shape (num_envs, 1)
+
 def last_high_level_action(
     env: ManagerBasedRLEnv,
     clip_limit: float = 100.0,

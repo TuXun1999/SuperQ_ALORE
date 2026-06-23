@@ -208,6 +208,7 @@ def record_gripper_pose_sq(gripper_pose, sq_parameters, filename="./record.txt")
     f.write(line)
     f.close()
 
+## Predict grasp poses based on the decomposed meshes
 def predict_grasp_pose_sq(mesh, csv_filename, \
                           normalize_stats, stored_stats_filename, \
                             gripper_attr, args):
@@ -221,8 +222,7 @@ def predict_grasp_pose_sq(mesh, csv_filename, \
     args: user arguments
 
     Output:
-    grasp_poses_camera: the grasp poses in the camera frame 
-    Equivalently, the relative transformations between the camera and the grasp poses
+    grasp_poses_world: the grasp poses in the object (world) frame 
     '''
     ##################
     ## Part I: Split the mesh into several superquadrics
@@ -332,6 +332,112 @@ def predict_grasp_pose_sq(mesh, csv_filename, \
 
     return np.array(grasp_poses_world_all)
 
+## Find the outermost superquadrics (to represent the shape of the object)
+def get_outermost_sq_locations(mesh, csv_filename, \
+                          normalize_stats, stored_stats_filename, args):
+    '''
+    Input:
+    mesh: the mesh of the target object
+    csv_filename: name of the file storing the corresponding csv values
+    normalize_stats: stats in normalizing the mesh (used by mesh2sdf)
+    stored_stats_filename: pre-stored stats of the splitted superquadrics
+    args: user arguments
+
+    Output:
+    sq_locations: the locations of the outermost superquadrics in the world/object frame
+    '''
+    ##################
+    ## Part I: Split the mesh into several superquadrics
+    ##################
+    ## Read the parameters of the superquadrics
+    os.path.isfile(stored_stats_filename)
+    print("Reading pre-stored Superquadric Parameters...")
+    sq_vertices_original, sq_transformation, normalize_stats = read_mp_parameters(\
+                        stored_stats_filename)
+        
+    # Convert sq_verticies_original into a numpy array
+    sq_vertices = np.array(sq_vertices_original).reshape(-1, 3)
+    sq_centers = []
+    for val in sq_transformation:
+        sq_center = val["transformation"][0:3 , 3]
+        sq_centers.append(sq_center)
+    sq_centers = np.array(sq_centers)
+    # Compute the convex hull
+    pc_sq_centers= o3d.geometry.PointCloud()
+    pc_sq_centers.points = o3d.utility.Vector3dVector(sq_centers)
+    hull, hull_indices = pc_sq_centers.compute_convex_hull()
+    hull_ls = o3d.geometry.LineSet.create_from_triangle_mesh(hull)
+    hull_ls.paint_uniform_color((1, 0, 0))
+
+    print(len(hull_indices))
+    sq_outermost_centers = sq_centers[hull_indices]
+    
+    ## Postlogue - Visualization
+    if args.visualization:
+        
+        # Construct a point cloud representing the reconstructed object mesh
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(sq_vertices)
+        # Visualize the super-ellipsoids
+        pcd.paint_uniform_color((0.0, 0.5, 0))
+
+        # Visualize the outermost superquadrics
+        pcd_outermost = o3d.geometry.PointCloud()
+        pcd_outermost.points = o3d.utility.Vector3dVector(sq_outermost_centers)
+        pcd_outermost.paint_uniform_color((1, 0, 0))
+        
+        sq_associated = []
+        sq_outermost_centers = []
+        # Iteratively visualize the associated superquadrics
+        for idx in hull_indices:
+            # NOTE: Originally, SuperQ_GRASP only finds grasp poses on the 
+            # closest superquadric to the camera, which explains why the variable
+            # is named as "sq_closest". 
+            # 
+            # But in the current implementation, we will iteratively 
+            # visualizethe superquadrics associated with the 
+            # vertices on the convex hull.
+            sq_closest = sq_transformation[idx]
+            
+            pcd_associated = o3d.geometry.PointCloud()
+            pcd_associated.points = o3d.utility.Vector3dVector(sq_closest["points"])
+            pcd_associated.paint_uniform_color((0, 0, 1))
+            sq_associated.append(pcd_associated)
+            
+            sq_outermost_center_sphere = o3d.geometry.TriangleMesh.create_sphere(radius=0.05)
+            sq_outermost_center_sphere.translate(sq_centers[idx])
+            sq_outermost_center_sphere.paint_uniform_color((1, 0, 0))
+            sq_outermost_centers.append(sq_outermost_center_sphere)
+        
+        # Plot out the fundamental frame
+        frame = o3d.geometry.TriangleMesh.create_coordinate_frame()
+        frame.scale(20/64, [0, 0, 0])
+
+
+        # Create the window to display everything
+        vis= o3d.visualization.Visualizer()
+        vis.create_window()
+
+        
+        vis.add_geometry(mesh)
+        vis.add_geometry(pcd)
+        
+        for idx in range(len(sq_associated)):
+            vis.add_geometry(sq_associated[idx])
+            vis.add_geometry(sq_outermost_centers[idx])
+        
+
+        vis.add_geometry(frame)
+
+        vis.add_geometry(hull_ls)
+
+        vis.run()
+
+        # Close all windows
+        vis.destroy_window()
+
+    return np.array(sq_centers[hull_indices])
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -411,8 +517,10 @@ if __name__ == "__main__":
     normalize_stats = [1.0, 0.0]
     
     ###############
-    ## Part II: Predict Grasp poses
+    ## Part II: Predict Grasp poses or Obtain the locations of the outermost superquadrics
     ###############
+    
+    option = input("Please input 'grasp' to predict grasp poses, or input 'hull' to obtain the locations of the outermost superquadrics: ")
     
     # Attributes of gripper
     gripper_width = 0.09
@@ -423,14 +531,20 @@ if __name__ == "__main__":
                     "Width": gripper_width, 
                     "Thickness": gripper_thickness}
     
-    # Predict grasp poses using SuperQ_GRASP (represented in object's frame)
-    grasp_poses_obj_frame = predict_grasp_pose_sq(mesh, csv_filename, \
-                          normalize_stats, 
-                          stored_stats_filename, 
-                          gripper_attr, 
-                          parser.parse_args())
-    json.dump(grasp_poses_obj_frame.tolist(), open("./SuperQ_GRASP/grasp_poses.json", "w"))
-    
-    
-    
-    
+    if option == "grasp":
+        # Predict grasp poses using SuperQ_GRASP (represented in object's frame)
+        grasp_poses_obj_frame = predict_grasp_pose_sq(mesh, csv_filename, \
+                              normalize_stats, 
+                              stored_stats_filename, 
+                              gripper_attr, 
+                              parser.parse_args())
+        filename = "./SuperQ_GRASP/object-models/" + suffix + "_grasp_poses.json"
+        json.dump(grasp_poses_obj_frame.tolist(), open(filename, "w"))
+    elif option == "hull":
+        # Obtain the locations of the outermost superquadrics
+        outermost_sq_locations = get_outermost_sq_locations(mesh, csv_filename, \
+                              normalize_stats, 
+                              stored_stats_filename,
+                              parser.parse_args())
+        filename = "./SuperQ_GRASP/object-models/" + suffix + "_outermost_sq_locations.json"
+        json.dump(outermost_sq_locations.tolist(), open(filename, "w"))

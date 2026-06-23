@@ -1,31 +1,49 @@
 objects:
-  chair_1:
-    asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/armchair_with_contact_sensor.usda"
-    poses:
-      back:
-        position: [0.0, 0.0, 0.0]
-        orientation: [0.707, 0.0, 0.0, 0.707] # match with the RigidBodyCfg
-        joint_configuration: [0.00, -1.27, 1.6253, 0.0, 1.096, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
-      handle_right:
-        position: [0.15, 0.0, 0.0]
-        orientation: [1.0, 0.0, 0.0, 0.0]
-        joint_configuration: [0.00, -0.70, 1.1866, 0.00, 1.2281, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
-      handle_left:
-        position: [0.15, 0.0, 0.0]
-        orientation: [0.0, 0.0, 0.0, 1.0]
-        joint_configuration: [0.00, -0.70, 1.1866, 0.00, 1.2281, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  chair_lab:
+      asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/chair_lab.usdc"
+      decomposition_path: "SuperQ_GRASP/object-models/armchair_with_contact_sensor_outermost_sq_locations.json"
+      poses:
+        back:
+          position: [0.0, 0.0, 0.0]
+          orientation: [0.0, 0.0, 0.0, 1.0] # match with the RigidBodyCfg
+          joint_configuration: [0.00, -1.64, 1.87, 0.0, 1.04, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+        handle_right:
+          position: [0.15, 0.0, 0.0]
+          orientation: [0.707, 0.0, 0.0, 0.707]
+          joint_configuration: [0.10, -0.88, 1.36, 0.00, 1.1, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+        handle_left:
+          position: [0.15, 0.0, 0.0]
+          orientation: [0.707, 0.0, 0.0, -0.707]
+          joint_configuration: [0.00, -0.85, 1.3, 0.00, 1.02, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  # chair_1:
+  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/armchair_with_contact_sensor.usda"
+  #   decomposition_path: "SuperQ_GRASP/object-models/armchair_with_contact_sensor_outermost_sq_locations.json"
+  #   poses:
+  #     back:
+  #       position: [0.0, 0.0, 0.0]
+  #       orientation: [0.707, 0.0, 0.0, 0.707] # match with the RigidBodyCfg
+  #       joint_configuration: [0.00, -1.27, 1.6253, 0.0, 1.096, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #     handle_right:
+  #       position: [0.15, 0.0, 0.0]
+  #       orientation: [1.0, 0.0, 0.0, 0.0]
+  #       joint_configuration: [0.00, -0.70, 1.1866, 0.00, 1.2281, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #     handle_left:
+  #       position: [0.15, 0.0, 0.0]
+  #       orientation: [0.0, 0.0, 0.0, 1.0]
+  #       joint_configuration: [0.00, -0.70, 1.1866, 0.00, 1.2281, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
   
-  chair_2:
-    asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/Shorter_Office_Chair_fixed.usd"
-    poses:
-      handle_left:
-        position: [0.15, 0.0, 0.0]
-        orientation: [0.707, 0.0, 0.0, 0.707]
-        joint_configuration: [0.0, -0.8602, 1.3418, 0.0, 1.2190, 0.0, -0.9]
-      handle_right:
-        position: [0.15, 0.0, 0.0]
-        orientation: [0.707, 0.0, 0.0, -0.707]
-        joint_configuration: [0.0, -0.8602, 1.3418, 0.0, 1.2190, 0.0, -0.9]
+  # chair_2:
+  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/Shorter_Office_Chair_fixed.usd"
+  #   decomposition_path: "SuperQ_GRASP/object-models/Shorter_Office_Chair_fixed_outermost_sq_locations.json"
+  #   poses:
+  #     handle_left:
+  #       position: [0.15, 0.0, 0.0]
+  #       orientation: [0.707, 0.0, 0.0, 0.707]
+  #       joint_configuration: [0.0, -0.8602, 1.3418, 0.0, 1.2190, 0.0, -0.9]
+  #     handle_right:
+  #       position: [0.15, 0.0, 0.0]
+  #       orientation: [0.707, 0.0, 0.0, -0.707]
+  #       joint_configuration: [0.0, -0.8602, 1.3418, 0.0, 1.2190, 0.0, -0.9]
   # chair_3:
   #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/OfficeChair_A_fixed.usd"
   #   poses:
@@ -41,6 +59,23 @@ objects:
   #       position: [0.15, 0.0, 0.0]
   #       orientation: [0.707, 0.0, 0.0, -0.707]
   #       joint_configuration: [0.00, -0.7, 1.2108, 0.00, 1.2, 0.00, -0.9]
+  # chair_4:
+  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/Chair_custom_fixed.usd"
+  #   decomposition_path: "SuperQ_GRASP/object-models/Chair_custom_fixed_outermost_sq_locations.json"
+  #   poses:
+  #     back:
+  #       position: [0.0, 0.0, 0.0]
+  #       orientation: [0.707, 0.0, 0.0, 0.707] # match with the RigidBodyCfg
+  #       joint_configuration: [0.00, -1.27, 1.6253, 0.0, 1.096, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #     handle_right:
+  #       position: [0.15, 0.0, 0.0]
+  #       orientation: [1.0, 0.0, 0.0, 0.0]
+  #       joint_configuration: [0.00, -0.70, 1.1866, 0.00, 1.2281, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #     handle_left:
+  #       position: [0.15, 0.0, 0.0]
+  #       orientation: [0.0, 0.0, 0.0, 1.0]
+  #       joint_configuration: [0.00, -0.70, 1.1866, 0.00, 1.2281, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
+  
   # bucket:
   #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/box_fixed.usd"
   #   poses:

@@ -93,4 +93,4 @@ def create_target_obj_teleoperation_cfg(object_idx = 0, pose_idx = 0):
     joint_angle_ref = {ARM_JOINT_NAMES_IN_ORDER[i]: joint_angle_val[i] for i in range(len(ARM_JOINT_NAMES_IN_ORDER))}
     return [target_obj_cfg, joint_angle_ref, obj_pos, obj_rot]
 
-OBJECT_TELEOPERATION_INFO = create_target_obj_teleoperation_cfg(0, 0)
+OBJECT_TELEOPERATION_INFO = create_target_obj_teleoperation_cfg(0, 1)

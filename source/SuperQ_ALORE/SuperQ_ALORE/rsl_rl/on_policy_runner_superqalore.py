@@ -43,13 +43,14 @@ class OnPolicyRunnerSuperQALORE():
 
         # Query observations from environment for algorithm construction
         obs = self.env.get_observations()
+        object_types = self.env.unwrapped.active_object_indices  # Assuming object types can be inferred from active object indices
         default_sets = ["critic", "velocity_estimation"]  # velocity estimation obs group is required for PhysicActorCritic
         if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
             default_sets.append("rnd_state")
         self.cfg["obs_groups"] = resolve_obs_groups(obs, self.cfg["obs_groups"], default_sets)
 
         # Create the algorithm
-        self.alg = self._construct_algorithm(obs)
+        self.alg = self._construct_algorithm(obs, object_types = object_types)
 
         # Decide whether to disable logging
         # Note: We only log from the process with rank 0 (main process)
@@ -151,7 +152,7 @@ class OnPolicyRunnerSuperQALORE():
                 self.alg.compute_returns(obs)
 
             # Update policy
-            loss_dict, _ = self.alg.update()
+            loss_dict = self.alg.update()
 
             stop = time.time()
             learn_time = stop - start
@@ -302,6 +303,8 @@ class OnPolicyRunnerSuperQALORE():
             "iter": self.current_learning_iteration,
             "infos": infos,
         }
+        if hasattr(self.alg.policy, "physic_estimator") and self.alg.policy.physic_estimator is not None:
+            saved_dict["estimator_optimizer_state_dict"] = self.alg.policy.physic_estimator.optimizer.state_dict()
         # Save RND model if used
         if hasattr(self.alg, "rnd") and self.alg.rnd:
             saved_dict["rnd_state_dict"] = self.alg.rnd.state_dict()
@@ -398,7 +401,7 @@ class OnPolicyRunnerSuperQALORE():
         # Set device to the local rank
         torch.cuda.set_device(self.gpu_local_rank)
 
-    def _construct_algorithm(self, obs: TensorDict) -> PPO:
+    def _construct_algorithm(self, obs: TensorDict, object_types = None) -> PPO:
         """Construct the actor-critic algorithm."""
         # Resolve RND config
         self.alg_cfg = resolve_rnd_config(self.alg_cfg, obs, self.cfg["obs_groups"], self.env)
@@ -421,7 +424,7 @@ class OnPolicyRunnerSuperQALORE():
         # Initialize the policy
         actor_critic_class = eval(self.policy_cfg.pop("class_name"))
         actor_critic: PhysicActorCritic = actor_critic_class(
-            obs, self.cfg["obs_groups"], self.env.num_actions, **self.policy_cfg
+            obs, self.cfg["obs_groups"], self.env.num_actions, object_types = object_types, **self.policy_cfg
         ).to(self.device)
 
         # Initialize the algorithm

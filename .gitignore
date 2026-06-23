@@ -68,3 +68,6 @@ tests/
 # Docker history
 .isaac-lab-docker-history
 
+# Object models used by SuperQ-GRASP
+./SuperQ_GRASP/object_models/*
+

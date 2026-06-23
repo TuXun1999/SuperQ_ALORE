@@ -32,6 +32,7 @@ class PhysicActorCritic(ActorCritic):
         obs: TensorDict,
         obs_groups: dict[str, list[str]],
         num_actions,
+        object_types = None,  # New argument to specify object types for GNN processing
         actor_hidden_dims=[256, 256, 256],
         critic_hidden_dims=[256, 256, 256],
         activation="elu",
@@ -39,6 +40,7 @@ class PhysicActorCritic(ActorCritic):
         noise_std_type: str = "scalar",
         velocity_estimation_enabled=False,
         GNN_enabled=True,
+        GNN_obj_enabled=True, # Extend the GNN with object-shape-related nodes
         **kwargs,
     ):
         super().__init__(
@@ -61,6 +63,9 @@ class PhysicActorCritic(ActorCritic):
 
         
         self.obs_groups = obs_groups
+        self.object_types = object_types
+        
+        # Specify the dims for the MLPs
         num_actor_obs = 0
         for obs_group in obs_groups["policy"]:
             assert len(obs[obs_group].shape) == 2, "The ActorCritic module only supports 1D observations."
@@ -78,6 +83,7 @@ class PhysicActorCritic(ActorCritic):
         ## The ablation study on velocity estimation & GNN features
         self.velocity_estimation_enabled = velocity_estimation_enabled
         self.GNN_enabled = GNN_enabled
+        self.GNN_obj_enabled = GNN_obj_enabled
         
         # The input to the actor predictor consists of raw env observations and the 
         # estimated object base velocities and the graph neural network output
@@ -128,6 +134,9 @@ class PhysicActorCritic(ActorCritic):
                 hidden_dim=64,
                 out_dim=128
             )
+            if GNN_obj_enabled:
+                print("Object-shape-related nodes enabled in Interactive GNN")
+                self.interactive_gnn.build_obj_node_info(self.object_types)
         else:            
             print("Interactive GNN disabled in ActorCritic")
             self.interactive_gnn = None
@@ -136,7 +145,7 @@ class PhysicActorCritic(ActorCritic):
 
 
 
-    def update_distribution(self, observations, critic_observations):
+    def update_distribution(self, observations, critic_observations, object_type = None):
         B = observations.shape[0]
         T = self.history_length
         D = self.num_actor_obs
@@ -165,7 +174,10 @@ class PhysicActorCritic(ActorCritic):
         
         ## interactive GNN processing
         if self.GNN_enabled:
-            node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
+            if self.GNN_obj_enabled:
+                node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations, object_type)
+            else:
+                node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
             z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
             actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)
         else:
@@ -195,14 +207,14 @@ class PhysicActorCritic(ActorCritic):
         # Separate obs & critic_obs
         observations = obs["policy"]
         critic_observations = obs["critic"]
-        
+        object_type = obs["object_idx"].long().squeeze()  # Assuming object type is represented as an integer index in the observation
         """
         actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
         (Forced to match 12D action space of the pretrained locomotion policy)
         
         The last dimensions are forced to be 0
         """
-        self.update_distribution(observations, critic_observations)
+        self.update_distribution(observations, critic_observations, object_type)
         try:
             actions_raw = self.distribution.sample() 
         except Exception as e:
@@ -218,6 +230,7 @@ class PhysicActorCritic(ActorCritic):
         # Separate obs out
         observations = obs["policy"]
         critic_observations = obs["critic"]
+        object_type = obs["object_idx"].long().squeeze()  # Assuming object type is represented as an integer index in the observation
         
         # Reshape the observations to (B, T, D)
         B = observations.shape[0]
@@ -271,7 +284,11 @@ class PhysicActorCritic(ActorCritic):
         
         # interactive GNN processing
         if self.GNN_enabled:
-            node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
+            # Two cases: object-shape-related nodes enabled or not
+            if self.GNN_obj_enabled:
+                node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations, object_type)
+            else:
+                node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations)
             z = self.interactive_gnn(node_features, edge_index, edge_attr, batch)  # shape: [B, 128]
             # Concatenate the augmented observations and GNN output for action prediction
             actor_input = torch.cat([obs_augmented.reshape(B, -1), z], dim=-1)
