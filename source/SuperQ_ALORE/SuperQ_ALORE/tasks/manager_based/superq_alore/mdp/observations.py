@@ -145,8 +145,21 @@ def obj_pose_in_robot_frame(
     obj_pos_relative = obj_pos_w - robot_base_pos
     obj_pos_in_robot_frame = quat_apply(robot_quat_inv, obj_pos_relative)
     obj_quat_in_robot_frame = quat_mul(robot_quat_inv, obj_quat_w)
+    # return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)  # (num_envs, 7)
+    obj_pos_se2_in_robot_frame = obj_pos_in_robot_frame[:, :2]  # (num_envs, 2)
+    obj_angle_yaw_in_robot_frame = _euler_from_quat(obj_quat_in_robot_frame)[2]  # Only the yaw angle
+    return torch.cat([obj_pos_se2_in_robot_frame, obj_angle_yaw_in_robot_frame.unsqueeze(-1)], dim=-1).to(env.device)
 
-    return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)
+def obj_pose_in_world_frame(
+    env: ManagerBasedRLEnv,
+) -> torch.Tensor:
+    # Use active-object helper instead of fixed scene key
+    obj_pos_w = om.get_active_object_state_attr(env, "root_pos_w")   # (num_envs, 3)
+    obj_quat_w = om.get_active_object_state_attr(env, "root_quat_w") # (num_envs, 4)
+
+
+    obj_angle_yaw = _euler_from_quat(obj_quat_w)[2] # Only the yaw angle
+    return torch.cat([obj_pos_w[:, 0:2], obj_angle_yaw.unsqueeze(-1)], dim=-1).to(env.device)
 
 def _resolve_goal_pose_w(
     env: ManagerBasedRLEnv,
@@ -366,3 +379,8 @@ def obj_physical_properties(
     static_friction = mat[:, 0].unsqueeze(-1)                  # (num_envs, 1)
     dynamic_friction = mat[:, 1].unsqueeze(-1)                 # (num_envs, 1)
     return torch.cat([static_friction, mass, dynamic_friction], dim=-1).to(env.device)  # (num_envs, 3)
+
+def obj_com(
+    env: ManagerBasedRLEnv,
+) -> torch.Tensor:
+    return om.get_active_object_coms(env).to(env.device)  # (num_envs, 3)

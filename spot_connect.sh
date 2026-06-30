@@ -1,0 +1,4 @@
+export SPOT_USER_PASSWORD="pvwmr4j08osj"
+export BOSDYN_CLIENT_PASSWORD="pvwmr4j08osj"
+export BOSDYN_CLIENT_USERNAME="admin"
+export ROBOT_IP=$SPOT_IP

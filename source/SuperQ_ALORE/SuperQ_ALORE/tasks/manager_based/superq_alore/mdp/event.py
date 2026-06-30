@@ -329,6 +329,7 @@ def reset_object_physical_properties(
     env_ids: torch.Tensor,
     mass_range: tuple[float, float],
     friction_range: tuple[float, float],
+    com_range: dict[str, tuple[float, float]] | None = None,
     num_buckets: int = 64
 ) -> None:
     """
@@ -380,10 +381,31 @@ def reset_object_physical_properties(
         material_properties = target_object.root_physx_view.get_material_properties().clone()
         material_properties[local_env_ids] = materials[materials_idx]
 
+        # Randomize CoM offsets for active envs of this object.
+        com_values = target_object.root_physx_view.get_coms().clone()
+        if com_range is None:
+            com_ranges = torch.zeros((3, 2), device="cpu")
+        else:
+            com_ranges = torch.tensor(
+                [com_range.get(axis, (0.0, 0.0)) for axis in ["x", "y", "z"]],
+                device="cpu",
+            )
+        com_offsets = sample_uniform(
+            com_ranges[:, 0],
+            com_ranges[:, 1],
+            (len(local_env_ids), 3),
+            device="cpu",
+        )
+        if com_values.ndim == 2:
+            com_values[local_env_ids, :3] = com_offsets
+        else:
+            com_values[local_env_ids, ..., :3] = com_offsets.unsqueeze(1)
+
         # Set the sampled mass and friction values into the physics simulation for the current batch of sub-envs
         # NOTE: To avoid the issue of squeeze()
         target_object.root_physx_view.set_masses(mass, torch.arange(mass.shape[0]))
         
         target_object.root_physx_view.set_material_properties(material_properties, torch.arange(material_properties.shape[0]))
+        target_object.root_physx_view.set_coms(com_values, torch.arange(com_values.shape[0]))
         
 

@@ -24,6 +24,17 @@ gym.register(
 )
 
 gym.register(
+    id="Template-Superq-Alore-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.superq_alore_env_cfg:SuperqAloreEnvPlayCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+        "rsl_rl_superqalore_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPOSuperQALORERunnerCfg",
+    },
+)
+
+gym.register(
     id="Joint-Teleoperation",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,

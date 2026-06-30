@@ -238,3 +238,18 @@ def get_active_object_physx_material_properties(env: ManagerBasedEnv) -> torch.T
     active_object_indices = env.active_object_indices.to(device=stacked.device)
     return stacked[active_object_indices, env_indices]  # [num_envs, 3]
 
+def get_active_object_coms(env: ManagerBasedEnv) -> torch.Tensor:
+    """Return the center of mass positions for each env's active target object.
+
+    Shape: ``[num_envs, 3]``.
+    """
+    ensure_catalog_state(env)
+    n_catalog = len(OBJECT_CATALOG)
+    tensors = [
+        env.scene[f"target_object_{i}"].root_physx_view.get_coms()[:, 0:3].contiguous()
+        for i in range(n_catalog)
+    ]  # each: [num_envs, 3]
+    stacked = torch.stack(tensors, dim=0)  # [num_objects, num_envs, 3]
+    env_indices = torch.arange(stacked.shape[1], device=stacked.device)
+    active_object_indices = env.active_object_indices.to(device=stacked.device)
+    return stacked[active_object_indices, env_indices]  # [num_envs, 3]

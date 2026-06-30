@@ -16,7 +16,7 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
     max_iterations = 6000
     save_interval = 100
-    experiment_name = "SuperQ_ALORE"
+    experiment_name = f"SuperQ_ALORE"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
         class_name = "ActorCritic",
@@ -45,11 +45,20 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class PPOSuperQALORERunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 6000
+    max_iterations = 10000
     save_interval = 100
-    experiment_name = "SuperQ_ALORE_GNN"
+    experiment_name = "SuperQ_ALORE_GNN_3phase"
     empirical_normalization = False
     class_name = "OnPolicyRunnerSuperQALORE"
+    enable_three_phase_training = True
+    # Trial order for one-run curriculum.
+    phase_trials = ["1", "2", "3"]
+    # Iteration fractions for (phase 1, phase 2, phase 3) inside one learn() call.
+    phase_fractions = {"1": 0.6, "2": 0.1, "3": 0.3}
+    # Runner-side noise for privileged CoM slots in phase 2 (policy obs tail).
+    phase2_objcom_noise_std = 0.03
+    # Number of privileged CoM dimensions at the end of policy observation.
+    policy_obj_com_dim = 3
     policy = RslRlPpoActorCriticCfg(
         class_name = "PhysicActorCritic",
         init_noise_std=1.0,

@@ -78,49 +78,13 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
 
         self.batch_indices = torch.arange(self.num_envs).view(-1, 1).repeat(1, 3)
         self.action_joint_idxs = torch.tensor(self._joint_ids, device=self.device)
-
-        # Latched high-level command buffers (updated in process_actions).
-        self._cached_base_velocity = torch.zeros(self.num_envs, 3, device=self.device)
-        self._cached_arm_leg_joint_base_pose_command = torch.zeros(self.num_envs, 22, device=self.device)
-
-        # Low-level update cadence in sim steps.
-        self._low_level_update_decimation = max(1, int(self.cfg.low_level_update_decimation))
-        self._low_level_step_counter = 0
         
         # Speed of closing the gripper
         self.gripper_vel = self.cfg.gripper_vel
         self.gripper_closing_steps = (int)(1.5 / self._env.step_dt) # The gripper will be closed after 1.2s, which is the time duration for the gripper to close from fully open to fully closed at the speed of self.gripper_vel
 
-    def _update_low_level_leg_actions(self):
-        """Run low-level locomotion policy using the most recent latched high-level command."""
-        with torch.inference_mode():
-            policy_env_obs = self._env.observation_manager.compute_group(
-                self.cfg.locomotion_obs_group, update_history=False
-            )
-
-            policy_env_obs = torch.cat(
-                [
-                    policy_env_obs[:, :9],
-                    self._cached_base_velocity,
-                    self._cached_arm_leg_joint_base_pose_command,
-                    policy_env_obs[:, 9:],
-                ],
-                dim=1,
-            )
-
-            leg_actions = self._locomotion_policy(policy_env_obs)
-
-        self._raw_actions[:] = leg_actions
-        self._processed_actions = self._raw_actions * self._scale + self._offset
-
     def apply_actions(self):
         """Apply the actions."""
-        # Run low-level policy every N sim steps (decoupled from high-level updates).
-        if self._low_level_step_counter % self._low_level_update_decimation == 0:
-            self._low_level_step_counter = 0
-            self._update_low_level_leg_actions()
-        self._low_level_step_counter += 1
-
         # set position targets
         # (The reference of zero should be the ones in software when importing the robot
         # not the physical ones)
@@ -160,6 +124,8 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         base_pose = actions[:, 10:12] # dim: 2 (pitch, height)
         base_pose[:, 0] = 0.0 # zero roll command, which is not desired for the task
         base_pose[:, 1] = 0.55 # force the height
+        leg_actions = torch.zeros(actions.shape[0], 12).to(actions.device) # dim: 12
+        
         # The joint angles to command for the arm
         arm_actions = torch.zeros_like(arm_actions_delta, device=arm_actions_delta.device) # dim: 7, which is the target joint position for the arm joints
 
@@ -176,6 +142,11 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         
         
         # Grip the object in the beginning, and maintain the gripper pose after that
+        gripper_closing_mask = self._env.episode_length_buf > 1 
+        if gripper_closing_mask.any(): 
+            arm_actions[gripper_closing_mask, -1] = torch.clamp(
+                -0.9 + self._env.episode_length_buf[gripper_closing_mask]* self.gripper_vel, max= -0.15
+            )
         gripper_closing_mask = self._env.episode_length_buf > 1 
         if gripper_closing_mask.any(): 
             arm_actions[gripper_closing_mask, -1] = torch.clamp(
@@ -200,28 +171,86 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             
             
 
-        # Section II: for moving episodes, offset reference with policy delta.
+        """
+        Section II: For the robot that have completed the gripper closing
+        Arm joint: use the ones generated from the high-level controller
+        Leg joint: use the predicted actions from the low-level controller
+        """
         if (~start_moving_mask).any():
-            arm_actions[~start_moving_mask, :-1] = (
-                arm_reference[~start_moving_mask, :-1] + arm_actions_delta[~start_moving_mask, :-1]
-            )
+                # For moving episodes, offset the per-env reference with policy delta.
+                arm_actions[~start_moving_mask, :-1] = (
+                    arm_reference[~start_moving_mask, :-1] + arm_actions_delta[~start_moving_mask, :-1]
+                )
 
-        # Latch high-level command for low-level controller.
-        arm_joints = arm_actions
-        leg_joints = torch.zeros(arm_joints.shape[0], 12, device=arm_joints.device)
-        roll_target = torch.zeros(arm_joints.shape[0], 1, device=arm_joints.device)
-        arm_leg_joint_base_pose_command = torch.cat(
-            [
-                arm_joints,
-                leg_joints,
-                roll_target,
-                base_pose,
-            ],
-            dim=1,
-        )
-        assert arm_leg_joint_base_pose_command.shape[1] == 22, "Whole-body pose shape incorrect"
-        self._cached_base_velocity[:] = base_velocity
-        self._cached_arm_leg_joint_base_pose_command[:] = arm_leg_joint_base_pose_command
+
+        with torch.inference_mode():
+            # The environmental policy observations
+            policy_env_obs = self._env.observation_manager.compute_group(
+                self.cfg.locomotion_obs_group, update_history=False
+            ) # update_history: recommended to be set false
+
+            # Insert the commands into the policy obs
+            """
+            Locomotion policy obs: (dim: 84, verified) 
+            base_lin_vel (3), base_ang_vel (3), projected_gravity (3), 
+            (velocity commands (3), commands (22)),
+            joint_pos (19), joint_vel (19)
+            (last_actions (12))
+            
+            velocity commands: base velocity from command (dim: 3)
+            commands: arm leg joint & base pose from command (dim: 7 + 12 + 3 = 22, verified)
+            last_actions:
+            For ReLIC, last_action are the leg joint actions predicted (12) by the agent
+            and applied to the environment
+            However, now the agent doesn't predict the leg joint actions directly...
+            So, we need to extract last_action manually in observations.py
+            """
+            arm_joints = arm_actions # dim: 7]
+
+            # In ReLIC indicate that if 
+            # the legs are not the commanded ones, just set up the 
+            # leg_joint_command to be zero to de-activate the leg tracking 
+            # functionality
+            leg_joints = torch.zeros(arm_joints.shape[0], 12).to(arm_joints.device)
+            
+            # We don't want a roll operation
+            roll_target = torch.zeros(arm_joints.shape[0], 1).to(arm_joints.device)
+            # Construct the "command" to track used in ReLIC
+            arm_leg_joint_base_pose_command = torch.cat(
+                [
+                    arm_joints,
+                    leg_joints,
+                    roll_target,
+                    base_pose,
+                ],
+                dim=1,
+            ) # dim: 22
+            assert arm_leg_joint_base_pose_command.shape[1] == 22, "Whole-body pose shape incorrect"
+            
+            # The input to low-level controller consists of everything
+            policy_env_obs = torch.cat(
+                [
+                    policy_env_obs[:, :9],
+                    base_velocity, 
+                    arm_leg_joint_base_pose_command, 
+                    policy_env_obs[:, 9:]
+                ],
+                dim = 1
+            )
+            
+            ## Step 3: predict leg actions
+            leg_actions = self._locomotion_policy(policy_env_obs)
+    
+        
+        
+        
+        """
+        Wrap up the actions & Execute them
+        """
+        # store the raw leg actions, which is used by the low-level controller
+        self._raw_actions[:] = leg_actions
+        # apply the affine transformations
+        self._processed_actions = self._raw_actions * self._scale + self._offset
         
         
         # Execute the action directly (according to ALORE)
@@ -298,45 +327,10 @@ class MixedPDArmMultiLegJointPositionActionTele(JointAction):
 
         self.batch_indices = torch.arange(self.num_envs).view(-1, 1).repeat(1, 3)
         self.action_joint_idxs = torch.tensor(self._joint_ids, device=self.device)
-
-        # Latched high-level command buffers (updated in process_actions).
-        self._cached_base_velocity = torch.zeros(self.num_envs, 3, device=self.device)
-        self._cached_arm_leg_joint_base_pose_command = torch.zeros(self.num_envs, 22, device=self.device)
-
-        # Low-level update cadence in sim steps.
-        self._low_level_update_decimation = max(1, int(self.cfg.low_level_update_decimation))
-        self._low_level_step_counter = 0
-
-    def _update_low_level_leg_actions(self):
-        """Run low-level locomotion policy using the most recent latched high-level command."""
-        with torch.inference_mode():
-            policy_env_obs = self._env.observation_manager.compute_group(
-                self.cfg.locomotion_obs_group, update_history=False
-            )
-
-            policy_env_obs = torch.cat(
-                [
-                    policy_env_obs[:, :9],
-                    self._cached_base_velocity,
-                    self._cached_arm_leg_joint_base_pose_command,
-                    policy_env_obs[:, 9:],
-                ],
-                dim=1,
-            )
-
-            leg_actions = self._locomotion_policy(policy_env_obs)
-
-        self._raw_actions[:] = leg_actions
-        self._processed_actions = self._raw_actions * self._scale + self._offset
         
         
     def apply_actions(self):
         """Apply the actions."""
-        # Run low-level policy every N sim steps (decoupled from high-level updates).
-        if self._low_level_step_counter % self._low_level_update_decimation == 0:
-            self._update_low_level_leg_actions()
-        self._low_level_step_counter += 1
-
         # set position targets
         # (The reference of zero should be the ones in software when importing the robot
         # not the physical ones)
@@ -358,6 +352,8 @@ class MixedPDArmMultiLegJointPositionActionTele(JointAction):
         base_pose = actions[:, 10:12] # dim: 2 (pitch, height)
         base_pose[:, 0] = 0.0 # zero roll command, which is not desired for the task
         base_pose[:, 1] = 0.55 # force the height
+        leg_actions = torch.zeros(actions.shape[0], 12).to(actions.device) # dim: 12
+        
         # The joint angles to command for the arm
         arm_actions = torch.zeros_like(arm_actions_delta, device=arm_actions_delta.device) # dim: 7, which is the target joint position for the arm joints
 
@@ -374,22 +370,60 @@ class MixedPDArmMultiLegJointPositionActionTele(JointAction):
             arm_reference[:, :-1] + arm_actions_delta[:, :-1]
         )
 
-        # Latch high-level command for low-level controller.
-        arm_joints = arm_actions
-        leg_joints = torch.zeros(arm_joints.shape[0], 12, device=arm_joints.device)
-        roll_target = torch.zeros(arm_joints.shape[0], 1, device=arm_joints.device)
-        arm_leg_joint_base_pose_command = torch.cat(
-            [
-                arm_joints,
-                leg_joints,
-                roll_target,
-                base_pose,
-            ],
-            dim=1,
-        )
-        assert arm_leg_joint_base_pose_command.shape[1] == 22, "Whole-body pose shape incorrect"
-        self._cached_base_velocity[:] = base_velocity
-        self._cached_arm_leg_joint_base_pose_command[:] = arm_leg_joint_base_pose_command
+        # Section to execute the velocity commands (primarily just standing)
+        with torch.inference_mode():
+            # The environmental policy observations
+            policy_env_obs = self._env.observation_manager.compute_group(
+                self.cfg.locomotion_obs_group, update_history=False
+            ) # update_history: recommended to be set false
+
+            # Insert the commands into the policy obs
+            arm_joints = arm_actions # dim: 7]
+
+            # In ReLIC indicate that if 
+            # the legs are not the commanded ones, just set up the 
+            # leg_joint_command to be zero to de-activate the leg tracking 
+            # functionality
+            leg_joints = torch.zeros(arm_joints.shape[0], 12).to(arm_joints.device)
+            
+            # We don't want a roll operation
+            roll_target = torch.zeros(arm_joints.shape[0], 1).to(arm_joints.device)
+            # Construct the "command" to track used in ReLIC
+            arm_leg_joint_base_pose_command = torch.cat(
+                [
+                    arm_joints,
+                    leg_joints,
+                    roll_target,
+                    base_pose,
+                ],
+                dim=1,
+            ) # dim: 22
+            assert arm_leg_joint_base_pose_command.shape[1] == 22, "Whole-body pose shape incorrect"
+            
+            # The input to low-level controller consists of everything
+            policy_env_obs = torch.cat(
+                [
+                    policy_env_obs[:, :9],
+                    base_velocity, 
+                    arm_leg_joint_base_pose_command, 
+                    policy_env_obs[:, 9:]
+                ],
+                dim = 1
+            )
+            
+            ## Step 3: predict leg actions
+            leg_actions = self._locomotion_policy(policy_env_obs)
+    
+        
+        
+        
+        """
+        Wrap up the actions & Execute them
+        """
+        # store the raw leg actions, which is used by the low-level controller
+        self._raw_actions[:] = leg_actions
+        # apply the affine transformations
+        self._processed_actions = self._raw_actions * self._scale + self._offset
         
         
         # Execute the action directly (according to ALORE)

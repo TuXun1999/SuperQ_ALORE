@@ -44,7 +44,7 @@ class OnPolicyRunnerSuperQALORE():
         # Query observations from environment for algorithm construction
         obs = self.env.get_observations()
         object_types = self.env.unwrapped.active_object_indices  # Assuming object types can be inferred from active object indices
-        default_sets = ["critic", "velocity_estimation"]  # velocity estimation obs group is required for PhysicActorCritic
+        default_sets = ["critic", "com_estimation"]
         if "rnd_cfg" in self.alg_cfg and self.alg_cfg["rnd_cfg"] is not None:
             default_sets.append("rnd_state")
         self.cfg["obs_groups"] = resolve_obs_groups(obs, self.cfg["obs_groups"], default_sets)
@@ -64,9 +64,106 @@ class OnPolicyRunnerSuperQALORE():
         self.current_learning_iteration = 0
         self.git_status_repos = [rsl_rl.__file__]
 
-    def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False) -> None:
-        # Initialize writer
-        self._prepare_logging_writer()
+        # Optional one-run multi-phase training: 1 -> 2 -> 3.
+        self.enable_three_phase_training = bool(self.cfg.get("enable_three_phase_training", False))
+        self.phase_trials = list(self.cfg.get("phase_trials", ["1", "2", "3"]))
+        self.phase_fractions = self.cfg.get("phase_fractions", {"1": 0.6, "2": 0.3, "3": 0.3})
+        self.phase2_objcom_noise_std = float(self.cfg.get("phase2_objcom_noise_std", 0.03))
+        self.policy_obj_com_dim = int(self.cfg.get("policy_obj_com_dim", 3))
+        self._active_phase = "1"
+
+    def _resolve_env(self):
+        """Return the base environment object (unwrapped when available)."""
+        return getattr(self.env, "unwrapped", self.env)
+
+    def _set_actor_trainable(self, trainable: bool) -> None:
+        """Freeze/unfreeze actor-critic; estimator remains trainable."""
+        for p in self.alg.policy.parameters():
+            p.requires_grad = trainable
+        # TODO: check this out
+        physic_estimator = getattr(self.alg.policy, "physic_estimator", None)
+        if physic_estimator is not None:
+            for p in physic_estimator.parameters():
+                p.requires_grad = True
+
+    def _apply_training_phase(self, phase_name: str) -> None:
+        """Apply requested phase behavior and display current phase."""
+        self._active_phase = phase_name
+        base_env = self._resolve_env()
+
+        if phase_name == "1":
+            phase_desc = "PPO training on policy+critic (clean obj_com)."
+            self._set_actor_trainable(True)
+            if hasattr(self.alg, "set_update_mode"):
+                self.alg.set_update_mode("ppo")
+        elif phase_name == "2":
+            phase_desc = "PPO training on policy+critic (noisy obj_com in policy)."
+            self._set_actor_trainable(True)
+            if hasattr(self.alg, "set_update_mode"):
+                self.alg.set_update_mode("ppo")
+        elif phase_name == "3":
+            phase_desc = "Estimator-only training on com_estimation (actor frozen)."
+            self._set_actor_trainable(False)
+            if getattr(self.alg.policy, "physic_estimator", None) is None:
+                print("[SuperQ-ALORE][WARN] Phase 3 requested but physic_estimator is not enabled in policy config.")
+            if hasattr(self.alg, "set_update_mode"):
+                self.alg.set_update_mode("estimator_only")
+        else:
+            raise ValueError(f"Unsupported phase '{phase_name}'. Supported phases are 1, 2, and 3.")
+
+        try:
+            setattr(base_env, "training_phase", phase_name)
+        except Exception:
+            pass
+
+        print(f"[SuperQ-ALORE] CURRENT PHASE {phase_name} | {phase_desc}")
+
+    def _transform_obs_for_phase(self, obs: TensorDict) -> TensorDict:
+        """Apply phase-specific privileged CoM handling on policy observation."""
+        if not torch.is_tensor(obs):
+            return obs
+        if self.policy_obj_com_dim <= 0 or obs.shape[-1] < self.policy_obj_com_dim:
+            return obs
+
+        if self._active_phase == "1":
+            return obs
+        if self._active_phase == "2":
+            obs = obs.clone()
+            # The input to the actor is corrupted by some noise
+            obs["policy"][..., -self.policy_obj_com_dim:] = obs["policy"][..., -self.policy_obj_com_dim:] + torch.randn_like(obs["policy"][..., -self.policy_obj_com_dim:]) * self.phase2_objcom_noise_std
+            return obs
+        if self._active_phase == "3":
+            return obs
+        return obs
+
+    def _compute_phase_iterations(self, total_iterations: int) -> list[tuple[str, int]]:
+        """Split total iterations across the configured phase trial order."""
+        if total_iterations <= 0:
+            return []
+
+        normalized_trials = [str(p).strip() for p in self.phase_trials]
+        if len(normalized_trials) != 3 or len(set(normalized_trials)) != 3:
+            raise ValueError("phase_trials must contain exactly three unique phases from {'1', '2', '3'}.")
+
+        valid_phases = {"1", "2", "3"}
+        if set(normalized_trials) != valid_phases:
+            raise ValueError("phase_trials must contain all phases: ['1', '2', '3'].")
+
+        fractions = [float(self.phase_fractions.get(p, 0.0)) for p in normalized_trials]
+        fsum = sum(fractions)
+        if fsum <= 0:
+            raise ValueError("phase_fractions must sum to a positive value.")
+
+        normalized_fractions = [f / fsum for f in fractions]
+        phase_iters = [int(total_iterations * f) for f in normalized_fractions]
+        used_iters = sum(phase_iters)
+        phase_iters[-1] += max(0, total_iterations - used_iters)
+        return [(normalized_trials[i], phase_iters[i]) for i in range(3)]
+
+    def _learn_single_phase(self, num_learning_iterations: int, init_at_random_ep_len: bool = False) -> None:
+        """Run the original PPO learning loop for a single phase block."""
+        if num_learning_iterations <= 0:
+            return
 
         # Randomize initial episode lengths (for exploration)
         if init_at_random_ep_len:
@@ -76,6 +173,7 @@ class OnPolicyRunnerSuperQALORE():
 
         # Start learning
         obs = self.env.get_observations().to(self.device)
+        obs = self._transform_obs_for_phase(obs)
         self.train_mode()  # switch to train mode (for dropout for example)
 
         # Book keeping
@@ -104,15 +202,15 @@ class OnPolicyRunnerSuperQALORE():
             start = time.time()
             # Rollout
             with torch.inference_mode():
-                # TODO: Consider only start training after a successful grasp?
                 for _ in range(self.num_steps_per_env):
                     # Sample actions
                     actions = self.alg.act(obs)
-                    
+
                     # Step the environment
                     obs, rewards, dones, extras = self.env.step(actions.to(self.env.device))
                     # Move to device
                     obs, rewards, dones = (obs.to(self.device), rewards.to(self.device), dones.to(self.device))
+                    obs = self._transform_obs_for_phase(obs)
                     # Process the step
                     self.alg.process_env_step(obs, rewards, dones, extras)
                     # Extract intrinsic rewards (only for logging)
@@ -176,6 +274,37 @@ class OnPolicyRunnerSuperQALORE():
                     for path in git_file_paths:
                         self.writer.save_file(path)
 
+    def learn(self, num_learning_iterations: int, init_at_random_ep_len: bool = False) -> None:
+        # Initialize writer
+        self._prepare_logging_writer()
+
+        if self.enable_three_phase_training:
+            phase_plan = self._compute_phase_iterations(num_learning_iterations)
+            print(
+                "[SuperQ-ALORE] Running three-phase schedule: "
+                + ", ".join([f"phase {p}={n} iters" for p, n in phase_plan])
+            )
+            for phase_idx, (phase_name, phase_iters) in enumerate(phase_plan):
+                if phase_iters <= 0:
+                    continue
+                self._apply_training_phase(phase_name)
+                self._learn_single_phase(
+                    num_learning_iterations=phase_iters,
+                    init_at_random_ep_len=(init_at_random_ep_len and phase_idx == 0),
+                )
+                if self.log_dir is not None and not self.disable_logs:
+                    self.save(
+                        os.path.join(
+                            self.log_dir,
+                            f"model_phase{phase_name}_end_{self.current_learning_iteration}.pt",
+                        )
+                    )
+        else:
+            self._learn_single_phase(
+                num_learning_iterations=num_learning_iterations,
+                init_at_random_ep_len=init_at_random_ep_len,
+            )
+
         # Save the final model after training
         if self.log_dir is not None and not self.disable_logs:
             self.save(os.path.join(self.log_dir, f"model_{self.current_learning_iteration}.pt"))
@@ -221,6 +350,8 @@ class OnPolicyRunnerSuperQALORE():
 
         # Log noise std
         self.writer.add_scalar("Policy/mean_noise_std", mean_std.item(), locs["it"])
+        phase_scalar = {"1": 1.0, "2": 2.0, "3": 3.0}.get(self._active_phase, 0.0)
+        self.writer.add_scalar("Phase/id", phase_scalar, locs["it"])
 
         # Log performance
         self.writer.add_scalar("Perf/total_fps", fps, locs["it"])
@@ -243,7 +374,10 @@ class OnPolicyRunnerSuperQALORE():
                     "Train/mean_episode_length/time", statistics.mean(locs["lenbuffer"]), self.tot_time
                 )
 
-        str = f" \033[1m Learning iteration {locs['it']}/{locs['tot_iter']} \033[0m "
+        str = (
+            f" \033[1m Learning iteration {locs['it']}/{locs['tot_iter']} "
+            f"| phase {self._active_phase} \033[0m "
+        )
 
         if len(locs["rewbuffer"]) > 0:
             log_string = (

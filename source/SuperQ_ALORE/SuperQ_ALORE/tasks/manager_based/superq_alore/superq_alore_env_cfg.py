@@ -131,12 +131,27 @@ class CommandsCfg:
         # the actual yaw value in the command will be reset in the constructor.
         ranges=mdp.GoalPoseCommandCfg.Ranges(
             pos_x=(-1.0, 1.0),
-            pos_y=(-0.2, 0.2),
+            pos_y=(-0.3, 0.3),
             pos_z=(0.0, 0.0),
             yaw=(-math.pi/4, math.pi/4),
         ),
     )
 
+@configclass
+class CommandsPLAYCfg:
+    """Command specifications for the MDP."""
+    goal_pose = mdp.GoalPoseCommandPLAYCfg(
+        resampling_time_range=(1e6, 1e6), # No need to change the command
+        debug_vis=True,
+        debug_vis_keypoints=True,
+        debug_vis_keypoint_radius=0.04,
+        ranges=mdp.GoalPoseCommandCfg.Ranges(
+            pos_x=(-1.0, 1.0),
+            pos_y=(-1.0, 1.0),
+            pos_z=(0.0, 0.0),
+            yaw=(-math.pi/2, math.pi/2),
+        ),
+    )
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
@@ -168,6 +183,8 @@ class ActionsCfg:
         arm_joint_names=ARM_JOINT_NAMES,
         leg_joint_names=LEG_JOINT_NAMES,
         scale=0.2,
+        low_level_update_decimation=2, 
+        # Setting Low-level frequency: 100 Hz
     )
 
 @configclass
@@ -189,6 +206,7 @@ class ObservationsCfg:
         # Body orientation data
         body_orientation = ObsTerm(
             func = mdp.get_body_orientation,
+            noise=Unoise(n_min=-0.1, n_max=0.1),
             scale = 1.0
         ) # dim: 2 (no yaw information)
         
@@ -200,7 +218,8 @@ class ObservationsCfg:
         
         # Last action (x, y, omega, \delta arm joints)
         last_action = ObsTerm(
-            func = mdp.last_high_level_action, params={"clip_limit": 100}
+            func = mdp.last_high_level_action, params={"clip_limit": 100},
+            scale = 1.0,
         ) # dim: 9
         
         # End-effector in robot frame
@@ -214,22 +233,25 @@ class ObservationsCfg:
         obj_pose_in_robot_frame = ObsTerm(
             func = mdp.obj_pose_in_robot_frame,
             scale = 1.0,
-        ) # dim: 7 (position + quat) for the target object
+        ) # dim: 3 (position + yaw) for the target object, SE2
 
         # Vector from active object to goal in active object frame.
         obj_to_goal_pos_local = ObsTerm(
             func=mdp.obj_to_goal_pos_local,
             params={"goal_term_name": "goal_pose"},
             noise=Unoise(n_min=-0.02, n_max=0.02),
+            scale = 1.0,
         ) # dim: 2 (only xy components in active object frame, since we want to encourage the agent to align the object to the goal along the ground plane)
 
         # Goal orientation represented in active object frame as a yaw angle.
         obj_to_goal_rot_local = ObsTerm(
             func=mdp.obj_to_goal_rot_local,
             params={"goal_term_name": "goal_pose"},
-            noise=Unoise(n_min=-0.0, n_max=0.0),
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            scale = 1.0,
         ) # dim: 1 (Yaw error in active object frame)
 
+        
         def __post_init__(self):
             self.enable_corruption = False
             self.history_length = 1
@@ -353,9 +375,19 @@ class ObservationsCfg:
             scale = 1.0,
         ) # dim: 3
         
+        # Object CoM offset in object body frame.
+        # Having this in the critic lets the value function differentiate high/low-value
+        # states by CoM, which in turn produces CoM-informative advantage estimates
+        # that teach the actor to actually use the obj_com it receives in PolicyCfg.
+        # obj_com = ObsTerm(
+        #     func = mdp.obj_com,
+        #     scale = 10.0,
+        # ) # dim: 3
+
         def __post_init__(self):
             self.enable_corruption = False
             self.concatenate_terms = True
+
     @configclass
     class LocomotionPolicyCfg(ObsGroup):
         """
@@ -426,9 +458,58 @@ class ObservationsCfg:
         def __post_init__(self):
                 self.enable_corruption = False
                 self.concatenate_terms = True
-        
-    policy: PolicyCfg = PolicyCfg()
     
+    
+    @configclass
+    class ComEstimationCfg(ObsGroup):
+        """Observations for the Actor / Policy agent of the high-level controller"""
+        # Joint velocities & positions
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 1.0
+        ) # dim: 18 (12 legs + 7 arm joints - 1 redundant joint) --- relative joint positions to the default pose
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 0.05
+        ) # dim: 18
+        
+        # Body orientation data
+        body_orientation = ObsTerm(
+            func = mdp.get_body_orientation,
+            scale = 1.0
+        ) # dim: 2 (no yaw information)
+        
+        # Root angular velocity
+        base_ang_vel = ObsTerm(
+            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 0.25
+        ) # dim: 3, base_ang_vel is in robot's root frame
+        
+        # Last action (x, y, omega, \delta arm joints)
+        last_action = ObsTerm(
+            func = mdp.last_high_level_action, params={"clip_limit": 100},
+            scale = 1.0,
+        ) # dim: 9
+        
+        # End-effector in robot frame
+        ee_pose_in_robot_frame = ObsTerm(
+            func = mdp.ee_pose_in_robot_frame,
+            params = {"end_effector_link_name": "arm_link_jaw"},
+            scale = 1.0,
+        ) # dim: 7 (position + quat) for the end-effector link
+        
+        # Object pose in robot frame
+        obj_pose_in_robot_frame = ObsTerm(
+            func = mdp.obj_pose_in_robot_frame,
+            scale = 1.0,
+        ) # dim: 7 (position + quat) for the target object
+        
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.history_length = 10
+            self.concatenate_terms = True
+    
+    policy: PolicyCfg = PolicyCfg()
     # policy_deployable: PolicyDeployableCfg = PolicyDeployableCfg()
     critic: CriticCfg = CriticCfg()
     # adapt_teacher: AdaptTeacherCfg = AdaptTeacherCfg()
@@ -436,6 +517,9 @@ class ObservationsCfg:
     locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
     reward_calculation: RewardCalculationCfg = RewardCalculationCfg()
     object_idx: ObjectIdxCfg = ObjectIdxCfg()
+    
+    # Observations to estimate the CoM
+    com_estimation: ComEstimationCfg = ComEstimationCfg()
     
 
 
@@ -506,8 +590,13 @@ class EventCfg:
         func=mdp.reset_object_physical_properties,
         mode="reset",
         params={
-            "mass_range": (7, 15),
-            "friction_range": (0.1, 0.6),
+            "mass_range": (11, 12),
+            "friction_range": (0.15, 0.35),
+            "com_range": {
+                "x": (-0.15, 0.15),
+                "y": (-0.0, 0.0),
+                "z": (-0.15, 0.15),
+            },
         },
     )
     # reset_robot_joints = EventTerm(
@@ -683,8 +772,8 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         """Post initialization."""
         # general settings
-        self.decimation = 4
-        self.episode_length_s = 20
+        self.decimation = 4 # NOTE: High-level frequency: 50 Hz
+        self.episode_length_s = 20.0
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
         # simulation settings
@@ -703,4 +792,74 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         # Import the robot (behind the chair)
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None
+
+        # Keep static defaults here. Three-phase training is controlled dynamically
+        # by OnPolicyRunnerSuperQALORE via event manager and observation transforms.
+
+
+@configclass
+class SuperqAloreEnvPlayCfg(SuperqAloreEnvCfg):
+    """Evaluation (play) variant of SuperqAloreEnvCfg.
+
+    Differences from training:
+    - Fewer environments and wider spacing for easier visualization.
+    - Longer episode length so the agent can be observed over full rollouts.
+    - All observation noise disabled (policy and critic groups).
+    - Physical property randomization disabled: mass, friction and CoM are
+      fixed to their nominal values so evaluation reflects a known condition.
+    - Reset-base, reset-goal, and reset-robot-joint events retain their
+      training defaults (they do not affect object physics).
+    - The com_estimation group history_length is preserved so a trained
+      estimator can be evaluated without shape mismatches.
+    """
+
+    # Smaller scene for interactive evaluation.
+    scene: SuperqAloreSceneCfg = SuperqAloreSceneCfg(num_envs=32, env_spacing=6.0)
+    
+    # New commands for evaluation
+    commands: CommandsPLAYCfg = CommandsPLAYCfg()
+    def __post_init__(self) -> None:
+        # Apply all training defaults first.
+        super().__post_init__()
+
+        # ------------------------------------------------------------------ #
+        # Episode length: longer for evaluation observation.
+        # ------------------------------------------------------------------ #
+        self.episode_length_s = 20.0
+
+        # ------------------------------------------------------------------ #
+        # Disable all observation noise in policy and critic groups.
+        # ------------------------------------------------------------------ #
+        _zero_noise = Unoise(n_min=0.0, n_max=0.0)
+
+        policy_obs = self.observations.policy
+        policy_obs.joint_pos.noise = _zero_noise
+        policy_obs.joint_vel.noise = _zero_noise
+        policy_obs.base_ang_vel.noise = _zero_noise
+        policy_obs.obj_to_goal_pos_local.noise = _zero_noise
+        policy_obs.obj_to_goal_rot_local.noise = _zero_noise
+
+        critic_obs = self.observations.critic
+        critic_obs.joint_pos.noise = _zero_noise
+        critic_obs.joint_vel.noise = _zero_noise
+        critic_obs.base_ang_vel.noise = _zero_noise
+        critic_obs.obj_to_goal_pos_local.noise = _zero_noise
+        critic_obs.obj_to_goal_rot_local.noise = _zero_noise
+        critic_obs.base_lin_vel.noise = _zero_noise
+
+        com_est_obs = self.observations.com_estimation
+        com_est_obs.joint_pos.noise = _zero_noise
+        com_est_obs.joint_vel.noise = _zero_noise
+        com_est_obs.base_ang_vel.noise = _zero_noise
+
+        # ------------------------------------------------------------------ #
+        # Disable physical property randomization: fix mass, friction, CoM.
+        # ------------------------------------------------------------------ #
+        self.events.reset_object_physical_properties.params["mass_range"] = (11.5, 11.5)
+        self.events.reset_object_physical_properties.params["friction_range"] = (0.20, 0.20)
+        self.events.reset_object_physical_properties.params["com_range"] = {
+            "x": (0.0, 0.0),
+            "y": (0.0, 0.0),
+            "z": (0.0, 0.0),
+        }
 

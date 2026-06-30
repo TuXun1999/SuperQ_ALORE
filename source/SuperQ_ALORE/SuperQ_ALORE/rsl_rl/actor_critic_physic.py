@@ -38,9 +38,9 @@ class PhysicActorCritic(ActorCritic):
         activation="elu",
         init_noise_std=1.0,
         noise_std_type: str = "scalar",
-        velocity_estimation_enabled=False,
-        GNN_enabled=True,
-        GNN_obj_enabled=True, # Extend the GNN with object-shape-related nodes
+        physic_estimation_enabled=True,
+        GNN_enabled=False,
+        GNN_obj_enabled=False, # Extend the GNN with object-shape-related nodes
         **kwargs,
     ):
         super().__init__(
@@ -55,11 +55,11 @@ class PhysicActorCritic(ActorCritic):
             **kwargs
         )
 
-        # Hard-coded attributes...
+        # Actor policy currently uses one-step observations.
         self.history_length = 1
         
         if not hasattr(self, 'device'):
-            self.device = kwargs.get('device', 'cpu')
+            self.device = kwargs.get('device', 'cuda:0')
 
         
         self.obs_groups = obs_groups
@@ -81,18 +81,14 @@ class PhysicActorCritic(ActorCritic):
         activation = resolve_nn_activation(activation)
 
         ## The ablation study on velocity estimation & GNN features
-        self.velocity_estimation_enabled = velocity_estimation_enabled
+        self.physic_estimation_enabled = physic_estimation_enabled
         self.GNN_enabled = GNN_enabled
         self.GNN_obj_enabled = GNN_obj_enabled
         
         # The input to the actor predictor consists of raw env observations and the 
-        # estimated object base velocities and the graph neural network output
-        # mlp_input_dim_a = num_actor_obs + self.history_length*3 + 128
-        if velocity_estimation_enabled and GNN_enabled:
-            mlp_input_dim_a = num_actor_obs + self.history_length * 3 + 128
-        elif velocity_estimation_enabled and not GNN_enabled:
-            mlp_input_dim_a = num_actor_obs + self.history_length * 3
-        elif not velocity_estimation_enabled and GNN_enabled:
+        # the graph neural network output
+        
+        if GNN_enabled:
             mlp_input_dim_a = num_actor_obs + 128
         else:
             mlp_input_dim_a = num_actor_obs 
@@ -113,13 +109,24 @@ class PhysicActorCritic(ActorCritic):
         # Arm control head
         self.arm_head = nn.Linear(actor_hidden_dims[-1], 6)
 
+        # Configure estimator input from dedicated com_estimation group when available.
+        estimator_input_dim = self.num_actor_obs
+        estimator_history_length = 10
+        if "com_estimation" in obs.keys():
+            est_obs = obs["com_estimation"]
+            if len(est_obs.shape) == 3:
+                estimator_history_length = int(est_obs.shape[1])
+                estimator_input_dim = int(est_obs.shape[2])
+            elif len(est_obs.shape) == 2:
+                estimator_input_dim = int(est_obs.shape[1])
+
         # Add a physic estimator
-        if velocity_estimation_enabled:
+        if physic_estimation_enabled:
             self.physic_estimator = PhysicEstimator(
-                input_dim = self.num_actor_obs,  # Assuming actor obs is used for estimation
-                output_dim=3,  # [vx, vy, omega] ## TODO: with only physical estimation
+                input_dim = estimator_input_dim,
+                output_dim=3,  # [x, y, z] # COM
                 device=self.device,
-                history_length=self.history_length
+                history_length=estimator_history_length
             )
             print(f'Estimator: {self.physic_estimator}')
         else:
@@ -144,35 +151,18 @@ class PhysicActorCritic(ActorCritic):
         self.num_one_step_obs = num_actor_obs  # Number of observations used for one-step prediction
 
 
-
+    """
+    The following contents are only about PPO
+    """
     def update_distribution(self, observations, critic_observations, object_type = None):
         B = observations.shape[0]
         T = self.history_length
         D = self.num_actor_obs
         obs_seq = observations.view(B, T, D)  # (B, T, D)
 
-        ## Ablation study: object velocity
-        # obj_ang_vel_z_gt = critic_observations[:, -4].view(B, 1, 1)
-        # obj_lin_vel_x_gt = critic_observations[:, -9].view(B, 1, 1)
-        # obj_lin_vel_y_gt = critic_observations[:, -8].view(B, 1, 1)
+        obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
         
-        if self.velocity_estimation_enabled:
-            # velocity prediction
-            with torch.no_grad():
-                physic_estimated = self.physic_estimator(observations)
-
-            lin_vel_x_pre = physic_estimated[:, :1]
-            lin_vel_y_pre = physic_estimated[:, 1:2]
-            ang_vel_z_pre = physic_estimated[:, 2:3]
-            lin_vel_x_pre = lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-            lin_vel_y_pre = lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-            ang_vel_z_pre = ang_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-
-            obs_augmented = torch.cat((obs_seq, lin_vel_x_pre, lin_vel_y_pre, ang_vel_z_pre), dim=-1)  
-        else:
-            obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
-        
-        ## interactive GNN processing
+        ## Ablation study: interactive GNN processing
         if self.GNN_enabled:
             if self.GNN_obj_enabled:
                 node_features, edge_index, edge_attr, batch = self.interactive_gnn.build_interaction_graph(obs_seq, critic_observations, object_type)
@@ -238,49 +228,8 @@ class PhysicActorCritic(ActorCritic):
         D = self.num_actor_obs
         obs_seq = observations.view(B, T, D)  # (B, T, D)
 
-
-        if self.velocity_estimation_enabled:
-            ## Velocity prediction
-            physic_estimator = self.physic_estimator(observations)
-            
-            # NOTE: Ablation study: object velocity
-            obj_lin_vel_x_pre = physic_estimator[:, :1]  
-            obj_lin_vel_y_pre = physic_estimator[:, 1:2]  
-            obj_lin_vel_z_pre = physic_estimator[:, 2:3]
-            
-
-            # # print("plan_vel predict", obj_lin_vel_x_pre/2., obj_lin_vel_y_pre/2., obj_lin_vel_z_pre*4.0)
-
-            # obj_ang_vel_z_gt = critic_observations[:, -4].view(B, 1, 1).expand(-1, T, -1) # (B, T, 1)
-            # obj_lin_vel_x_gt = critic_observations[:, -9].view(B, 1, 1).expand(-1, T, -1)
-            # obj_lin_vel_y_gt = critic_observations[:, -8].view(B, 1, 1).expand(-1, T, -1)
-        
-
-            # obj_ang_vel_z_gt = critic_observations[:, -4]  # (B,)
-            # obj_lin_vel_x_gt = critic_observations[:, -9]  # (B,)
-            # obj_lin_vel_y_gt = critic_observations[:, -8]  # (B,)
-
-            # # print("obj_ang_vel_xyz_gt", obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
-
-
-            # obj_lin_vel_x_pre_s = physic_estimator[:, :1].flatten()   # (B, 1) -> (B,)
-            # obj_lin_vel_y_pre_s = physic_estimator[:, 1:2].flatten()  # (B, 1) -> (B,)
-            # obj_lin_vel_z_pre_s = physic_estimator[:, 2:3].flatten()  # (B, 1) -> (B,)
-            # print("obj_lin_vel_x_pre_s", obj_lin_vel_x_pre_s[0])
-
-
-            
-            # # self._save_predictions_and_gt_to_csv(obj_lin_vel_x_pre_s/2, obj_lin_vel_y_pre_s/2, obj_lin_vel_z_pre_s*4.0, 
-            # #                                  obj_lin_vel_x_gt/2, obj_lin_vel_y_gt/2, obj_ang_vel_z_gt*4.0)
-        
-
-            obj_lin_vel_x_pre = obj_lin_vel_x_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-            obj_lin_vel_y_pre = obj_lin_vel_y_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-            obj_lin_vel_z_pre = obj_lin_vel_z_pre.unsqueeze(1).expand(-1, T, -1)  # (B, T, 1)
-            obs_augmented = torch.cat((obs_seq, obj_lin_vel_x_pre, obj_lin_vel_y_pre, obj_lin_vel_z_pre), dim=-1)  # TODO: (B, T, 46)
-
-        else:
-            obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
+        # The estimation of object physics is done separately
+        obs_augmented = obs_seq  # (B, T, D) -- ablation without velocity prediction, to test the effect of GNN features alone
         
         # interactive GNN processing
         if self.GNN_enabled:

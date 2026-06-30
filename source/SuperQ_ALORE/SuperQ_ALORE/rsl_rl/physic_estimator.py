@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
 
 
@@ -29,16 +28,17 @@ class PhysicEstimator(nn.Module):
             batch_first = True
         )
 
-        # Output head: MLP
-        self.output_head = nn.Sequential(
+        # Output heads (HistoryEncoder-style): predict mean and log-variance.
+        self.output_backbone = nn.Sequential(
             nn.Linear(lstm_hidden_size, mlp_hidden_dim),
             nn.ReLU(),
-            nn.Linear(mlp_hidden_dim, output_dim)
         )
+        self.to_mean = nn.Linear(mlp_hidden_dim, output_dim)
+        self.to_log_var = nn.Linear(mlp_hidden_dim, output_dim)
 
         # Optimizer and loss
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
-        self.loss_fn = nn.MSELoss()
+        self.loss_fn = nn.GaussianNLLLoss(full=False, reduction="mean", eps=1e-6)
         self.max_grad_norm = max_grad_norm
 
         self.to(self.device)
@@ -48,41 +48,67 @@ class PhysicEstimator(nn.Module):
         print(f"PhysicEstimator initialized with input_dim={input_dim}, output_dim={output_dim}, ")
 
 
+    def _prepare_sequence(self, obs_history: torch.Tensor) -> torch.Tensor:
+        """Normalize estimator input to [B, T, D] while preserving LSTM backbone usage."""
+        if obs_history.dim() == 3:
+            return obs_history
+
+        if obs_history.dim() == 2:
+            batch_size, feat_dim = obs_history.shape
+            flat_dim = self.history_length * self.num_actor_obs
+            if feat_dim == flat_dim:
+                return obs_history.view(batch_size, self.history_length, self.num_actor_obs)
+            if feat_dim == self.num_actor_obs:
+                return obs_history.unsqueeze(1)
+
+        raise ValueError(
+            "Unexpected obs_history shape for PhysicEstimator: "
+            f"{tuple(obs_history.shape)}. Expected [B, T, D], [B, D], or [B, T*D]."
+        )
+
     def forward(self, obs_history):
         """
         obs_history: (B, T, D)
         Returns: (B, 3) as the predicted [object_x, object_y, object_ang_vel_z]
         """
-        B = obs_history.shape[0]
-        T = self.history_length
-        D = self.num_actor_obs
-
-        obs_history = obs_history.view(B, T, D)  # Reshape
-
+        
+        obs_history = self._prepare_sequence(obs_history)
         # print(f"====obs_history shape: {obs_history.shape}====")
         lstm_out, (h_n, _) = self.lstm(obs_history)  # h_n: (num_layers, B, H)
         # print(f"====h_n shape: {h_n.shape}====")
         last_hidden = h_n[-1]  # (B, H)
         # print(f"====last_hidden shape: {last_hidden.shape}====")
-        return self.output_head(last_hidden)
+        feat = self.output_backbone(last_hidden)
+        mean = self.to_mean(feat)
+        log_var = torch.clamp(self.to_log_var(feat), min=-10, max=5)
+        return mean, log_var
     
 
-    def update(self, obs_history, critic_obs):
+    def update(self, obs_history, critic_obs=None, target_com=None):
         """
-        obs_history: (B, T, D)
-        object_x_gt, object_y_gt, object_ang_vel_z_gt are extracted from critic_obs for supervised learning
+        obs_history: (B, T, D) or (B, D)
+        target_com: optional (B, 3), explicit supervised target for CoM.
+        If target_com is None, fallback to legacy target extraction from critic_obs.
         """
-        # print(f"====PhysicEstimator update called====")
+        if target_com is None:
+            if critic_obs is None:
+                raise ValueError("Either target_com or critic_obs must be provided to PhysicEstimator.update().")
+            obj_ang_vel_z_gt = critic_obs[:, -4].detach()
+            obj_lin_vel_x_gt = critic_obs[:, -9].detach()
+            obj_lin_vel_y_gt = critic_obs[:, -8].detach()
+            y = torch.stack([obj_lin_vel_x_gt, obj_lin_vel_y_gt, obj_ang_vel_z_gt], dim=-1)
+        else:
+            if target_com.shape[-1] != 3:
+                raise ValueError(f"Expected target_com last dim == 3, got {target_com.shape}.")
+            y = target_com.detach()
 
-        obj_ang_vel_z_gt = critic_obs[:, -4].detach()
-        obj_lin_vel_x_gt = critic_obs[:, -9].detach()
-        obj_lin_vel_y_gt = critic_obs[:, -8].detach()
-        x = obs_history  # (B, T, D)
-        y = torch.stack([obj_lin_vel_x_gt, obj_lin_vel_y_gt, obj_ang_vel_z_gt], dim=-1)  # (B, 2)
+        x = obs_history.to(self.device)
+        y = y.to(self.device)
 
         self.train()
-        pred = self.forward(x)
-        loss = self.loss_fn(pred, y)
+        mean, log_var = self.forward(x)
+        var = torch.exp(log_var).clamp(min=1e-5, max=150)
+        loss = self.loss_fn(mean, y, var)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -104,6 +130,6 @@ class PhysicEstimator(nn.Module):
 
         self.eval()
         with torch.no_grad():
-            y_pred = self.forward(x)
+            y_pred, _ = self.forward(x)
 
         return y_pred.cpu().numpy()

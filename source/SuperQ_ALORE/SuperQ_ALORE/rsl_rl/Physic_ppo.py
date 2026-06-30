@@ -68,6 +68,16 @@ class PhysicPPO(PPO):
             multi_gpu_cfg=multi_gpu_cfg,
         )
 
+        # Runtime-controlled update mode:
+        # - "ppo": standard PPO + optional estimator auxiliary update.
+        # - "estimator_only": update only physic estimator.
+        self.update_mode = "ppo"
+
+    def set_update_mode(self, mode: str) -> None:
+        if mode not in ("ppo", "estimator_only"):
+            raise ValueError(f"Unsupported update mode '{mode}'.")
+        self.update_mode = mode
+
     def init_storage(
         self,
         training_type: str,
@@ -215,11 +225,22 @@ class PhysicPPO(PPO):
                     for param_group in self.optimizer.param_groups:
                         param_group["lr"] = self.learning_rate
 
-            if physic_estimator is not None:
-                estimation_loss = physic_estimator.update(obs_batch["policy"], obs_batch["critic"])
+            # In estimator-only phase, train estimator from com_estimation observations.
+            if self.update_mode == "estimator_only":
+                if physic_estimator is not None:
+                    estimator_obs = obs_batch.get("com_estimation", obs_batch["policy"])
+                    # Supervise CoM from policy tail [x, y, z].
+                    target_com = obs_batch["policy"][:, -3:]
+                    estimation_loss = physic_estimator.update(estimator_obs, target_com=target_com)
+                else:
+                    estimation_loss = 0.0
+
+                mean_estimation_loss += estimation_loss
+                continue
             else:
                 estimation_loss = 0.0
 
+            # In other update modes, perform standard PPO updates. Ignore estimator
             ratio = torch.exp(actions_log_prob_batch - torch.squeeze(old_actions_log_prob_batch))
             surrogate = -torch.squeeze(advantages_batch) * ratio
             surrogate_clipped = -torch.squeeze(advantages_batch) * torch.clamp(
@@ -304,6 +325,8 @@ class PhysicPPO(PPO):
 
         self.storage.clear()
 
+        # Theoretically, the irrelevant loss items will go to zero
+        # in irrelevant phases
         loss_dict = {
             "value_function": mean_value_loss,
             "surrogate": mean_surrogate_loss,

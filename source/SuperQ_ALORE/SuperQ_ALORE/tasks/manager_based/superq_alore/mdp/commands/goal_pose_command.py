@@ -21,7 +21,7 @@ from .. import object_management as object_management
 # to avoid circular import issues and reduce import overhead.
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
-    from .commands_cfg import GoalPoseCommandCfg
+    from .commands_cfg import GoalPoseCommandCfg, GoalPoseCommandPLAYCfg
 
 
 class GoalPoseCommand(CommandTerm):
@@ -361,3 +361,47 @@ class GoalPoseCommand(CommandTerm):
         if goal_kps is not None:
             marker_ids = torch.ones((self.num_envs, 8), device=self.device, dtype=torch.int64).reshape(-1)
             self._kps_vis.visualize(goal_kps.reshape(-1, 3), marker_indices=marker_ids)
+
+
+class GoalPoseCommandPLAY(GoalPoseCommand):
+    """Play-time goal command with deterministic env-id-based sampling.
+
+    This keeps the full GoalPoseCommand behavior (metrics/visualization/curriculum)
+    but replaces random sampling in _resample_command with analytic values derived
+    from env_ids for reproducible evaluation trajectories.
+    """
+    cfg: GoalPoseCommandPLAYCfg
+    
+    def _resample_command(self, env_ids: Sequence[int]):
+        env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
+
+        if env_ids.numel() == 0:
+            return
+
+        origins = self._env.scene.env_origins[env_ids]
+
+        # Deterministic pseudo-uniform fractions from env_ids.
+        env_ids_f = env_ids.to(dtype=self.goal_w.dtype)
+        frac_x = torch.frac(env_ids_f * 0.7548776662466927)
+        frac_y = torch.frac(env_ids_f * 0.5698402909980532)
+        frac_z = torch.frac(env_ids_f * 0.4385780260809998)
+        frac_yaw = torch.frac(env_ids_f * 0.3183098861837907)
+
+        x_min, x_max = self.cfg.ranges.pos_x
+        y_min, y_max = self.cfg.ranges.pos_y
+        z_min, z_max = self.cfg.ranges.pos_z
+        yaw_min, yaw_max = self._active_yaw_range
+
+        sample_x = x_min + frac_x * (x_max - x_min)
+        sample_y = y_min + frac_y * (y_max - y_min)
+        sample_z = z_min + frac_z * (z_max - z_min)
+        sample_yaw = yaw_min + frac_yaw * (yaw_max - yaw_min)
+
+        self.goal_w[env_ids, 0] = origins[:, 0] + sample_x
+        self.goal_w[env_ids, 1] = origins[:, 1] + sample_y
+        self.goal_w[env_ids, 2] = origins[:, 2] + sample_z
+
+        _, pose_rot = object_management.get_active_pose_position_orientation_tensors(self._env, env_ids)
+        zeros = torch.zeros(env_ids.numel(), device=self.device, dtype=self.goal_w.dtype)
+        sample_yaw_rot = math_utils.quat_from_euler_xyz(zeros, zeros, sample_yaw)
+        self.goal_quat_w[env_ids] = math_utils.quat_mul(sample_yaw_rot, pose_rot)

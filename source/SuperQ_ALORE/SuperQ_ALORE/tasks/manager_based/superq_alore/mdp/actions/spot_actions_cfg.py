@@ -33,6 +33,12 @@ class MixedPDArmMultiLegJointPositionActionCfg(JointActionCfg):
     
     locomotion_policy_path = "./source/SuperQ_ALORE/SuperQ_ALORE/assets/spot/pretrained_relic/policy.pt"
     locomotion_obs_group: str = "locomotion_policy"
+    low_level_update_decimation: int = 1
+    """Run low-level locomotion inference every N simulation steps.
+
+    Effective low-level frequency = physics_frequency / low_level_update_decimation.
+    Example: with 200Hz physics and decimation=2, low-level runs at 100Hz.
+    """
 
     gripper_vel: float = 0.008
     """Whether to use default joint positions configured in the articulation asset as offset.
@@ -62,6 +68,8 @@ class MixedPDArmMultiLegJointPositionActionTeleCfg(JointActionCfg):
     
     locomotion_policy_path = "./source/SuperQ_ALORE/SuperQ_ALORE/assets/spot/pretrained_relic/policy.pt"
     locomotion_obs_group: str = "locomotion_policy"
+    low_level_update_decimation: int = 1
+    """Run low-level locomotion inference every N simulation steps."""
     
     # Remove the gripper-related attributes
 

@@ -20,6 +20,24 @@ parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
 parser.add_argument(
+    "--video_fps",
+    type=int,
+    default=None,
+    help="Output video FPS. Defaults to control frequency (1 / step_dt).",
+)
+parser.add_argument(
+    "--video_folder",
+    type=str,
+    default=None,
+    help="Optional output folder for videos. Defaults to '<checkpoint_dir>/videos/play'.",
+)
+parser.add_argument(
+    "--video_name_prefix",
+    type=str,
+    default="play",
+    help="Filename prefix for exported video files.",
+)
+parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
@@ -81,6 +99,13 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 from SuperQ_ALORE.rsl_rl.on_policy_runner_superqalore import OnPolicyRunnerSuperQALORE
 
+
+def _estimate_step_dt_from_cfg(env_cfg) -> float:
+    """Estimate environment step time from sim dt and decimation."""
+    sim_dt = float(getattr(getattr(env_cfg, "sim", None), "dt", 1.0 / 60.0))
+    decimation = int(getattr(env_cfg, "decimation", 1) or 1)
+    return sim_dt * decimation
+
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Play with RSL-RL agent."""
@@ -126,13 +151,35 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # wrap for video recording
     if args_cli.video:
+        video_folder = args_cli.video_folder or os.path.join(log_dir, "videos", "play")
+        video_folder = os.path.abspath(video_folder)
+        os.makedirs(video_folder, exist_ok=True)
+
+        est_step_dt = _estimate_step_dt_from_cfg(env_cfg)
+        render_fps = (
+            int(args_cli.video_fps)
+            if args_cli.video_fps is not None and int(args_cli.video_fps) > 0
+            else max(1, int(round(1.0 / max(1.0e-4, est_step_dt))))
+        )
+        try:
+            if hasattr(env, "metadata") and isinstance(env.metadata, dict):
+                env.metadata["render_fps"] = render_fps
+            if hasattr(env, "unwrapped") and hasattr(env.unwrapped, "metadata") and isinstance(env.unwrapped.metadata, dict):
+                env.unwrapped.metadata["render_fps"] = render_fps
+        except Exception:
+            pass
+
         video_kwargs = {
-            "video_folder": os.path.join(log_dir, "videos", "play"),
+            "video_folder": video_folder,
             "step_trigger": lambda step: step == 0,
             "video_length": args_cli.video_length,
+            "name_prefix": args_cli.video_name_prefix,
             "disable_logger": True,
         }
-        print("[INFO] Recording videos during training.")
+        print(f"[INFO] Video FPS set to: {render_fps}")
+        print(f"[INFO] Video output folder: {video_folder}")
+        print(f"[INFO] Video name prefix: {args_cli.video_name_prefix}")
+        print("[INFO] Recording videos during playback.")
         print_dict(video_kwargs, nesting=4)
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
@@ -179,8 +226,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     dt = env.unwrapped.step_dt
 
-    # reset environment
-    obs = env.get_observations()
+    # Reset through the wrapper so video recording is initialized correctly.
+    obs, _ = env.reset()
     timestep = 0
     # simulate environment
     while simulation_app.is_running():
@@ -197,7 +244,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         if args_cli.video:
             timestep += 1
             # Exit the play loop after recording one video
-            if timestep == args_cli.video_length:
+            if timestep >= args_cli.video_length:
                 break
 
         # time delay for real-time evaluation
@@ -207,6 +254,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # close the simulator
     env.close()
+    if args_cli.video:
+        print(f"[INFO] Video export completed. Check folder: {video_folder}")
 
 
 if __name__ == "__main__":
