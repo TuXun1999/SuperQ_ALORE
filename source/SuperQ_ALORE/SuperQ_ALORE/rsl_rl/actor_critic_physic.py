@@ -197,7 +197,7 @@ class PhysicActorCritic(ActorCritic):
         # Separate obs & critic_obs
         observations = obs["policy"]
         critic_observations = obs["critic"]
-        object_type = obs["object_idx"].long().squeeze()  # Assuming object type is represented as an integer index in the observation
+        object_type = obs["object_idx"][:, 0].long().squeeze()  # Assuming object type is represented as an integer index in the observation
         """
         actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
         (Forced to match 12D action space of the pretrained locomotion policy)
@@ -220,7 +220,7 @@ class PhysicActorCritic(ActorCritic):
         # Separate obs out
         observations = obs["policy"]
         critic_observations = obs["critic"]
-        object_type = obs["object_idx"].long().squeeze()  # Assuming object type is represented as an integer index in the observation
+        object_type = obs["object_idx"][:, 0].long().squeeze()  # Assuming object type is represented as an integer index in the observation
         
         # Reshape the observations to (B, T, D)
         B = observations.shape[0]

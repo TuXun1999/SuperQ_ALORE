@@ -129,7 +129,7 @@ def ee_pose_in_robot_frame(
 
     return torch.cat([ee_pos_in_robot_frame, ee_quat_in_robot_frame], dim=-1).to(env.device)  # (num_envs, 7)
 
-def obj_pose_in_robot_frame(
+def obj_pose_in_robot_frame_SE2(
     env: ManagerBasedRLEnv,
     robot_name: str = "robot",
 ) -> torch.Tensor:
@@ -149,6 +149,48 @@ def obj_pose_in_robot_frame(
     obj_pos_se2_in_robot_frame = obj_pos_in_robot_frame[:, :2]  # (num_envs, 2)
     obj_angle_yaw_in_robot_frame = _euler_from_quat(obj_quat_in_robot_frame)[2]  # Only the yaw angle
     return torch.cat([obj_pos_se2_in_robot_frame, obj_angle_yaw_in_robot_frame.unsqueeze(-1)], dim=-1).to(env.device)
+
+def obj_pose_in_robot_frame_SE2_grasp_ranking(
+    env: ManagerBasedRLEnv,
+    robot_name: str = "robot",
+) -> torch.Tensor:
+    """The object pose in robot frame. Avoid initialization of env obj lists"""
+    robot = env.scene[robot_name]
+
+    # Use active-object helper instead of fixed scene key
+    obj_pos_w = env.scene[f"target_object_0"].data.root_pos_w  # (num_envs, 3)
+    obj_quat_w = env.scene[f"target_object_0"].data.root_quat_w  # (num_envs, 4)
+
+    robot_base_pos = robot.data.root_pos_w
+    robot_quat_inv = quat_inverse_safe(robot.data.root_quat_w)
+
+    obj_pos_relative = obj_pos_w - robot_base_pos
+    obj_pos_in_robot_frame = quat_apply(robot_quat_inv, obj_pos_relative)
+    obj_quat_in_robot_frame = quat_mul(robot_quat_inv, obj_quat_w)
+    # return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)  # (num_envs, 7)
+    obj_pos_se2_in_robot_frame = obj_pos_in_robot_frame[:, :2]  # (num_envs, 2)
+    obj_angle_yaw_in_robot_frame = _euler_from_quat(obj_quat_in_robot_frame)[2]  # Only the yaw angle
+    return torch.cat([obj_pos_se2_in_robot_frame, obj_angle_yaw_in_robot_frame.unsqueeze(-1)], dim=-1).to(env.device)
+
+
+def obj_pose_in_robot_frame_SE3(
+    env: ManagerBasedRLEnv,
+    robot_name: str = "robot",
+) -> torch.Tensor:
+    robot = env.scene[robot_name]
+
+    # Use active-object helper instead of fixed scene key
+    obj_pos_w = om.get_active_object_state_attr(env, "root_pos_w")   # (num_envs, 3)
+    obj_quat_w = om.get_active_object_state_attr(env, "root_quat_w") # (num_envs, 4)
+
+    robot_base_pos = robot.data.root_pos_w
+    robot_quat_inv = quat_inverse_safe(robot.data.root_quat_w)
+
+    obj_pos_relative = obj_pos_w - robot_base_pos
+    obj_pos_in_robot_frame = quat_apply(robot_quat_inv, obj_pos_relative)
+    obj_quat_in_robot_frame = quat_mul(robot_quat_inv, obj_quat_w)
+    
+    return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)  # (num_envs, 7)
 
 def obj_pose_in_world_frame(
     env: ManagerBasedRLEnv,
@@ -236,49 +278,6 @@ def link_pose_in_robot_frame(
     return torch.cat([link_pos_in_robot_frame, link_quat_in_robot_frame], dim=-1).reshape(num_envs, -1).to(env.device) # (num_envs, num_links * 7)
 
 
-def category_encode(
-    env: ManagerBasedRLEnv,
-) -> torch.Tensor:
-    # ALORE has a constant zero category code, so we just return zeros here
-    return torch.zeros((env.num_envs, 3), device=env.device)
-
-# uncomment if we want to add a one-hot encoding of object category to the observation in the future, 
-# def category_encode(
-#     env: ManagerBasedRLEnv,
-# ) -> torch.Tensor:
-#     """Return per-env one-hot category encoding for active objects.
-    
-#     Each env has a fixed object (set by MultiAssetSpawnerCfg at spawn).
-#     The policy needs to know which object is in each env to adapt its strategy.
-#     For example, chair_1 and chair_2 have different grasp poses and sizes.
-    
-#     Returns one-hot encoding where each dimension corresponds to an object type:
-#     - env with object 0: [1, 0]
-#     - env with object 1: [0, 1]
-    
-#     Shape: [num_envs, len(OBJECT_CATALOG)]
-#     """
-#     from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management
-    
-#     # Ensure catalog state is initialized
-#     object_management.ensure_catalog_state(env)
-    
-#     # Get active object indices: [num_envs]
-#     active_indices = env.active_object_indices
-    
-#     # Create one-hot encoding: [num_envs, len(OBJECT_CATALOG)]
-#     num_objects = len(OBJECT_CATALOG)
-#     category_encoding = torch.zeros(
-#         (env.num_envs, num_objects),
-#         dtype=torch.float32,
-#         device=env.device
-#     )
-    
-#     # Set the corresponding dimension to 1 for each env's object
-#     category_encoding.scatter_(1, active_indices.unsqueeze(1), 1.0)
-    
-#     return category_encoding
-
 def joint_pos_rel(
     env: ManagerBasedRLEnv,
     robot_name: str = "robot",
@@ -322,10 +321,6 @@ def object_velocity(
     obj_ang_vel = om.get_active_object_state_attr(env, "root_ang_vel_b")[:, 2:]  # (N_envs, 1)
     return torch.cat([obj_lin_vel, obj_ang_vel], dim=-1).to(env.device)  # (N_envs, 3)
 
-def object_idx(
-    env: ManagerBasedRLEnv,
-) -> torch.Tensor:
-    return env.active_object_indices.unsqueeze(-1).long()  # shape (num_envs, 1)
 
 def last_high_level_action(
     env: ManagerBasedRLEnv,
@@ -384,3 +379,53 @@ def obj_com(
     env: ManagerBasedRLEnv,
 ) -> torch.Tensor:
     return om.get_active_object_coms(env).to(env.device)  # (num_envs, 3)
+
+
+# Constant elements throughout the episode. Initialized at reset & constant in 
+# the following policy rollout
+# Elements on the setting of the env
+def object_idx(
+    env: ManagerBasedRLEnv,
+) -> torch.Tensor:
+    return env.active_object_indices.unsqueeze(-1).long()  # shape (num_envs, 1)
+
+def obj_init_pose_in_robot_frame_SE2(
+    env: ManagerBasedRLEnv,
+) -> torch.Tensor:
+    
+    # Hard-coded initial robot pose in world frame
+    robot_init_pos = (-1.0, 0.0, 0.515)
+    robot_init_quat = (1.0, 0.0, 0.0, 0.0)
+    
+    robot_base_pos_init = torch.tensor(robot_init_pos, device=env.device).unsqueeze(0).repeat(env.num_envs, 1)
+    robot_quat_inv = quat_inverse_safe(torch.tensor(robot_init_quat, device=env.device).unsqueeze(0).repeat(env.num_envs, 1))
+
+    # Initialized object initial pose in world frame
+    obj_init_pose = env.active_object_pose  # shape (num_envs, 7), with position (3) + orientation (4)
+    obj_pos_w_init = obj_init_pose[:, :3]
+    obj_quat_w_init = obj_init_pose[:, 3:]
+
+    obj_pos_relative = obj_pos_w_init - robot_base_pos_init
+    obj_pos_in_robot_frame = quat_apply(robot_quat_inv, obj_pos_relative)
+    obj_quat_in_robot_frame = quat_mul(robot_quat_inv, obj_quat_w_init)
+    # return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)  # (num_envs, 7)
+    obj_pos_se2_in_robot_frame = obj_pos_in_robot_frame[:, :2]  # (num_envs, 2)
+    obj_angle_yaw_in_robot_frame = _euler_from_quat(obj_quat_in_robot_frame)[2] 
+    return torch.cat([obj_pos_se2_in_robot_frame, obj_angle_yaw_in_robot_frame.unsqueeze(-1)], dim=-1).to(env.device)  # (num_envs, 3)
+
+def arm_joint_pos_init(
+    env: ManagerBasedRLEnv,
+) -> torch.Tensor:
+    return env.active_arm_joint_reference[:, :6]  # shape (num_envs, 6)
+
+def redundant_placeholders_actor(
+    env: ManagerBasedRLEnv,
+) -> torch.Tensor:
+    """Placeholders for the missing dimensions in the pretrained policy."""
+    return torch.zeros((env.num_envs, 3), device=env.device)  # shape (num_envs, 154)
+
+def redundant_placeholders_critic(
+    env: ManagerBasedRLEnv,
+) -> torch.Tensor:
+    """Placeholders for the missing dimensions in the pretrained policy."""
+    return torch.zeros((env.num_envs, 154), device=env.device)  # shape (num_envs, 154)

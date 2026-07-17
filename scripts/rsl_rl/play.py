@@ -98,7 +98,7 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 from SuperQ_ALORE.rsl_rl.on_policy_runner_superqalore import OnPolicyRunnerSuperQALORE
-
+from SuperQ_ALORE.rsl_rl.on_policy_runner_grasp_ranking import OnPolicyRunnerGraspRanking
 
 def _estimate_step_dt_from_cfg(env_cfg) -> float:
     """Estimate environment step time from sim dt and decimation."""
@@ -194,6 +194,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         runner = OnPolicyRunnerSuperQALORE(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
     elif agent_cfg.class_name == "DistillationRunner":
         runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=None, device=agent_cfg.device)
+    elif agent_cfg.class_name == "OnPolicyRunnerGraspRanking":
+        runner = OnPolicyRunnerGraspRanking(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     else:
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
     runner.load(resume_path)

@@ -97,7 +97,19 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
             policy_env_obs = self._env.observation_manager.compute_group(
                 self.cfg.locomotion_obs_group, update_history=False
             )
-
+            # print("Check policy_env_obs")
+            # print(policy_env_obs.shape)
+            # print("Check gravity proj")
+            # print(policy_env_obs[[0, 10, 19], 6:9])
+            # print("Check the joint pos & vel")
+            # print(policy_env_obs[0, 9:28])
+            # print(policy_env_obs[0, 28:47])
+            # print("Theoretical index of joint")
+            # print(self._joint_ids)
+            # print(self._arm_joint_ids)
+            # print("Name of joints")
+            # print(self.cfg.leg_joint_names)
+            # print(self._arm_joint_names)
             policy_env_obs = torch.cat(
                 [
                     policy_env_obs[:, :9],

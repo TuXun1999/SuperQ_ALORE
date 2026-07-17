@@ -11,6 +11,10 @@ from tkinter import *
 import os 
 import math
 import apriltag
+from threading import Thread
+from isaaclab.utils.io.torchscript import load_torchscript_model
+
+
 """Import Boston Dynamics libraries"""
 import bosdyn.client
 import bosdyn.client.util
@@ -53,16 +57,20 @@ from bosdyn.client.lease import LeaseClient, LeaseKeepAlive
 from bosdyn.client.power import PowerClient
 from bosdyn.client.robot_command import RobotCommandBuilder, RobotCommandClient
 from bosdyn.client.robot_state import RobotStateClient
-from bosdyn.client.time_sync import TimeSyncError
 from bosdyn.client.world_object import WorldObjectClient
 from bosdyn.util import duration_str, format_metric, secs_to_hms, seconds_to_duration
-from bosdyn.api.graph_nav import map_pb2, map_processing_pb2, recording_pb2
 from bosdyn.client import ResponseError, RpcError, create_standard_sdk
-from bosdyn.client.graph_nav import GraphNavClient
-from bosdyn.client.map_processing import MapProcessingServiceClient
-from bosdyn.client.recording import GraphNavRecordingServiceClient
+
+from bosdyn.client.robot_command import (RobotCommandClient, RobotCommandStreamingClient,
+                                         blocking_stand)
+from bosdyn.client.robot_state import RobotStateStreamingClient
 import torch
 from PIL import Image
+
+from constants import DEFAULT_K_Q_P, DEFAULT_K_QD_P, DOF
+from joint_api_helper import JointAPIInterface
+
+from SuperQ_ALORE.assets.spot.constants import SPOT_DEFAULT_JOINT_POS
 # Hyperparameters for SPOT
 VELOCITY_CMD_DURATION = 0.5  # seconds
 COMMAND_INPUT_RATE = 0.1
@@ -120,6 +128,10 @@ class SPOT:
     def __init__(self, options):
 		# Create robot object with an image client.
         sdk = bosdyn.client.create_standard_sdk('rl_policy_deployment')
+        # Register the non-standard api clients
+        sdk.register_service_client(RobotCommandStreamingClient)
+        sdk.register_service_client(RobotStateStreamingClient)
+
         self.robot = sdk.create_robot(options.hostname)
         bosdyn.client.util.authenticate(self.robot)
         self.robot.sync_with_directory()
@@ -147,13 +159,28 @@ class SPOT:
         
         self.command_client = self.robot.ensure_client(RobotCommandClient.default_service_name)
         self.world_object_client = self.robot.ensure_client(WorldObjectClient.default_service_name)
+        
+        
+        # Joint-level control API
+        self.joint_api_interface = JointAPIInterface(self.robot, DOF.N_DOF)
+        # The robot state streaming client will allow us to get the robot's joint and imu information.
+        self.robot_state_streaming_client = self.robot.ensure_client(
+            RobotStateStreamingClient.default_service_name)
+
+        self.command_client = self.robot.ensure_client(RobotCommandClient.default_service_name)
+        self.command_streaming_client = self.robot.ensure_client(
+            RobotCommandStreamingClient.default_service_name)
+        
         # Verification before the formal task
         assert self.robot.has_arm(), 'Robot requires an arm to run this example.'
         # Verify the robot is not estopped and that an external application has registered and holds
         # an estop endpoint.
         assert not self.robot.is_estopped(), 'Robot is estopped. Please use an external E-Stop client, ' \
                                         'such as the estop SDK example, to configure E-Stop.'
-    
+
+        # Handle sim-real gap
+        self.real2sim_mapped = False
+        self.sim2real_mapped = False
     """Section I: Fundamental functionalities"""
     def lease_alive(self):
         self._lease_alive = bosdyn.client.lease.LeaseKeepAlive(\
@@ -998,9 +1025,190 @@ class SPOT:
         print("Moving done")
 
     """Extra session: RL"""
-    def get_RL_obs(self):
-        pass
+    def joint_level_control_start(self):
+        self.state_thread = Thread(target=self.joint_api_interface.handle_state_streaming,
+                                  args=(self.robot_state_streaming_client,))
+        self.state_thread.start()
+
+        # Activate joint control mode
+        self.activate_thread = Thread(target=self.joint_api_interface.activate, args=(self.command_client,))
+        self.activate_thread.start()
+    def joint_level_control_stop(self):
+        self.joint_api_interface.set_should_stop(True)
+        if self.state_thread:
+            self.state_thread.join()
+        if self.activate_thread:
+            self.activate_thread.join()
+    def ensure_sim2real_mapping(self):
+        # [1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14]
+        # [0, 5, 10, 15, 16, 17, 18]
+        # {'fl': ['fl_hx', 'fl_hy', 'fl_kn'], 'fr': ['fr_hx', 'fr_hy', 'fr_kn'], 'hl': ['hl_hx', 'hl_hy', 'hl_kn'], 'hr': ['hr_hx', 'hr_hy', 'hr_kn']}
+        # ['arm_sh0', 'arm_sh1', 'arm_el0', 'arm_el1', 'arm_wr0', 'arm_wr1', 'arm_f1x']
+        if self.sim2real_mapped:
+            return
+        
+        # The i-th element of the vector used in simulation environment is mapped to the 
+        # the order of the same joint in practice
+        self.sim2real_mapping_struct = {
+            0: DOF.A0_SH0,
+            1: DOF.FL_HX,
+            2: DOF.FL_HY,
+            3: DOF.FL_KN,
+            4: DOF.FR_HX,
+            5: DOF.A0_SH1,
+            6: DOF.FR_HY,
+            7: DOF.FR_KN,
+            8: DOF.HL_HX,
+            9: DOF.HL_HY,
+            10: DOF.A0_EL0,
+            11: DOF.HL_KN,
+            12: DOF.HR_HX,
+            13: DOF.HR_HY,
+            14: DOF.HR_KN,
+            15: DOF.A0_EL1,
+            16: DOF.A0_WR0,
+            17: DOF.A0_WR1,
+            18: DOF.A0_F1X
+        }
+        
+        self.sim2real_mapped = True
     
+    def ensure_real2sim_mapping(self):
+        if self.real2sim_mapped:
+            return
+        
+        # The i-th element of the vector used in real robot is
+        # mapped to the order of the same joint in simulation
+        self.real2sim_mapping_struct = {
+            DOF.A0_SH0: 0,
+            DOF.FL_HX: 1,
+            DOF.FL_HY: 2,
+            DOF.FL_KN: 3,
+            DOF.FR_HX: 4,
+            DOF.A0_SH1: 5,
+            DOF.FR_HY: 6,
+            DOF.FR_KN: 7,
+            DOF.HL_HX: 8,
+            DOF.HL_HY: 9,
+            DOF.A0_EL0: 10,
+            DOF.HL_KN: 11,
+            DOF.HR_HX: 12,
+            DOF.HR_HY: 13,
+            DOF.HR_KN: 14,
+            DOF.A0_EL1: 15,
+            DOF.A0_WR0: 16,
+            DOF.A0_WR1: 17,
+            DOF.A0_F1X: 18
+        }
+        
+        self.real2sim_mapped = True
+    
+    def sim2real_reorder(self, vec: torch.Tensor):
+        """For an executable vector ready in simulation, 
+        correct the order so that it's executable in real world"""
+        self.ensure_sim2real_mapping()
+        vec_clone = vec.clone()
+        for key, value in self.sim2real_mapping_struct.items():
+            vec_clone[key] = vec[value]
+        return vec_clone
+    
+    def real2sim_reorder(self, vec: torch.Tensor):
+        """For an executable vector ready in real world, 
+        correct the order so that it's executable in simulation"""
+        self.ensure_real2sim_mapping()
+        vec_clone = vec.clone()
+        for key, value in self.real2sim_mapping_struct.items():
+            vec_clone[value] = vec[key]
+        return vec_clone    
+    
+    def build_joint_pos_default(self, vec):
+        """Build up the default joint pos (ReLIC uses relative as their obs)"""
+        vec[DOF.A0_SH0] = SPOT_DEFAULT_JOINT_POS["arm_sh0"]
+        vec[DOF.A0_SH1] = SPOT_DEFAULT_JOINT_POS["arm_sh1"]
+        vec[DOF.A0_EL0] = SPOT_DEFAULT_JOINT_POS["arm_el0"]
+        vec[DOF.A0_EL1] = SPOT_DEFAULT_JOINT_POS["arm_el1"]
+        vec[DOF.A0_WR0] = SPOT_DEFAULT_JOINT_POS["arm_wr0"]
+        vec[DOF.A0_WR1] = SPOT_DEFAULT_JOINT_POS["arm_wr1"]
+        vec[DOF.A0_F1X] = SPOT_DEFAULT_JOINT_POS["arm_f1x"]
+        vec[DOF.FL_HX] = SPOT_DEFAULT_JOINT_POS["fl_hx"]
+        vec[DOF.FL_HY] = SPOT_DEFAULT_JOINT_POS["fl_hy"]
+        vec[DOF.FL_KN] = SPOT_DEFAULT_JOINT_POS["fl_kn"]
+        vec[DOF.FR_HX] = SPOT_DEFAULT_JOINT_POS["fr_hx"]
+        vec[DOF.FR_HY] = SPOT_DEFAULT_JOINT_POS["fr_hy"]
+        vec[DOF.FR_KN] = SPOT_DEFAULT_JOINT_POS["fr_kn"]
+        vec[DOF.HL_HX] = SPOT_DEFAULT_JOINT_POS["hl_hx"]
+        vec[DOF.HL_HY] = SPOT_DEFAULT_JOINT_POS["hl_hy"]
+        vec[DOF.HL_KN] = SPOT_DEFAULT_JOINT_POS["hl_kn"]
+        vec[DOF.HR_HX] = SPOT_DEFAULT_JOINT_POS["hr_hx"]
+        vec[DOF.HR_HY] = SPOT_DEFAULT_JOINT_POS["hr_hy"]
+        vec[DOF.HR_KN] = SPOT_DEFAULT_JOINT_POS["hr_kn"]
+        
+        return vec
+        
+        
+    def get_ReLIC_obs(self):
+        # Obtain the current streaming states of the robot
+        curr_pose, curr_vel, curr_load = self.joint_api_interface.get_latest_pos_vel_and_load_state()
+        curr_kinematic_state = self.joint_api_interface.get_latest_kinematic_state()
+
+        # Find the transformation between vision & body frame
+        vision_T_body = bdSE3Pose.from_proto(curr_kinematic_state.vision_tform_body)
+        body_T_vision = vision_T_body.inverse()
+        curr_body_velocity_vision = curr_kinematic_state.velocity_of_body_in_vision
+
+        # Part 1: Current body velocities (convert from vision frame into body frame)
+        curr_body_lin_vel = torch.tensor(
+            body_T_vision.rot.transform_point(
+                curr_body_velocity_vision.linear.x,
+                curr_body_velocity_vision.linear.y,
+                curr_body_velocity_vision.linear.z),
+            dtype=torch.float32)
+        curr_body_ang_vel = torch.tensor(
+            body_T_vision.rot.transform_point(
+                curr_body_velocity_vision.angular.x,
+                curr_body_velocity_vision.angular.y,
+                curr_body_velocity_vision.angular.z),
+            dtype=torch.float32)
+        
+        # Part 2: Current projected_gravity (directly use the gravity vector in body frame)
+        projected_gravity = torch.tensor([0, 0, -1.0], dtype=torch.float32)
+        
+        # Part 3: Current joint positions & velocities
+        joint_pos_default = torch.tensor(curr_pose).clone()
+        joint_pos_default = self.build_joint_pos_default(joint_pos_default)
+        joint_pos_default = self.real2sim_reorder(joint_pos_default)
+        
+        curr_pose = torch.tensor(curr_pose)
+        curr_vel = torch.tensor(curr_vel)
+        joint_pos_rel = self.real2sim_reorder(curr_pose) - joint_pos_default
+        joint_vel_rel = self.real2sim_reorder(curr_vel) # zero velocities by default
+        
+        return torch.cat([curr_body_lin_vel, curr_body_ang_vel, projected_gravity, joint_pos_rel, joint_vel_rel], dim=0)
+
+    def execute_actions(self, leg_actions, arm_actions):
+        """Execute the leg actions on the robot"""
+        leg_actions = leg_actions.squeeze()
+        arm_actions = arm_actions.squeeze()
+        # Obtain the current loads
+        cmd_poses, _, curr_load  = self.joint_api_interface.get_latest_pos_vel_and_load_state()
+        
+        # Map the order of each joint in leg_actions to the ones in real command
+        current_cmd_poses = torch.tensor(cmd_poses, dtype=torch.float32).clone()
+        target_cmd_poses = current_cmd_poses.clone()
+        for idx, value in enumerate([DOF.FL_HX, DOF.FL_HY, DOF.FL_KN, DOF.FR_HX, DOF.FR_HY, DOF.FR_KN,
+                                     DOF.HL_HX, DOF.HL_HY, DOF.HL_KN, DOF.HR_HX, DOF.HR_HY, DOF.HR_KN]):
+            target_cmd_poses[value] = leg_actions[idx]
+        for idx, value in enumerate([DOF.A0_SH0, DOF.A0_SH1, DOF.A0_EL0, DOF.A0_EL1, DOF.A0_WR0, DOF.A0_WR1, DOF.A0_F1X]):
+            target_cmd_poses[value] = target_cmd_poses[value] + arm_actions[idx]
+
+        start_cmd_poses = current_cmd_poses
+        print(current_cmd_poses)
+        print(target_cmd_poses)
+        
+        # Send the joint commands to the robot
+        # self.command_streaming_client.send_joint_control_commands(
+                # self.joint_api_interface.generate_joint_pos_interp_commands(
+                #     [start_cmd_poses, target_cmd_poses], curr_load, 0.02, DEFAULT_K_Q_P, DEFAULT_K_QD_P))
 
 ## Environment to deploy pretrained policy on SPOT
 
@@ -1010,6 +1218,9 @@ class SpotRLEnvPLAY():
     # Initialize the necessary attributes
     def __init__(self, robot):
         self.robot = robot
+        
+        # Buffer of the actions sent to the robot, used to compute the observation
+        self.action_buffer = torch.zeros((1, 12))
 
     
     def reset(self):
@@ -1033,5 +1244,78 @@ class SpotRLEnvPLAY():
         self.robot = robot
         
     def close(self):
+        # Close the robot connection
+        self.robot.power_off()
+
+class SpotReLICEnvPLAY():
+    
+    # Initialize the necessary attributes
+    def __init__(self, robot):
+        self.robot = robot
+        self.locomotion_policy_path = "./source/SuperQ_ALORE/SuperQ_ALORE/assets/spot/pretrained_relic/policy.pt"
+        self.locomotion_policy = load_torchscript_model(self.locomotion_policy_path)
+        
+        # Start the thread for state streaming
+        self.robot.joint_level_control_start()
+        
+        # Initialize the buffer
+        self.leg_actions_buf = torch.zeros((1, 12))
+    def reset(self):
+        """TODO: figure out how to write reset on policy deployment..."""
+        pass
+    
+    def step(self, action):
+        """TODO: Command the robot according to the action (high-level command)"""
+        # Step 1: Wrap up the observations from the robot
+        print("Start to obtain ReLIC obs")
+        obs = self.robot.get_ReLIC_obs().unsqueeze(0).to(action.device)
+        
+        # Step 2: Wrap up the command
+        arm_actions = action[:, 3:10]
+        base_velocity = action[:, 0:3]
+        
+        base_pose = torch.tensor([[0, 0.55]], device=arm_actions.device)
+        arm_joints = arm_actions
+        leg_joints = torch.zeros(arm_joints.shape[0], 12, device=arm_joints.device)
+        roll_target = torch.zeros(arm_joints.shape[0], 1, device=arm_joints.device)
+        arm_leg_joint_base_pose_command = torch.cat(
+            [
+                arm_joints,
+                leg_joints,
+                roll_target,
+                base_pose,
+            ],
+            dim=1,
+        )
+        
+        policy_env_obs = torch.cat(
+                [
+                    obs[:, :9],
+                    base_velocity,
+                    arm_leg_joint_base_pose_command,
+                    obs[:, 9:],
+                ],
+                dim=1,
+            )
+        
+        # Attach the last leg command 
+        policy_env_obs = torch.cat([policy_env_obs, self.leg_actions_buf[-1, :].unsqueeze(0)], dim=1)
+        # Step 3: Obtain & Execute the leg actions from the locomotion policy
+        leg_actions = self.locomotion_policy(policy_env_obs)
+        print(leg_actions)
+        # update the buffer
+        self.leg_actions_buf[-1, :] = leg_actions.squeeze()
+        
+        
+        self.robot.execute_actions(leg_actions, arm_actions)
+        
+        
+    def update_robot(self, robot):
+        # Update the robot to use
+        self.robot = robot
+        
+    def close(self):
+        # Close the possible joint-level control
+        self.robot.joint_level_control_stop()
         # Close the robot connection
         self.robot.power_off()

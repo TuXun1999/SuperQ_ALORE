@@ -9,7 +9,7 @@
 
 import argparse
 import time
-from robot import SPOT, SpotRLEnvPLAY
+from robot import SPOT, SpotReLICEnvPLAY
 import bosdyn
 import torch
 # add argparse arguments
@@ -32,21 +32,8 @@ def main():
     robot.power_on_stand()
     
     # Create environment
-    env = SpotRLEnvPLAY(robot)
+    env = SpotReLICEnvPLAY(robot)
 
-    # Approach the chair & grasp the chair
-    # 1. Detect the AprilTag
-    # 2. Move to the position ahead of the AprilTag (labeled on the chair)
-    robot.robot.logger.info("Moving to pregrasp location based on AprilTag detection.")
-    robot.pregrasp_location_apriltag(option="world_object_service")
-    robot.robot.logger.info("Reached pregrasp location.")
-    robot.robot.logger.info("Moving to grasp location.")
-    robot.open_gripper()
-    # 3. Move the arm to the desired joint angle configuration
-    robot.arm_joint_control([0.00, -1.64, 1.87, 0.0, 1.04, 0.0, -0.9])
-    time.sleep(1)
-    robot.close_gripper()
-    robot.robot.logger.info("Grasped the chair.")
     steps = 0
     max_steps = 100  # Define the maximum number of steps
     while steps < max_steps:
@@ -65,7 +52,7 @@ def main():
 
             # Only command the base to be at a suitable height & pitch 
             # (roll action not desired)
-            actions[:, :3] = torch.tensor([-0.2, 0.0, 0.0]) # command a base velocity to move forward after chair reset, to avoid the disturbance from chair reset and keep the grasping pose stable
+            actions[:, :3] = torch.tensor([-0.0, 0.0, 0.0]) # command a base velocity to move forward after chair reset, to avoid the disturbance from chair reset and keep the grasping pose stable
 
             env.step(actions)
             steps += 1

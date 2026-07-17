@@ -57,17 +57,25 @@ def build_target_objects(pool_size = 4096):
     OBJECT_IDX_ENVS = []
     POSE_IDX_LOCAL_ENVS = []
     GRASP_POSE_JOINT_POSITIONS = []
+    OBJECT_POSE_ENVS = []
     # Step 2: Map the pose IDXs to object IDs and pose IDs within that object
     for pose_idx in pose_idx_global:
         obj_idx = np.searchsorted(pose_num_cumsum, pose_idx, side='right')
         pose_idx_within_obj = pose_idx - (pose_num_cumsum[obj_idx - 1] if obj_idx > 0 else 0)
         OBJECT_IDX_ENVS.append(obj_idx)
         POSE_IDX_LOCAL_ENVS.append(pose_idx_within_obj)
+        
+        # Initial arm joint configurations
         joint_position = OBJECT_CATALOG[obj_idx].poses[pose_idx_within_obj].joint_positions
         joint_angle_val = [joint_position[name] for name in ARM_JOINT_NAMES_IN_ORDER]
         GRASP_POSE_JOINT_POSITIONS.append(joint_angle_val)
         
-    return OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS
+        # Initial object pose (position + orientation)
+        obj_init_pos = OBJECT_CATALOG[obj_idx].poses[pose_idx_within_obj].position
+        obj_init_quat = OBJECT_CATALOG[obj_idx].poses[pose_idx_within_obj].orientation
+        OBJECT_POSE_ENVS.append(obj_init_pos + obj_init_quat) # Merge the tuples
+        
+    return OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS, OBJECT_POSE_ENVS
 
 def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     """Initialise all per-env catalog tensors on env."""
@@ -81,7 +89,7 @@ def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     num_objects = len(OBJECT_CATALOG)
 
     # create the table for envs
-    OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS = build_target_objects(pool_size = env.num_envs)
+    OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS, OBJECT_POSE_ENVS = build_target_objects(pool_size = env.num_envs)
     
     # active_object_indices is the idx of the assigned object in each sub-env
     env.active_object_indices = torch.tensor(OBJECT_IDX_ENVS, dtype=torch.long, device=env.device)
@@ -92,11 +100,66 @@ def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     # Arm joint targets [num_envs, 7], matching ARM_JOINT_NAMES_IN_ORDER
     env.active_arm_joint_reference = torch.tensor(GRASP_POSE_JOINT_POSITIONS, dtype=torch.float32, device=env.device)
 
+    # object pose targets [num_envs, 7], with position (3) + orientation (4)
+    env.active_object_pose = torch.tensor(OBJECT_POSE_ENVS, dtype=torch.float32, device=env.device)
     # next time when the function is called, the first "if" condition will be true 
     # and the function will return immediately
     env._catalog_ready = True
 
+def ensure_catalog_state_grasp_ranking(env: ManagerBasedEnv, object_idx: int = None, pose_idx: int = None) -> None:
+    """Initialise all per-env catalog tensors on env for grasp ranking purpose, 
+    with a fixed object and pose index for all envs.
 
+    Args:
+        env (ManagerBasedEnv): The environment instance.
+        object_idx (int): The index of the object to be used for all envs.
+        pose_idx (int): The index of the pose to be used for all envs.
+        Note:
+        object_idx and pose_idx if provided, will override the default values
+    """
+    # only do the work once, even if ensure_catalog_state is called multiple times
+    # unless force to reset the object/pose idx
+    if hasattr(env, "_catalog_ready"):
+        if object_idx is None and pose_idx is None:
+            return
+    elif object_idx is None or pose_idx is None:
+        # If the attributes are not initialized and object_idx or pose_idx is still None,
+        # refer to the default
+        object_idx = 0
+        pose_idx = 0
+
+    # obtain the number of objects from the object_catalog.py that processes the YAML file.
+    num_objects = len(OBJECT_CATALOG)
+
+    # create the table for envs
+    OBJECT_IDX_ENVS = [object_idx] * env.num_envs
+    POSE_IDX_LOCAL_ENVS = [pose_idx] * env.num_envs
+
+    # Initial arm joint configurations
+    joint_position = OBJECT_CATALOG[object_idx].poses[pose_idx].joint_positions
+    joint_angle_val = [joint_position[name] for name in ARM_JOINT_NAMES_IN_ORDER]
+    GRASP_POSE_JOINT_POSITIONS = [joint_angle_val] * env.num_envs
+
+    # Initial object pose (position + orientation)
+    obj_init_pos = OBJECT_CATALOG[object_idx].poses[pose_idx].position
+    obj_init_quat = OBJECT_CATALOG[object_idx].poses[pose_idx].orientation
+    OBJECT_POSE_ENVS = [obj_init_pos + obj_init_quat] * env.num_envs
+
+    # active_object_indices is the idx of the assigned object in each sub-env
+    env.active_object_indices = torch.tensor(OBJECT_IDX_ENVS, dtype=torch.long, device=env.device)
+
+    # initialize active pose indices, which is the idx of the assigned pose within the assigned object in each sub-env
+    env.active_pose_indices = torch.tensor(POSE_IDX_LOCAL_ENVS, dtype=torch.long, device=env.device)
+
+    # Arm joint targets [num_envs, 7], matching ARM_JOINT_NAMES_IN_ORDER
+    env.active_arm_joint_reference = torch.tensor(GRASP_POSE_JOINT_POSITIONS, dtype=torch.float32, device=env.device)
+
+    # object pose targets [num_envs, 7], with position (3) + orientation (4)
+    env.active_object_pose = torch.tensor(OBJECT_POSE_ENVS, dtype=torch.float32, device=env.device)
+
+    env._catalog_ready = True
+    
+    
 def get_active_pose_entries(
     env: ManagerBasedEnv, env_ids: torch.Tensor
 ) -> list[PoseEntry]:
@@ -187,6 +250,7 @@ def get_active_object_state_attr(
     Works for any scalar/vector attribute stored in ``RigidObjectData`` (e.g.
     ``root_pos_w``, ``root_quat_w``, ``root_lin_vel_b``, ``projected_gravity_b``, etc.).
     """
+    # TODO: For grasp ranking system, use another env initialization
     ensure_catalog_state(env)
     n_catalog = len(OBJECT_CATALOG)
 

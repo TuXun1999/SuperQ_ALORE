@@ -131,9 +131,9 @@ class CommandsCfg:
         # the actual yaw value in the command will be reset in the constructor.
         ranges=mdp.GoalPoseCommandCfg.Ranges(
             pos_x=(-1.0, 1.0),
-            pos_y=(-0.3, 0.3),
+            pos_y=(-1.0, 1.0),
             pos_z=(0.0, 0.0),
-            yaw=(-math.pi/4, math.pi/4),
+            yaw=(-math.pi/2, math.pi/2),
         ),
     )
 
@@ -231,7 +231,7 @@ class ObservationsCfg:
         
         # Object pose in robot frame
         obj_pose_in_robot_frame = ObsTerm(
-            func = mdp.obj_pose_in_robot_frame,
+            func = mdp.obj_pose_in_robot_frame_SE2,
             scale = 1.0,
         ) # dim: 3 (position + yaw) for the target object, SE2
 
@@ -257,7 +257,43 @@ class ObservationsCfg:
             self.history_length = 1
             self.concatenate_terms = True
         
+    @configclass
+    class GraspRankingCfg(ObsGroup):
+        """Observations to select the best grasp pose"""
+        # Initial object pose in robot frame
+        obj_init_pose_in_robot_frame = ObsTerm(
+            func = mdp.obj_init_pose_in_robot_frame_SE2,
+            scale = 1.0,
+        ) # dim: 3 (position + yaw) for the target object, SE2
+        
+        # Initial arm joint positions
+        arm_joint_pos_init = ObsTerm(
+            func=mdp.arm_joint_pos_init, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 1.0
+        ) # dim: 6 (arm joints)
+        
+        # Vector from active object to goal in active object frame.
+        obj_to_goal_pos_local = ObsTerm(
+            func=mdp.obj_to_goal_pos_local,
+            params={"goal_term_name": "goal_pose"},
+            noise=Unoise(n_min=-0.02, n_max=0.02),
+            scale = 1.0,
+        ) # dim: 2 (only xy components in active object frame, since we want to encourage the agent to align the object to the goal along the ground plane)
 
+        # Goal orientation represented in active object frame as a yaw angle.
+        obj_to_goal_rot_local = ObsTerm(
+            func=mdp.obj_to_goal_rot_local,
+            params={"goal_term_name": "goal_pose"},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            scale = 1.0,
+        ) # dim: 1 (Yaw error in active object frame)
+
+        
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.history_length = 1
+            self.concatenate_terms = True
+        
 
     @configclass
     class CriticCfg(ObsGroup):
@@ -333,7 +369,7 @@ class ObservationsCfg:
         
         # Object pose in robot frame
         obj_pose_in_robot_frame = ObsTerm(
-            func = mdp.obj_pose_in_robot_frame,
+            func = mdp.obj_pose_in_robot_frame_SE2,
             scale = 1.0,
         ) # dim: 7 (position + quat) for the target object
 
@@ -500,7 +536,7 @@ class ObservationsCfg:
         
         # Object pose in robot frame
         obj_pose_in_robot_frame = ObsTerm(
-            func = mdp.obj_pose_in_robot_frame,
+            func = mdp.obj_pose_in_robot_frame_SE2,
             scale = 1.0,
         ) # dim: 7 (position + quat) for the target object
         
@@ -509,13 +545,17 @@ class ObservationsCfg:
             self.history_length = 10
             self.concatenate_terms = True
     
+    # Actor
     policy: PolicyCfg = PolicyCfg()
-    # policy_deployable: PolicyDeployableCfg = PolicyDeployableCfg()
+    # Agent to select the best grasp pose at the start
+    grasp_ranking: GraspRankingCfg = GraspRankingCfg()
+    # Critic
     critic: CriticCfg = CriticCfg()
-    # adapt_teacher: AdaptTeacherCfg = AdaptTeacherCfg()
-    # adapt_student: AdaptStudentCfg = AdaptStudentCfg()
+    # Low-level locomotion policy
     locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
+    # Observations to calculate the reward
     reward_calculation: RewardCalculationCfg = RewardCalculationCfg()
+    # Fast output to detect the object index in the sub-env
     object_idx: ObjectIdxCfg = ObjectIdxCfg()
     
     # Observations to estimate the CoM
@@ -646,7 +686,7 @@ class RewardsCfg:
         },
     ) # Encourage object velocity to align with the direction from object to goal
     
-    is_alive = RewTerm(func=mdp.is_alive, weight=2.0) # The manipulation process should be alive
+    is_alive = RewTerm(func=mdp.is_alive, weight=5.0) # The manipulation process should be alive
     # Ablation study: object velocity tracking
     # lin_vel_z_l2 = RewTerm(
     #     func=mdp.lin_vel_z_l2,

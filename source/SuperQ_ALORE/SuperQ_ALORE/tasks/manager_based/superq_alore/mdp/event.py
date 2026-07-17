@@ -10,7 +10,7 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import sample_uniform
-
+from isaaclab.utils.math import quat_apply, quat_mul
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
@@ -408,4 +408,152 @@ def reset_object_physical_properties(
         target_object.root_physx_view.set_material_properties(material_properties, torch.arange(material_properties.shape[0]))
         target_object.root_physx_view.set_coms(com_values, torch.arange(com_values.shape[0]))
         
+def reset_object_physical_properties_grasp_ranking(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    mass_range: tuple[float, float],
+    friction_range: tuple[float, float],
+    com_range: dict[str, tuple[float, float]] | None = None,
+    num_buckets: int = 64
+) -> None:
+    """
+    Reset the physical properties of the object by sampling from the given ranges.
+    Simpler version to reset the single object in the grasp ranking
+    """
+    object_management.ensure_catalog_state_grasp_ranking(env)
 
+    # Objects are spawned in all environments with per-env activation.
+    env_ids_cpu = env_ids.detach().cpu().tolist()
+    
+    # List out the active indices for each object
+    obj_idx_reset = env.active_object_indices[env_ids_cpu]
+    
+    # For each object in the selected envs, find the local indices & reset the states
+    for obj_id in range(len(OBJECT_CATALOG)):
+        # The rows corresponding to the current object in the selected batch of envs
+        selected_rows = torch.where(obj_idx_reset == obj_id)[0]
+        
+        # If in the selected envs, no env matched this object, skip to the next one
+        if selected_rows.numel() == 0:
+            continue
+        
+        target_object = env.scene[f"target_object_{obj_id}"]
+        local_env_ids = env_ids[selected_rows].to(device="cpu", dtype=torch.long)
+
+        # Sample mass and friction values from the given ranges
+        mass_values = sample_uniform(
+            torch.tensor(mass_range[0], device="cpu"),
+            torch.tensor(mass_range[1], device="cpu"),
+            (len(local_env_ids), target_object.num_bodies),
+            device="cpu",
+        )
+
+        
+        # For simplicity, we assume the static & dynamic friction coefficients are the same and sample one value for both
+        static_friction_range = (friction_range[0], friction_range[1])
+        dynamic_friction_range = (friction_range[0], friction_range[1])
+        restitution_range = (0.0, 0.0) # No restitution for the target object
+        range_list = [static_friction_range, dynamic_friction_range, restitution_range]
+        ranges = torch.tensor(range_list, device="cpu")
+        materials = sample_uniform(ranges[:, 0], ranges[:, 1], (num_buckets, 3), device="cpu")
+        
+        # Wrap up the material properties
+        total_num_shapes = target_object.root_physx_view.max_shapes
+        materials_idx = torch.randint(0, num_buckets, (len(local_env_ids), total_num_shapes), device="cpu")
+        
+        mass = target_object.root_physx_view.get_masses().clone()
+        mass[local_env_ids] = mass_values
+        material_properties = target_object.root_physx_view.get_material_properties().clone()
+        material_properties[local_env_ids] = materials[materials_idx]
+
+        # Randomize CoM offsets for active envs of this object.
+        com_values = target_object.root_physx_view.get_coms().clone()
+        if com_range is None:
+            com_ranges = torch.zeros((3, 2), device="cpu")
+        else:
+            com_ranges = torch.tensor(
+                [com_range.get(axis, (0.0, 0.0)) for axis in ["x", "y", "z"]],
+                device="cpu",
+            )
+        com_offsets = sample_uniform(
+            com_ranges[:, 0],
+            com_ranges[:, 1],
+            (len(local_env_ids), 3),
+            device="cpu",
+        )
+        if com_values.ndim == 2:
+            com_values[local_env_ids, :3] = com_offsets
+        else:
+            com_values[local_env_ids, ..., :3] = com_offsets.unsqueeze(1)
+
+        # Set the sampled mass and friction values into the physics simulation for the current batch of sub-envs
+        # NOTE: To avoid the issue of squeeze()
+        target_object.root_physx_view.set_masses(mass, torch.arange(mass.shape[0]))
+        
+        target_object.root_physx_view.set_material_properties(material_properties, torch.arange(material_properties.shape[0]))
+        target_object.root_physx_view.set_coms(com_values, torch.arange(com_values.shape[0]))
+        
+def quat_inverse_safe(q: torch.Tensor) -> torch.Tensor:
+    norm_sq = torch.sum(q * q, dim=-1, keepdim=True)  # (..., 1)
+    conj = torch.cat([q[..., :1], -q[..., 1:]], dim=-1)
+    return conj / norm_sq
+
+def reset_object_robot_pose_grasp_ranking(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    object_idx: int = 0,
+    pose_idx: int = 0,
+) -> None:
+    """
+    Reset the object pose & the robot pose for grasp pose ranking purpose
+    """
+    # Preset the object & pose indices
+    object_management.ensure_catalog_state_grasp_ranking(env, object_idx=object_idx, pose_idx=pose_idx)
+    # The object is fixed at the origin
+    target_object = env.scene["target_object_0"]
+    target_object.write_root_state_to_sim(
+        torch.tensor([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 
+        device=target_object.data.default_root_state.device).repeat(len(env_ids), 1),
+        env_ids=env_ids
+    )
+    # Hard-coded initial robot pose in world frame during training
+    robot_init_pos = (-1.0, 0.0, 0.515)
+    robot_init_quat = (1.0, 0.0, 0.0, 0.0)
+    
+    num_envs = len(env_ids)
+    robot_base_pos_init = torch.tensor(robot_init_pos, device=env.device).unsqueeze(0).repeat(num_envs, 1)
+    robot_base_quat_init = torch.tensor(robot_init_quat, device=env.device).unsqueeze(0).repeat(num_envs, 1)
+    # Initialized object initial pose in world frame at training
+    obj_init_pose = OBJECT_CATALOG[object_idx].poses[pose_idx]
+    obj_pos_w_init = torch.tensor(obj_init_pose.position, device=env.device).unsqueeze(0).repeat(num_envs, 1)
+    obj_quat_w_init = torch.tensor(obj_init_pose.orientation, device=env.device).unsqueeze(0).repeat(num_envs, 1)
+    
+    obj_quat_inv = quat_inverse_safe(obj_quat_w_init)
+
+    
+    # Compute the robot pose in object frame (same as world frame)
+    robot_pos_relative = robot_base_pos_init - obj_pos_w_init
+    robot_pos_in_obj_frame = quat_apply(obj_quat_inv, robot_pos_relative)
+    robot_quat_in_obj_frame = quat_mul(obj_quat_inv, robot_base_quat_init)
+    
+    # Set the robot pose in world frame (same as object frame)
+    robot = env.scene["robot"]
+    robot.write_root_state_to_sim(
+        torch.cat([robot_pos_in_obj_frame, robot_quat_in_obj_frame, torch.zeros(num_envs, 6, device=env.device)], dim=-1),
+        env_ids=env_ids
+    )
+    
+    # Set the robot arm joints
+    arm_joint_ref = obj_init_pose.joint_positions
+    reset_joints_around_grasp_pose(
+        env,
+        env_ids,
+        position_range = (-0.0, 0.0),
+        velocity_range = (-0.0, 0.0),
+        joint_position_ref = {
+                # dictionary comprehension: {key_expression: value_expression for item in iterable}
+                joint_name: arm_joint_ref[joint_name]
+                for joint_name in object_management.ARM_JOINT_NAMES_IN_ORDER
+            },
+        asset_cfg = SceneEntityCfg("robot"),
+    )
