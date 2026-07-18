@@ -123,6 +123,57 @@ def set_default_position_control_gains():
     DEFAULT_K_Q_P[DOF.A0_F1X] = 16.0
     DEFAULT_K_QD_P[DOF.A0_F1X] = 0.32
 
+def set_ReLIC_position_control_gains():
+    # Theses gains are reasonable gains for position control in kinematics space.
+    # k_q_p is the proportional gain for position control whereas k_qd_p is the proportional gain
+    # for velocity control.
+    HX_K_Q_P = 60
+    HX_K_QD_P = 1.50
+    HY_K_Q_P = 60
+    HY_K_QD_P = 1.50
+    KN_K_Q_P = 60
+    KN_K_QD_P = 1.50
 
+    legs = [LEGS.FL, LEGS.FR, LEGS.HL, LEGS.HR]
+    legs_dof = [
+        DOF.FL_HX, DOF.FL_HY, DOF.FL_KN, DOF.FR_HX, DOF.FR_HY, DOF.FR_KN, DOF.HL_HX, DOF.HL_HY,
+        DOF.HL_KN, DOF.HR_HX, DOF.HR_HY, DOF.HR_KN
+    ]
+
+    def get_leg_dof(leg, dof):
+        return legs_dof[leg * LegDofOrder.N_LEG_DOF + dof]
+
+    # Leg gains
+    for leg in legs:
+        DEFAULT_LEG_K_Q_P[get_leg_dof(leg, LegDofOrder.HX)] = HX_K_Q_P
+        DEFAULT_LEG_K_QD_P[get_leg_dof(leg, LegDofOrder.HX)] = HX_K_QD_P
+
+        DEFAULT_LEG_K_Q_P[get_leg_dof(leg, LegDofOrder.HY)] = HY_K_Q_P
+        DEFAULT_LEG_K_QD_P[get_leg_dof(leg, LegDofOrder.HY)] = HY_K_QD_P
+
+        DEFAULT_LEG_K_Q_P[get_leg_dof(leg, LegDofOrder.KN)] = KN_K_Q_P
+        DEFAULT_LEG_K_QD_P[get_leg_dof(leg, LegDofOrder.KN)] = KN_K_QD_P
+
+    # Copy leg gains
+    DEFAULT_K_Q_P[0:DOF.N_DOF_LEGS] = DEFAULT_LEG_K_Q_P
+    DEFAULT_K_QD_P[0:DOF.N_DOF_LEGS] = DEFAULT_LEG_K_QD_P
+
+    # Arm gains
+
+    DEFAULT_K_Q_P[DOF.A0_SH0] = 120.0
+    DEFAULT_K_QD_P[DOF.A0_SH0] = 2.0
+    DEFAULT_K_Q_P[DOF.A0_SH1] = 120.0
+    DEFAULT_K_QD_P[DOF.A0_SH1] = 2.0
+    DEFAULT_K_Q_P[DOF.A0_EL0] = 120.0
+    DEFAULT_K_QD_P[DOF.A0_EL0] = 2.0
+    DEFAULT_K_Q_P[DOF.A0_EL1] = 100.0
+    DEFAULT_K_QD_P[DOF.A0_EL1] = 2.0
+    DEFAULT_K_Q_P[DOF.A0_WR0] = 100.0
+    DEFAULT_K_QD_P[DOF.A0_WR0] = 2.0
+    DEFAULT_K_Q_P[DOF.A0_WR1] = 100.0
+    DEFAULT_K_QD_P[DOF.A0_WR1] = 2.0
+    DEFAULT_K_Q_P[DOF.A0_F1X] = 16.0
+    DEFAULT_K_QD_P[DOF.A0_F1X] = 0.32
+    
 # Initialize default gains
-set_default_position_control_gains()
+set_ReLIC_position_control_gains()

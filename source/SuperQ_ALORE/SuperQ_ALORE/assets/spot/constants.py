@@ -68,16 +68,36 @@ KNEE_STIFFNESS: float = 60.0
 KNEE_DAMPING: float = 1.5
 KNEE_FRICTION: float = 0.180
 
+# HX_STIFFNESS: float = 624.0
+# HX_DAMPING: float = 5.20
+# HIP_FRICTION: float = 0.008
+
+# HY_STIFFNESS: float = 936.0
+# HY_DAMPING: float = 5.20
+
+# KNEE_STIFFNESS: float = 286.0
+# KNEE_DAMPING: float = 2.04
+# KNEE_FRICTION: float = 0.180
 
 ARM_EFFORT_LIMIT: tuple[float, ...] = (90.9, 181.8, 90.9, 30.3, 30.3, 30.3, 15.32)
 
-# ARM_STIFFNESS: tuple[float, ...] = (120.0, 120.0, 120.0, 100.0, 100.0, 100.0, 16.0)
 
-# ARM_DAMPING: tuple[float, ...] = (2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.32)
+# NOTE: The default gains in ReLIC (Not compatible with the official default
+# parameters provided by BD 0.0)
+ARM_STIFFNESS: tuple[float, ...] = (120.0, 120.0, 120.0, 100.0, 100.0, 100.0, 16.0)
 
-ARM_STIFFNESS: tuple[float, ...] = (250.0, 250.0, 300.0, 300.0, 100.0, 100.0, 16.0)
+ARM_DAMPING: tuple[float, ...] = (2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.32)
 
-ARM_DAMPING: tuple[float, ...] = (5.0, 5.0, 6.0, 6.0, 2.0, 2.0, 0.32)
+# Previously used one: 
+# ARM_STIFFNESS: tuple[float, ...] = (250.0, 250.0, 300.0, 300.0, 100.0, 100.0, 16.0)
+
+# ARM_DAMPING: tuple[float, ...] = (5.0, 5.0, 6.0, 6.0, 2.0, 2.0, 0.32)
+
+# ARM_STIFFNESS: tuple[float, ...] = (1020.0, 255.0, 204.0, 102.0, 102.0, 102.0, 16.0)
+
+# ARM_DAMPING: tuple[float, ...] = (10.2, 15.3, 10.2, 2.04, 2.04, 2.04, 0.32)
+
+
 ARM_ARMATURE: tuple[float, ...] = (0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.001)
 
 """The lookup table for the knee joint parameters of the Boston Dynamics Spot robot.

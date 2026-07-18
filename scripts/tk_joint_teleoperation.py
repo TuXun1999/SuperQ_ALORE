@@ -51,11 +51,45 @@ import gymnasium as gym
 import isaaclab_tasks  # noqa: F401
 import SuperQ_ALORE.tasks  # noqa: F401
 import torch
+from isaaclab.utils.math import quat_apply, quat_mul
 from isaaclab_tasks.utils import parse_env_cfg
 
 from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, GRASP_POSE_1_JOINT_POS
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene import OBJECT_TELEOPERATION_INFO
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.object_management import ARM_JOINT_NAMES_IN_ORDER
+
+
+def quat_inverse_safe(q: torch.Tensor) -> torch.Tensor:
+    """Quaternion inverse that is stable for batched quaternions in wxyz format."""
+    norm_sq = torch.sum(q * q, dim=-1, keepdim=True)
+    conj = torch.cat([q[..., :1], -q[..., 1:]], dim=-1)
+    return conj / norm_sq
+
+
+def _ee_pose_in_chair_local_frame(
+    env,
+    robot_name: str = "robot",
+    end_effector_link_name: str = "arm_link_jaw",
+) -> torch.Tensor:
+    """Return end-effector pose in chair local frame as (x, y, z, qw, qx, qy, qz)."""
+    robot = env.scene[robot_name]
+    body_index = robot.body_names.index(end_effector_link_name)
+
+    ee_pos_w = robot.data.body_pos_w[:, body_index]
+    ee_quat_w = robot.data.body_quat_w[:, body_index]
+
+    chair = env.scene["target_object"]
+
+    chair_pos_w = chair.data.root_pos_w
+    chair_quat_w = chair.data.root_quat_w
+    chair_quat_inv = quat_inverse_safe(chair_quat_w)
+
+    ee_pos_relative = ee_pos_w - chair_pos_w
+    ee_pos_in_chair = quat_apply(chair_quat_inv, ee_pos_relative)
+    ee_quat_in_chair = quat_mul(chair_quat_inv, ee_quat_w)
+    return torch.cat([ee_pos_in_chair, ee_quat_in_chair], dim=-1)
+
+
 def _build_arm_joint_names() -> list[str]:
     """Return ordered Spot arm joint names used by the action head (7 joints)."""
     names = [name for name in ARM_JOINT_NAMES if name.startswith("arm")]
@@ -138,6 +172,18 @@ class _TkSliderGUI:
         self._vel_label = tk.Label(key_frame, text="vx=+0.00  vy=+0.00  wz=+0.00", anchor="w", font=("Courier", 10))
         self._vel_label.pack(fill="x")
 
+        # ── End-effector pose in chair frame ───────────────────────────────
+        ee_frame = tk.LabelFrame(self.root, text="EE Pose In Chair Local Frame", padx=8, pady=4)
+        ee_frame.pack(fill="x", padx=10, pady=4)
+        self._ee_pose_label = tk.Label(
+            ee_frame,
+            text="(x, y, z, qw, qx, qy, qz) = (+0.0000, +0.0000, +0.0000, +1.0000, +0.0000, +0.0000, +0.0000)",
+            anchor="w",
+            justify="left",
+            font=("Courier", 10),
+        )
+        self._ee_pose_label.pack(fill="x")
+
         # ── Buttons ──────────────────────────────────────────────────────────
         btn_frame = tk.Frame(self.root)
         btn_frame.pack(fill="x", padx=10, pady=(4, 8))
@@ -191,6 +237,15 @@ class _TkSliderGUI:
     def update_arm_measured_values(self, measured_values: list[float]) -> None:
         for label, value in zip(self._arm_value_labels, measured_values):
             label.config(text=f"{value:+.4f}")
+
+    def update_ee_pose_in_chair_local(self, ee_pose_values: list[float]) -> None:
+        self._ee_pose_label.config(
+            text=(
+                "(x, y, z, qw, qx, qy, qz) = "
+                f"({ee_pose_values[0]:+.4f}, {ee_pose_values[1]:+.4f}, {ee_pose_values[2]:+.4f}, "
+                f"{ee_pose_values[3]:+.4f}, {ee_pose_values[4]:+.4f}, {ee_pose_values[5]:+.4f}, {ee_pose_values[6]:+.4f})"
+            )
+        )
     
     def get_arm_displacements(self) -> list[float]:
         return [v.get() - init for v, init in zip(self._arm_vars, self._initial_arm_targets)]
@@ -280,12 +335,20 @@ def main():
                     print(f"  {i}: {name:>12s} = {value:+.4f} rad")
                 vel_vals = gui.get_base_vel()
                 print(f"[TELEOP] base vel: vx={vel_vals[0]:+.4f}  vy={vel_vals[1]:+.4f}  wz={vel_vals[2]:+.4f}")
+                ee_pose_local = _ee_pose_in_chair_local_frame(env.unwrapped)[0].detach().cpu().tolist()
+                print(
+                    "[TELEOP] ee pose in chair local (x, y, z, qw, qx, qy, qz): "
+                    f"({ee_pose_local[0]:+.4f}, {ee_pose_local[1]:+.4f}, {ee_pose_local[2]:+.4f}, "
+                    f"{ee_pose_local[3]:+.4f}, {ee_pose_local[4]:+.4f}, {ee_pose_local[5]:+.4f}, {ee_pose_local[6]:+.4f})"
+                )
 
             arm_vals = gui.get_arm_displacements()
             vel_vals = gui.get_base_vel()
 
             measured_arm = robot.data.joint_pos[0, arm_joint_ids].detach().cpu().tolist()
             gui.update_arm_measured_values(measured_arm)
+            ee_pose_local = _ee_pose_in_chair_local_frame(env.unwrapped)[0].detach().cpu().tolist()
+            gui.update_ee_pose_in_chair_local(ee_pose_local)
 
             actions = torch.zeros(env.action_space.shape, device=env.unwrapped.device)
             actions[:, :3] = torch.tensor(vel_vals, device=env.unwrapped.device, dtype=torch.float32)

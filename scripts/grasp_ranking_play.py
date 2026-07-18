@@ -22,7 +22,7 @@ import os
 import pathlib
 import time
 import tkinter as tk
-
+import numpy as np
 
 from isaaclab.app import AppLauncher
 
@@ -153,11 +153,10 @@ def _obj_init_pose_robot_frame(obj_init_pose_w: torch.Tensor, device = "cuda:0")
     return torch.cat([obj_pos_se2_in_robot_frame, obj_angle_yaw_in_robot_frame.unsqueeze(-1)], dim=-1).to(device)  # (num_envs, 3)
 
 
-def _select_grasp_orientation(return_agent, obj_goal_pose_local, device = "cuda:0") -> tuple[int, int]:
-    """Select the object index and pose index for grasping the chair."""
-    obj_idx = 0 # Only handle one object temporarily
-    best_pose_idx = 0 # TODO: Implement logic to select the best pose idx
-    best_return_est = -1000
+def _grasp_pose_ranking(return_agent, obj_goal_pose_local, device = "cuda:0"):
+    """Return the score of the grasp poses given the current obj_goal_pose_local"""
+    obj_idx = 0 # Only consider one object
+    return_est_list = []
     for pose_idx in range(len(OBJECT_CATALOG[obj_idx].poses)):
         pose = OBJECT_CATALOG[obj_idx].poses[pose_idx]
         obj_init_pose_w = torch.tensor(pose.position + pose.orientation, device=device)  # (7,)
@@ -170,9 +169,12 @@ def _select_grasp_orientation(return_agent, obj_goal_pose_local, device = "cuda:
         
         grasp_ranking_input = torch.cat([obj_init_pose_robot_frame, arm_joint_pos_init.unsqueeze(0), obj_goal_pose_local], dim=1) # (1, 13)
         return_est = return_agent(grasp_ranking_input)
-        if return_est > best_return_est:
-            best_return_est = return_est
-            best_pose_idx = pose_idx
+        return_est_list.append(return_est)
+    return torch.tensor(return_est_list, device=device)
+        
+def _select_grasp_orientation(return_est_lst) -> tuple[int, int]:
+    """Select the object index and pose index for grasping the chair."""
+    best_pose_idx = torch.argmax(return_est_lst)
     return 0, best_pose_idx
 class _TkChairGUI:
     """Tkinter window for absolute green-chair pose control."""
@@ -402,6 +404,148 @@ def _build_chair_markers(chair_asset_path: str) -> tuple[VisualizationMarkers, V
     return VisualizationMarkers(green_cfg)
 
 
+def _load_grasp_pose_mesh(mesh_name: str, color: tuple[float, float, float]) -> sim_utils.UsdFileCfg:
+    """Load a custom mesh for grasp-pose markers.
+
+    The actual mesh path/name is left as TODO and should be replaced with the required asset.
+    """
+    mesh_asset_path = f"source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/{mesh_name}.usdc"
+    # TODO: replace mesh_asset_path with the actual custom grasp mesh for `mesh_name`
+    return sim_utils.UsdFileCfg(
+        usd_path=mesh_asset_path,
+        rigid_props=None,
+        collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color, opacity=1.0),
+    )
+
+
+def _build_grasp_pose_markers() -> VisualizationMarkers:
+    """Create three custom mesh prototypes used to visualize the grasp poses."""
+    grasp_cfg = VisualizationMarkersCfg(
+        prim_path="/Visuals/Teleop/grasp_poses",
+        markers={
+            "left_armrest": _load_grasp_pose_mesh("gripper", (0.0, 1.0, 0.0)),
+            "right_armrest": _load_grasp_pose_mesh("gripper", (1.0, 1.0, 0.0)),
+            "back": _load_grasp_pose_mesh("gripper", (1.0, 0.0, 0.0)),
+        },
+    )
+    return VisualizationMarkers(grasp_cfg)
+
+def _grasp_marker_local():
+    """Return the location of the three markers in chair's local frame"""
+    """_summary_
+
+    Returns:
+        _type_: a list, each component in the format (x, y, rw, rx, ry, rz)
+    """
+    # TODO: Read the grasp poses from pre-grasping.yaml
+    # Compute local offsets of the three markers
+    pose_local_offset = []
+    
+    # Back
+    back_pose = [0.28, 0, 0.95, 0.696364, 0.122788, 0.122788, 0.696364]
+    pose_local_offset.append(back_pose)
+    
+    # Right armrest
+    right_armrest_pose = [0, 0.27, 0.73, 1, 0, 0, 0]
+    pose_local_offset.append(right_armrest_pose)
+    
+    # Left armrest
+    left_armrest_pose = [0, -0.27, 0.73, 1, 0, 0, 0]
+    pose_local_offset.append(left_armrest_pose)
+    
+    
+    
+    return pose_local_offset
+
+
+def _visualize_and_color_grasp_markers(grasp_markers, grasp_markers_local_offset, green_pos, green_quat, return_est_lst, device):
+    """Place the three grasp markers in world using local offsets and color them continuously.
+
+    Colors map return estimates to a red->yellow->green scale via linear interpolation.
+    """
+    # prepare translations and orientations
+    translations = []
+    orientations = []
+    for off in grasp_markers_local_offset:
+        # off: [x, y, z, qw, qx, qy, qz]
+        local_pos = torch.tensor([off[0], off[1], off[2]], dtype=torch.float32, device=device).view(1, 3)
+        local_quat = torch.tensor([off[3], off[4], off[5], off[6]], dtype=torch.float32, device=device).view(1, 4)
+        world_pos = green_pos + quat_apply(green_quat, local_pos)
+        world_quat = quat_mul(green_quat.view(1, 4), local_quat)
+        translations.append(world_pos.view(3))
+        orientations.append(world_quat.view(4))
+
+    trans = torch.stack(translations, dim=0)
+    orients = torch.stack(orientations, dim=0)
+    # marker prototype indices fixed to 0..N-1
+    marker_indices = list(range(len(translations)))
+    grasp_markers.visualize(translations=trans, orientations=orients, marker_indices=marker_indices)
+
+    # map return estimates to colors
+    # convert to floats and handle NaNs
+    ret_vals = []
+    for v in return_est_lst:
+        try:
+            val = float(v)
+        except Exception:
+            val = float('nan')
+        ret_vals.append(val)
+
+    # normalization
+    valid_vals = [v for v in ret_vals if not math.isnan(v)]
+    if len(valid_vals) == 0:
+        norm = [0.5] * len(ret_vals)
+    else:
+        vmin = min(valid_vals)
+        vmax = max(valid_vals)
+        if vmax - vmin < 1e-8:
+            norm = [0.5 if not math.isnan(v) else 0.5 for v in ret_vals]
+        else:
+            norm = [0.0 if math.isnan(v) else (v - vmin) / (vmax - vmin) for v in ret_vals]
+
+    # color mapping: t=0 -> red (1,0,0); t=0.5 -> yellow (1,1,0); t=1 -> green (0,1,0)
+    colors = []
+    for t in norm:
+        # interpolate red->yellow (t in [0,0.5]) and yellow->green (t in (0.5,1])
+        if t <= 0.5:
+            # between red and yellow: R=1, G=2*t, B=0
+            r = 1.0
+            g = 2.0 * t
+            b = 0.0
+        else:
+            # between yellow and green: R=2*(1-t), G=1, B=0
+            r = 2.0 * (1.0 - t)
+            g = 1.0
+            b = 0.0
+        colors.append((r, g, b))
+
+    # Update prototype material diffuse color for each marker prototype.
+    # For UsdFileCfg spawner, visual material is bound at: <prim_path>/<name>/material/Shader
+    try:
+        from pxr import Gf, Sdf
+        import omni.kit.commands
+        # marker names in the cfg order
+        marker_names = list(grasp_markers.cfg.markers.keys())
+        base = grasp_markers.prim_path
+        num_markers = len(marker_names)
+        if len(colors) < num_markers:
+            colors = colors + [(0.5, 0.5, 0.5)] * (num_markers - len(colors))
+        for name, col in zip(marker_names, colors[:num_markers]):
+            material_shader_path = f"{base}/{name}/material/Shader"
+            # property path: <prim>.inputs:diffuseColor
+            prop_path = Sdf.Path(f"{material_shader_path}.inputs:diffuseColor")
+            omni.kit.commands.execute(
+                "ChangePropertyCommand",
+                prop_path=prop_path,
+                value=Gf.Vec3f(float(col[0]), float(col[1]), float(col[2])),
+                prev=None,
+                type_to_create_if_not_exist=Sdf.ValueTypeNames.Color3f,
+            )
+    except Exception:
+        # silently ignore material update failures to avoid breaking runtime
+        pass
+
 def _set_target_object_pose(
     target_object,
     env_ids: torch.Tensor,
@@ -503,7 +647,9 @@ def main():
     chair_asset_path = OBJECT_CATALOG[obj_idx].asset_path
 
     green_marker = _build_chair_markers(chair_asset_path)
-
+    grasp_markers = _build_grasp_pose_markers()
+    grasp_markers_local_offset = _grasp_marker_local()
+    
     device = env.unwrapped.device
     target_object = env.unwrapped.scene["target_object_0"]
     base_root_state = target_object.data.default_root_state[0].clone().to(device)
@@ -556,25 +702,18 @@ def main():
             # The pose of the green chair is the target object pose in world frame
             obj_goal_pos_w = green_pos.clone()
             obj_goal_quat_w = green_quat.clone()
+            # Find the goal of object pose in local frame
+            obj_goal_pose_local = _goal_pose_local_frame(target_object, obj_goal_pos_w, obj_goal_quat_w)
             
-            
-            # _set_target_object_pose(
-            #     target_object=target_object,
-            #     env_ids=env_ids,
-            #     x_val=x_val,
-            #     y_val=y_val,
-            #     z_val=float(normal_pos[0, 2].item()),
-            #     yaw_val=yaw_val,
-            #     device=device,
-            # )
+            # Rank the grasp poses on the object
+            return_est_lst = _grasp_pose_ranking(return_agent, obj_goal_pose_local)
 
             if gui.consume_print():
                 print(f"[GRASP-RANKING] green chair pose: x={x_val:+.4f}, y={y_val:+.4f}, yaw={yaw_val:+.4f}")
 
             if (not simulation_started) and gui.consume_start():
-                # TODO: Select the correct orientation for the robot to grasp the chair
-                obj_goal_pose_local = _goal_pose_local_frame(target_object, obj_goal_pos_w, obj_goal_quat_w)
-                object_idx, pose_idx = _select_grasp_orientation(return_agent, obj_goal_pose_local)
+                # Select the object/pose index
+                object_idx, pose_idx = _select_grasp_orientation(return_est_lst)
                 obs, _ = vec_env.unwrapped.reset(
                     env_ids = env_ids,
                 )
@@ -590,8 +729,11 @@ def main():
                 print("[GRASP-RANKING] simulation started with loaded policy agent")
 
             green_marker.visualize(green_pos, green_quat)
-
-            
+            if not simulation_started:
+                # Visualize the three grasp markers and colour them continuously by return estimates
+                _visualize_and_color_grasp_markers(
+                    grasp_markers, grasp_markers_local_offset, green_pos, green_quat, return_est_lst, device
+                )
             
             if simulation_started:
                 start_time = time.time()

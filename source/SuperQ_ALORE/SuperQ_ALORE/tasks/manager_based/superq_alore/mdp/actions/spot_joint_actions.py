@@ -325,6 +325,16 @@ class MixedPDArmMultiLegJointPositionActionTele(JointAction):
             policy_env_obs = self._env.observation_manager.compute_group(
                 self.cfg.locomotion_obs_group, update_history=False
             )
+            # arm_indices = [0, 5, 10, 15, 16, 17]
+            # leg_indices = [1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14]
+            # critic_env_obs = self._env.observation_manager.compute_group(
+            #     "critic", update_history=False
+            # )
+            # print("=== Test critic obs ===")
+            # joints_info = critic_env_obs[0, 0:72]
+            # joint_angles_rel = joints_info[0:18]
+            # joint_angles_abs = joints_info[54:72]
+            # print("Leg joints (abs, ?): ", joint_angles_abs[leg_indices])
 
             policy_env_obs = torch.cat(
                 [
@@ -337,10 +347,12 @@ class MixedPDArmMultiLegJointPositionActionTele(JointAction):
             )
 
             leg_actions = self._locomotion_policy(policy_env_obs)
-
+            # print("=== Test leg actions ===")
+            
         self._raw_actions[:] = leg_actions
         self._processed_actions = self._raw_actions * self._scale + self._offset
-        
+        # print("Executed actions")
+        # print(self._processed_actions)
         
     def apply_actions(self):
         """Apply the actions."""

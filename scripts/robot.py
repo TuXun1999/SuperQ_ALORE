@@ -1082,18 +1082,18 @@ class SPOT:
         self.real2sim_mapping_struct = {
             DOF.A0_SH0: 0,
             DOF.FL_HX: 1,
-            DOF.FL_HY: 2,
-            DOF.FL_KN: 3,
-            DOF.FR_HX: 4,
+            DOF.FR_HX: 2,
+            DOF.HL_HX: 3,
+            DOF.HR_HX: 4,
             DOF.A0_SH1: 5,
-            DOF.FR_HY: 6,
-            DOF.FR_KN: 7,
-            DOF.HL_HX: 8,
-            DOF.HL_HY: 9,
+            DOF.FL_HY: 6,
+            DOF.FR_HY: 7,
+            DOF.HL_HY: 8,
+            DOF.HR_HY: 9,
             DOF.A0_EL0: 10,
-            DOF.HL_KN: 11,
-            DOF.HR_HX: 12,
-            DOF.HR_HY: 13,
+            DOF.FL_KN: 11,
+            DOF.FR_KN: 12,
+            DOF.HL_KN: 13,
             DOF.HR_KN: 14,
             DOF.A0_EL1: 15,
             DOF.A0_WR0: 16,
@@ -1185,7 +1185,7 @@ class SPOT:
         
         return torch.cat([curr_body_lin_vel, curr_body_ang_vel, projected_gravity, joint_pos_rel, joint_vel_rel], dim=0)
 
-    def execute_actions(self, leg_actions, arm_actions):
+    def execute_actions(self, leg_actions, arm_actions, scale = 0.2):
         """Execute the leg actions on the robot"""
         leg_actions = leg_actions.squeeze()
         arm_actions = arm_actions.squeeze()
@@ -1195,9 +1195,10 @@ class SPOT:
         # Map the order of each joint in leg_actions to the ones in real command
         current_cmd_poses = torch.tensor(cmd_poses, dtype=torch.float32).clone()
         target_cmd_poses = current_cmd_poses.clone()
-        for idx, value in enumerate([DOF.FL_HX, DOF.FL_HY, DOF.FL_KN, DOF.FR_HX, DOF.FR_HY, DOF.FR_KN,
-                                     DOF.HL_HX, DOF.HL_HY, DOF.HL_KN, DOF.HR_HX, DOF.HR_HY, DOF.HR_KN]):
-            target_cmd_poses[value] = leg_actions[idx]
+        offset = self.build_joint_pos_default(target_cmd_poses.clone()) # Use the default joints as offset
+        for idx, value in enumerate([DOF.FL_HX, DOF.FR_HX, DOF.HL_HX, DOF.HR_HX, DOF.FL_HY, DOF.FR_HY,
+                                     DOF.HL_HY, DOF.HR_HY, DOF.FL_KN, DOF.FR_KN, DOF.HL_KN, DOF.HR_KN]):
+            target_cmd_poses[value] = leg_actions[idx] * scale + offset[value]
         for idx, value in enumerate([DOF.A0_SH0, DOF.A0_SH1, DOF.A0_EL0, DOF.A0_EL1, DOF.A0_WR0, DOF.A0_WR1, DOF.A0_F1X]):
             target_cmd_poses[value] = target_cmd_poses[value] + arm_actions[idx]
 
@@ -1206,9 +1207,9 @@ class SPOT:
         print(target_cmd_poses)
         
         # Send the joint commands to the robot
-        # self.command_streaming_client.send_joint_control_commands(
-                # self.joint_api_interface.generate_joint_pos_interp_commands(
-                #     [start_cmd_poses, target_cmd_poses], curr_load, 0.02, DEFAULT_K_Q_P, DEFAULT_K_QD_P))
+        self.command_streaming_client.send_joint_control_commands(
+                self.joint_api_interface.generate_joint_pos_interp_commands(
+                    [start_cmd_poses, target_cmd_poses], curr_load, 0.02, DEFAULT_K_Q_P, DEFAULT_K_QD_P))
 
 ## Environment to deploy pretrained policy on SPOT
 

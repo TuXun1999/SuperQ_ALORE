@@ -185,6 +185,35 @@ class ObservationsCfg:
             self.enable_corruption = False
             self.concatenate_terms = True
 
+    @configclass
+    class CriticCfg(ObsGroup):
+        """Observations for critic."""
+        # Joint velocities & positions
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 1.0
+        ) # dim: 18
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale = 0.05
+        ) # dim: 18
+        
+        # Default joint positions
+        default_joint_pos = ObsTerm(
+            func=mdp.default_joint_pos, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale=1.0
+        ) # dim: 18
+        # Robot joint positions (absolute, not relative to default pose)
+        joint_pos_abs = ObsTerm(
+            func = mdp.joint_pos, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale=1.0
+        ) # dim: 18
+        
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+            
+    critic: CriticCfg = CriticCfg()
     locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
 
 
