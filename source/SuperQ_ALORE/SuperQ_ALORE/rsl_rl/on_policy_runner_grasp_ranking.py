@@ -158,14 +158,6 @@ class OnPolicyRunnerGraspRanking():
             # Update policy
             loss_dict = self.alg.update()
 
-            # Periodically reset env and distill critic-estimated initial-state returns
-            obs_after_distill = self.return_agent_helper.train_from_critic(
-                it=it,
-                env=self.env,
-                policy=self.alg.policy,
-            )
-            if obs_after_distill is not None:
-                obs = obs_after_distill
 
             stop = time.time()
             learn_time = stop - start
@@ -198,26 +190,36 @@ class OnPolicyRunnerGraspRanking():
             disable_logs=self.disable_logs,
             log_dir=self.log_dir,
         )
-
+        print("PPO Critic Distillation...")
         # PPO Training iterations
         self._learn_iterations(
             num_learning_iterations=num_learning_iterations,
             init_at_random_ep_len=init_at_random_ep_len,
         )
 
-        # NOTE: Ablation study: whether to collect returns from experiments
+        # After regular PPO training, distill the knowledge to a return estimation agent
+        obs_after_distill = self.return_agent_helper.train_from_critic(
+            it=-1, # Make sure this is treated as the final iteration
+            env=self.env,
+            policy=self.alg.policy,
+        )
         
-        # self.return_agent_helper.bind_gamma(self.alg.gamma)
-        # # Final PPO policy rollout on fresh reset states, then finetune the return agent on empirical returns.
-        # policy_obs, experiment_returns = self.return_agent_helper.collect_final_experiment_returns(
-        #     env=self.env,
-        #     policy=self.alg.policy,
-        # )
-        # self.return_agent_helper.finetune_from_experiment_returns(
-        #     policy_obs=policy_obs,
-        #     returns=experiment_returns,
-        #     it=self.current_learning_iteration,
-        # )
+        # NOTE: Ablation study: whether to collect returns from experiments
+        print("Finetuning based on real experiment returns")
+        try:
+            self.return_agent_helper.bind_gamma(self.alg.gamma)
+            # Final PPO policy rollout on fresh reset states, then finetune the return agent on empirical returns.
+            policy_obs, experiment_returns = self.return_agent_helper.collect_final_experiment_returns(
+                env=self.env,
+                policy=self.alg.policy,
+            )
+            self.return_agent_helper.finetune_from_experiment_returns(
+                policy_obs=policy_obs,
+                returns=experiment_returns,
+                it=-1,
+            )
+        except Exception as e:
+            print(f"Error during finetuning from experiment returns: {e}")
 
         # Save the final model after training
         if self.log_dir is not None and not self.disable_logs:

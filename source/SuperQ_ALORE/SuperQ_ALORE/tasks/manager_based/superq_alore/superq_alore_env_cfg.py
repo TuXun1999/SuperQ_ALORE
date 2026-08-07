@@ -123,8 +123,8 @@ class CommandsCfg:
         curriculum_initial_yaw_range=(0, 0), # start with no yaw displacement
         curriculum_yaw_step=math.pi / 18.0, # increase yaw range by 10 degrees on each side per curriculum level
         curriculum_max_yaw=math.pi / 2.0, # maximum yaw range is 90 degrees
-        debug_vis=True,
-        debug_vis_keypoints=True,
+        debug_vis=False,
+        debug_vis_keypoints=False,
         debug_vis_keypoint_radius=0.04,
         # if enable_yaw_curriculum is set, then the yaw of the goal pose is not actually used. 
         # Instead, the curriculum will control the yaw range for sampling the goal pose, and 
@@ -142,8 +142,8 @@ class CommandsPLAYCfg:
     """Command specifications for the MDP."""
     goal_pose = mdp.GoalPoseCommandPLAYCfg(
         resampling_time_range=(1e6, 1e6), # No need to change the command
-        debug_vis=True,
-        debug_vis_keypoints=True,
+        debug_vis=False,
+        debug_vis_keypoints=False,
         debug_vis_keypoint_radius=0.04,
         ranges=mdp.GoalPoseCommandCfg.Ranges(
             pos_x=(-1.0, 1.0),
@@ -581,28 +581,32 @@ class EventCfg:
     
 
     # reset
-    reset_base = EventTerm(
-        func=isaac_mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {
-                "x": (0.0, 0.0),
-                "y": (-0.0, 0.0),
-                "z": (-0.0, -0.0),
-                "roll": (-0.0, 0.0),
-                "pitch": (-0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
-            "velocity_range": {
-                "x": (-0.0, 0.0),
-                "y": (-0.0, 0.0),
-                "z": (-0.0, 0.0),
-                "roll": (-0.0, 0.0),
-                "pitch": (-0.0, 0.0),
-                "yaw": (-0.0, 0.0),
-            },
-        },
-    )
+    
+    # NOTE: Originally used to reset the robot base. Now, it's handled 
+    # together with the object reset in the `reset_object_and_robot` event.
+    
+    # reset_base = EventTerm(
+    #     func=isaac_mdp.reset_root_state_uniform,
+    #     mode="reset",
+    #     params={
+    #         "pose_range": {
+    #             "x": (0.0, 0.0),
+    #             "y": (-0.0, 0.0),
+    #             "z": (-0.0, -0.0),
+    #             "roll": (-0.0, 0.0),
+    #             "pitch": (-0.0, 0.0),
+    #             "yaw": (0.0, 0.0),
+    #         },
+    #         "velocity_range": {
+    #             "x": (-0.0, 0.0),
+    #             "y": (-0.0, 0.0),
+    #             "z": (-0.0, 0.0),
+    #             "roll": (-0.0, 0.0),
+    #             "pitch": (-0.0, 0.0),
+    #             "yaw": (-0.0, 0.0),
+    #         },
+    #     },
+    # )
 
     # use an atomic function to reset the object and robot together, 
     # so that we can ensure the consistency between the object pose 
@@ -626,6 +630,7 @@ class EventCfg:
     )
     
     # Resample the mass & friction & com of the object
+    # NOTE: Dependent of the object type
     reset_object_physical_properties = EventTerm(
         func=mdp.reset_object_physical_properties,
         mode="reset",

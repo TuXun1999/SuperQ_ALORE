@@ -10,7 +10,6 @@ import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import sample_uniform
-from isaaclab.utils.math import quat_apply, quat_mul
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
@@ -81,7 +80,10 @@ def resample_goal_region_on_reset(
         goal_term._resample_command(env_ids)
         return
 
-    raise RuntimeError(f"Unable to resample goal term from candidates: {term_candidates}")
+    raise RuntimeError(
+        f"Unable to resample goal term '{goal_term_name}': expected term to expose "
+        "`resample_on_reset` or `_resample_command`."
+    )
 
 
 # (DEPRECATED) Will cause observations to fail
@@ -153,11 +155,12 @@ def reset_object_and_robot_from_catalog_pose(
     # List out the active indices for each object
     # N
     obj_idx_reset = env.active_object_indices[env_ids_cpu]
-    pose_idx_reset = env.active_pose_indices[env_ids_cpu]
+
     # Find the env origins
     origins = env.scene.env_origins[env_ids]
 
-    # For each object in the selected envs, find the local indices & reset the states
+    # For each object in the selected envs, find the local indices & reset object states.
+    # Catalog pose now encodes robot pose, so object reset no longer uses pose.position/orientation.
     for obj_id in range(len(OBJECT_CATALOG)):
         # The rows corresponding to the current object in the selected batch of envs
         selected_rows = torch.where(obj_idx_reset == obj_id)[0]
@@ -172,13 +175,9 @@ def reset_object_and_robot_from_catalog_pose(
         # Reset the object states in the current batch of sub-envs
         target_object_state = target_object.data.default_root_state[active_env_ids_for_obj].clone()
 
-        for j, row in enumerate(selected_rows.tolist()):
-            pose_entry: object_management.PoseEntry = OBJECT_CATALOG[obj_id].poses[int(pose_idx_reset[row])]
-            offset = pose_entry.position[0:2]
-            target_object_state[j, 0] = origins[row, 0] + offset[0]
-            target_object_state[j, 1] = origins[row, 1] + offset[1]
-            quat = pose_entry.orientation  # w, x, y, z
-            target_object_state[j, 3:7] = torch.tensor(quat, device=target_object_state.device)
+        # Keep active object at env origin with default orientation.
+        target_object_state[:, 0] = origins[selected_rows, 0]
+        target_object_state[:, 1] = origins[selected_rows, 1]
 
         target_object.write_root_state_to_sim(target_object_state, env_ids=active_env_ids_for_obj)
 
@@ -195,6 +194,15 @@ def reset_object_and_robot_from_catalog_pose(
             inactive_state[:, 7:13] = 0.0
             target_object.write_root_state_to_sim(inactive_state, env_ids=inactive_env_ids_for_obj)
     
+
+    # Reset robot base pose from catalog (catalog pose is robot world pose in env-local coordinates).
+    robot = env.scene["robot"]
+    robot_state = robot.data.default_root_state[env_ids].clone()
+    robot_pose_local = env.active_robot_pose[env_ids]
+    robot_state[:, 0:3] = origins + robot_pose_local[:, 0:3]
+    robot_state[:, 3:7] = robot_pose_local[:, 3:7]
+    robot_state[:, 7:13] = 0.0
+    robot.write_root_state_to_sim(robot_state, env_ids=env_ids)
 
     # reset robot joints using the sampled pose-specific joint references
     arm_joint_ref = object_management.get_active_arm_joint_reference(env, env_ids)
@@ -493,67 +501,95 @@ def reset_object_physical_properties_grasp_ranking(
         target_object.root_physx_view.set_material_properties(material_properties, torch.arange(material_properties.shape[0]))
         target_object.root_physx_view.set_coms(com_values, torch.arange(com_values.shape[0]))
         
-def quat_inverse_safe(q: torch.Tensor) -> torch.Tensor:
-    norm_sq = torch.sum(q * q, dim=-1, keepdim=True)  # (..., 1)
-    conj = torch.cat([q[..., :1], -q[..., 1:]], dim=-1)
-    return conj / norm_sq
-
 def reset_object_robot_pose_grasp_ranking(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor,
     object_idx: int = 0,
-    pose_idx: int = 0,
+    pose_idx: int | list[int] | torch.Tensor = 0,
 ) -> None:
     """
     Reset the object pose & the robot pose for grasp pose ranking purpose
     """
-    # Preset the object & pose indices
-    object_management.ensure_catalog_state_grasp_ranking(env, object_idx=object_idx, pose_idx=pose_idx)
-    # The object is fixed at the origin
-    target_object = env.scene["target_object_0"]
-    target_object.write_root_state_to_sim(
-        torch.tensor([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], 
-        device=target_object.data.default_root_state.device).repeat(len(env_ids), 1),
-        env_ids=env_ids
-    )
-    # Hard-coded initial robot pose in world frame during training
-    robot_init_pos = (-1.0, 0.0, 0.515)
-    robot_init_quat = (1.0, 0.0, 0.0, 0.0)
-    
-    num_envs = len(env_ids)
-    robot_base_pos_init = torch.tensor(robot_init_pos, device=env.device).unsqueeze(0).repeat(num_envs, 1)
-    robot_base_quat_init = torch.tensor(robot_init_quat, device=env.device).unsqueeze(0).repeat(num_envs, 1)
-    # Initialized object initial pose in world frame at training
-    obj_init_pose = OBJECT_CATALOG[object_idx].poses[pose_idx]
-    obj_pos_w_init = torch.tensor(obj_init_pose.position, device=env.device).unsqueeze(0).repeat(num_envs, 1)
-    obj_quat_w_init = torch.tensor(obj_init_pose.orientation, device=env.device).unsqueeze(0).repeat(num_envs, 1)
-    
-    obj_quat_inv = quat_inverse_safe(obj_quat_w_init)
+    # Preset the object index and initialize catalog state buffers.
+    object_management.ensure_catalog_state_grasp_ranking(env, object_idx=object_idx, pose_idx=0)
 
+    num_reset_envs = len(env_ids)
+
+    # Support scalar, list, and tensor pose indices.
+    if isinstance(pose_idx, torch.Tensor):
+        pose_idx_tensor = pose_idx.to(device=env.device, dtype=torch.long).flatten()
+        if pose_idx_tensor.numel() == 1:
+            pose_idx_tensor = torch.full((num_reset_envs,), int(pose_idx_tensor.item()), device=env.device, dtype=torch.long)
+    elif isinstance(pose_idx, list):
+        pose_idx_tensor = torch.tensor(pose_idx, device=env.device, dtype=torch.long).flatten()
+    else:
+        pose_idx_tensor = torch.full((num_reset_envs,), int(pose_idx), device=env.device, dtype=torch.long)
+
+    if pose_idx_tensor.numel() != num_reset_envs:
+        raise ValueError(
+            f"Expected pose_idx to have {num_reset_envs} elements for the provided env_ids, got {pose_idx_tensor.numel()}."
+        )
+
+    num_poses_for_object = len(OBJECT_CATALOG[object_idx].poses)
+    if torch.any(pose_idx_tensor < 0) or torch.any(pose_idx_tensor >= num_poses_for_object):
+        invalid_values = pose_idx_tensor[(pose_idx_tensor < 0) | (pose_idx_tensor >= num_poses_for_object)]
+        raise ValueError(
+            f"pose_idx contains invalid values {invalid_values.tolist()} for object_idx={object_idx} with "
+            f"valid range [0, {num_poses_for_object - 1}]."
+        )
+
+    # Update active catalog assignment for the selected envs.
+    env.active_object_indices[env_ids] = int(object_idx)
+    env.active_pose_indices[env_ids] = pose_idx_tensor
+
+    robot_pose_local = torch.zeros((num_reset_envs, 7), dtype=torch.float32, device=env.device)
+    arm_joint_ref_batch = torch.zeros(
+        (num_reset_envs, len(object_management.ARM_JOINT_NAMES_IN_ORDER)), dtype=torch.float32, device=env.device
+    )
+    for local_i, pose_i in enumerate(pose_idx_tensor.tolist()):
+        pose_entry = OBJECT_CATALOG[object_idx].poses[pose_i]
+        robot_pose_local[local_i] = torch.tensor(
+            pose_entry.position + pose_entry.orientation, dtype=torch.float32, device=env.device
+        )
+        arm_joint_ref_batch[local_i] = torch.tensor(
+            [pose_entry.joint_positions[joint_name] for joint_name in object_management.ARM_JOINT_NAMES_IN_ORDER],
+            dtype=torch.float32,
+            device=env.device,
+        )
+
+    env.active_robot_pose[env_ids] = robot_pose_local
+    env.active_arm_joint_reference[env_ids] = arm_joint_ref_batch
+
+    # The object is fixed at each environment origin.
+    target_object = env.scene["target_object_0"]
+    origins = env.scene.env_origins[env_ids]
+    object_state = torch.zeros((len(env_ids), 13), device=target_object.data.default_root_state.device)
+    object_state[:, 0:3] = origins
+    object_state[:, 3] = 1.0
     
-    # Compute the robot pose in object frame (same as world frame)
-    robot_pos_relative = robot_base_pos_init - obj_pos_w_init
-    robot_pos_in_obj_frame = quat_apply(obj_quat_inv, robot_pos_relative)
-    robot_quat_in_obj_frame = quat_mul(obj_quat_inv, robot_base_quat_init)
-    
-    # Set the robot pose in world frame (same as object frame)
+    target_object.write_root_state_to_sim(object_state, env_ids=env_ids)
+    # Set robot world pose directly from catalog robot pose (env-local -> world by env origins).
+    robot_pose_local = env.active_robot_pose[env_ids]
     robot = env.scene["robot"]
+    robot_state = robot.data.default_root_state[env_ids].clone()
+    robot_state[:, 0:3] = origins + robot_pose_local[:, 0:3]
+    robot_state[:, 3:7] = robot_pose_local[:, 3:7]
+    robot_state[:, 7:13] = 0.0
     robot.write_root_state_to_sim(
-        torch.cat([robot_pos_in_obj_frame, robot_quat_in_obj_frame, torch.zeros(num_envs, 6, device=env.device)], dim=-1),
-        env_ids=env_ids
+        robot_state,
+        env_ids=env_ids,
     )
     
-    # Set the robot arm joints
-    arm_joint_ref = obj_init_pose.joint_positions
-    reset_joints_around_grasp_pose(
-        env,
-        env_ids,
-        position_range = (-0.0, 0.0),
-        velocity_range = (-0.0, 0.0),
-        joint_position_ref = {
-                # dictionary comprehension: {key_expression: value_expression for item in iterable}
-                joint_name: arm_joint_ref[joint_name]
-                for joint_name in object_management.ARM_JOINT_NAMES_IN_ORDER
+    # Set robot arm joints from the pose assigned to each env.
+    for local_i, env_id in enumerate(env_ids.tolist()):
+        reset_joints_around_grasp_pose(
+            env,
+            torch.tensor([env_id], dtype=torch.long, device=env.device),
+            position_range=(-0.0, 0.0),
+            velocity_range=(-0.0, 0.0),
+            joint_position_ref={
+                joint_name: float(arm_joint_ref_batch[local_i, joint_i].item())
+                for joint_i, joint_name in enumerate(object_management.ARM_JOINT_NAMES_IN_ORDER)
             },
-        asset_cfg = SceneEntityCfg("robot"),
-    )
+            asset_cfg=SceneEntityCfg("robot"),
+        )

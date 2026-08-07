@@ -169,8 +169,8 @@ class GoalPoseCommand(CommandTerm):
         self.goal_w[env_ids, 1] = origins[:, 1] + samples[:, 1]
         self.goal_w[env_ids, 2] = origins[:, 2] + samples[:, 2]
 
-        # Obtain the initial orientations for all objects
-        _, pose_rot = object_management.get_active_pose_position_orientation_tensors(self._env, env_ids)
+        # Use current active object world orientation as base.
+        pose_rot = object_management.get_active_object_state_attr(self._env, "root_quat_w")[env_ids]
         
         # Add the LOCAL yaw offset to the base yaw of the object
         zeros = torch.zeros(env_ids.numel(), device=self.device, dtype=self.goal_w.dtype)
@@ -367,41 +367,43 @@ class GoalPoseCommandPLAY(GoalPoseCommand):
     """Play-time goal command with deterministic env-id-based sampling.
 
     This keeps the full GoalPoseCommand behavior (metrics/visualization/curriculum)
-    but replaces random sampling in _resample_command with analytic values derived
-    from env_ids for reproducible evaluation trajectories.
+    but replaces random sampling in _resample_command with a fixed random dataset
+    generated once during initialization for reproducible evaluation trajectories.
     """
     cfg: GoalPoseCommandPLAYCfg
+
+    def __init__(self, cfg: GoalPoseCommandPLAYCfg, env: ManagerBasedEnv):
+        self._fixed_goal_samples = torch.rand((env.num_envs, 4), device=env.device)
+        super().__init__(cfg, env)
     
     def _resample_command(self, env_ids: Sequence[int]):
+        """Resample a new goal pose for the specified environment indices, and update the internal tensors for the goal pose in world frame accordingly."""
         env_ids = torch.as_tensor(env_ids, device=self.device, dtype=torch.long)
 
+        # null check
         if env_ids.numel() == 0:
             return
-
+        
+        # reads per-environment world origins offsets
         origins = self._env.scene.env_origins[env_ids]
 
-        # Deterministic pseudo-uniform fractions from env_ids.
-        env_ids_f = env_ids.to(dtype=self.goal_w.dtype)
-        frac_x = torch.frac(env_ids_f * 0.7548776662466927)
-        frac_y = torch.frac(env_ids_f * 0.5698402909980532)
-        frac_z = torch.frac(env_ids_f * 0.4385780260809998)
-        frac_yaw = torch.frac(env_ids_f * 0.3183098861837907)
+        # Reuse the fixed per-env random dataset generated at initialization.
+        samples = self._fixed_goal_samples[env_ids]
+        pos_x = self.cfg.ranges.pos_x[0] + samples[:, 0] * (self.cfg.ranges.pos_x[1] - self.cfg.ranges.pos_x[0])
+        pos_y = self.cfg.ranges.pos_y[0] + samples[:, 1] * (self.cfg.ranges.pos_y[1] - self.cfg.ranges.pos_y[0])
+        pos_z = self.cfg.ranges.pos_z[0] + samples[:, 2] * (self.cfg.ranges.pos_z[1] - self.cfg.ranges.pos_z[0])
+        yaw = self._active_yaw_range[0] + samples[:, 3] * (self._active_yaw_range[1] - self._active_yaw_range[0])
 
-        x_min, x_max = self.cfg.ranges.pos_x
-        y_min, y_max = self.cfg.ranges.pos_y
-        z_min, z_max = self.cfg.ranges.pos_z
-        yaw_min, yaw_max = self._active_yaw_range
+        # Add the GLOBAL offsets to the position
+        self.goal_w[env_ids, 0] = origins[:, 0] + pos_x
+        self.goal_w[env_ids, 1] = origins[:, 1] + pos_y
+        self.goal_w[env_ids, 2] = origins[:, 2] + pos_z
 
-        sample_x = x_min + frac_x * (x_max - x_min)
-        sample_y = y_min + frac_y * (y_max - y_min)
-        sample_z = z_min + frac_z * (z_max - z_min)
-        sample_yaw = yaw_min + frac_yaw * (yaw_max - yaw_min)
-
-        self.goal_w[env_ids, 0] = origins[:, 0] + sample_x
-        self.goal_w[env_ids, 1] = origins[:, 1] + sample_y
-        self.goal_w[env_ids, 2] = origins[:, 2] + sample_z
-
-        _, pose_rot = object_management.get_active_pose_position_orientation_tensors(self._env, env_ids)
+        # Use current active object world orientation as base.
+        pose_rot = object_management.get_active_object_state_attr(self._env, "root_quat_w")[env_ids]
+        
+        # Add the LOCAL yaw offset to the base yaw of the object
         zeros = torch.zeros(env_ids.numel(), device=self.device, dtype=self.goal_w.dtype)
-        sample_yaw_rot = math_utils.quat_from_euler_xyz(zeros, zeros, sample_yaw)
+
+        sample_yaw_rot = math_utils.quat_from_euler_xyz(zeros, zeros, yaw)
         self.goal_quat_w[env_ids] = math_utils.quat_mul(sample_yaw_rot, pose_rot)

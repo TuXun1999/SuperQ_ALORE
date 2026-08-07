@@ -70,7 +70,7 @@ class GraspRankingSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = MISSING
     
     # object
-    target_object_0: RigidObjectCfg = OBJECT_TELEOPERATION_INFO[0]
+    target_object_0: RigidObjectCfg = MISSING
     # contact sensors
     # TODO: are they really... helpful?
     contact_forces = ContactSensorCfg(
@@ -103,7 +103,22 @@ class GraspRankingSceneCfg(InteractiveSceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
 
-
+@configclass
+class CommandsEvalCfg:
+    """Command specifications for the evaluation environment."""
+    goal_pose = mdp.GoalPoseCommandPLAYCfg(
+        resampling_time_range=(1e6, 1e6), # No need to change the command
+        debug_vis=True,
+        debug_vis_keypoints=True,
+        debug_vis_keypoint_radius=0.04,
+        enable_yaw_curriculum=False,
+        ranges=mdp.GoalPoseCommandCfg.Ranges(
+            pos_x=(-1.0, 1.0),
+            pos_y=(-1.0, 1.0),
+            pos_z=(0.0, 0.0),
+            yaw=(-math.pi/2, math.pi/2),
+        ),
+    )
 @configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
@@ -254,6 +269,119 @@ class ObservationsCfg:
     locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
     critic: CriticCfg = CriticCfg()
 
+
+@configclass
+class ObservationsEvalCfg:
+    """Observation specifications for the evaluation MDP."""
+
+    @configclass
+    class PolicyCfg(ObsGroup):
+        """Observations for the Actor / Policy agent of the high-level controller."""
+        # Joint velocities & positions
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale=1.0
+        )  # dim: 18 (12 legs + 7 arm joints - 1 redundant joint)
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale=0.05
+        )  # dim: 18
+
+        # Body orientation data
+        body_orientation = ObsTerm(
+            func=mdp.get_body_orientation,
+            noise=Unoise(n_min=-0.1, n_max=0.1),
+            scale=1.0
+        )  # dim: 2 (no yaw information)
+
+        # Root angular velocity
+        base_ang_vel = ObsTerm(
+            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.0, n_max=0.0),
+            scale=0.25
+        )  # dim: 3, base_ang_vel is in robot's root frame
+
+        # Last action (x, y, omega, delta arm joints)
+        last_action = ObsTerm(
+            func=mdp.last_high_level_action, params={"clip_limit": 100},
+            scale=1.0,
+        )  # dim: 9
+
+        # End-effector in robot frame
+        ee_pose_in_robot_frame = ObsTerm(
+            func=mdp.ee_pose_in_robot_frame,
+            params={"end_effector_link_name": "arm_link_jaw"},
+            scale=1.0,
+        )  # dim: 7 (position + quat) for the end-effector link
+
+        # Object pose in robot frame
+        obj_pose_in_robot_frame = ObsTerm(
+            func=mdp.obj_pose_in_robot_frame_SE2_grasp_ranking,
+            scale=1.0,
+        )  # dim: 3 (position + yaw) for the target object, SE2
+
+        # Vector from active object to goal in active object frame.
+        obj_to_goal_pos_local = ObsTerm(
+            func=mdp.obj_to_goal_pos_local,
+            params={"goal_term_name": "goal_pose"},
+            noise=Unoise(n_min=-0.02, n_max=0.02),
+            scale=1.0,
+        )  # dim: 2 (xy components in active object frame)
+
+        # Goal orientation represented in active object frame as a yaw angle.
+        obj_to_goal_rot_local = ObsTerm(
+            func=mdp.obj_to_goal_rot_local,
+            params={"goal_term_name": "goal_pose"},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+            scale=1.0,
+        )  # dim: 1 (yaw error in active object frame)
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.history_length = 1
+            self.concatenate_terms = True
+
+    @configclass
+    class LocomotionPolicyCfg(ObsGroup):
+        """Observations for locomotion policy."""
+        base_lin_vel = ObsTerm(
+            func=isaac_mdp.base_lin_vel, noise=Unoise(n_min=-0.0, n_max=0.0)
+        )  # dim: 3
+        base_ang_vel = ObsTerm(
+            func=isaac_mdp.base_ang_vel, noise=Unoise(n_min=-0.0, n_max=0.0)
+        )  # dim: 3, base_ang_vel is in robot's root frame
+        projected_gravity = ObsTerm(
+            func=isaac_mdp.projected_gravity,
+            noise=Unoise(n_min=-0.0, n_max=0.0),
+        )  # dim: 3, projected gravity in robot's root frame
+        joint_pos = ObsTerm(
+            func=isaac_mdp.joint_pos_rel, noise=Unoise(n_min=-0.0, n_max=0.0)
+        )  # dim: 19
+        joint_vel = ObsTerm(
+            func=isaac_mdp.joint_vel_rel, noise=Unoise(n_min=-0.0, n_max=0.0)
+        )  # dim: 19
+        actions = ObsTerm(func=mdp.last_leg_action, params={"action_term_name": "high_level_action"})
+        # dim: 12
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+
+    @configclass
+    class CriticCfg(ObsGroup):
+        redundant_placeholders = ObsTerm(
+            func=mdp.redundant_placeholders_critic,
+            scale=1.0,
+        )  # dim: 154 (placeholders for missing dimensions in pretrained policy)
+
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.history_length = 1
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()
+    locomotion_policy: LocomotionPolicyCfg = LocomotionPolicyCfg()
+    critic: CriticCfg = CriticCfg()
+
 @configclass
 class EventCfg:
     """Configuration for events."""
@@ -286,6 +414,91 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
+    
+@configclass
+class RewardsEvalCfg:
+    """Reward terms for the MDP."""
+    """
+    Section I: Task specific Rewards
+    """
+    sparse_completion = RewTerm(
+        func=mdp.sparse_completion_reward,
+        weight=10.0,
+        params={
+            "goal_term_name": "goal_pose",
+            "dist_error": 0.05,
+            "angular_error": 5.0,
+            "success_reward": 1.0,
+        },
+    ) # Sparse success bonus when object-goal position and yaw errors are both within threshold
+
+    keypoint_pose_match_exp = RewTerm(
+        func=mdp.keypoint_pose_match_exp,
+        weight=8.0,
+        params={
+            "goal_term_name": "goal_pose",
+            "sigma": 1.0,
+        },
+    ) # Encourage object-goal pose matching using world-frame keypoint distance
+
+    vel_toward_goal = RewTerm(
+        func=mdp.velocity_toward_goal_exp,
+        weight=1.0,
+        params={
+            "goal_term_name": "goal_pose",
+            "sigma": 0.7071067812,
+            "use_unit_vel": True,
+            "use_xy": True,
+        },
+    ) # Encourage object velocity to align with the direction from object to goal
+    
+    is_alive = RewTerm(func=mdp.is_alive, weight=5.0) # The manipulation process should be alive
+
+    """
+    Section II: Smooth motion rewards
+    """
+    lin_vel_change_penalty = RewTerm(
+        func=mdp.lin_vel_change_penalty,
+        weight=2.0,
+    ) # Penalize the change in linear velocity of the object to encourage smooth motion
+    
+    ang_vel_change_penalty = RewTerm(
+        func=mdp.ang_vel_change_penalty,
+        weight=2.0,
+    ) # Penalize the change in angular velocity of the object to encourage smooth motion
+    
+    flat_orientation_l2 = RewTerm(
+        func=mdp.flat_orientation_l2,
+        weight=-10.0,
+        params={
+            "flat_threshold": 1e-3,
+        },
+    ) # Indicator penalty: subtract 1 when object is non-flat
+
+    joint_positions_wrt_reference = RewTerm(
+        func=mdp.joint_positions_wrt_reference,
+        weight=5.0,
+        params={
+            "arm_joint_names": [
+                "arm_sh0",
+                "arm_sh1",
+                "arm_el0",
+                "arm_el1",
+                "arm_wr0",
+                "arm_wr1",], 
+            "robot_name": "robot",
+        },
+    ) # Penalize the deviation of joint positions from the per-env active grasp pose reference
+    
+    undesired_contact_penalty = RewTerm(
+        func=mdp.undesired_contact_penalty,
+        weight=7.0,
+        params={
+            "undesired_contact_body_names": SPOT_BODY_LINKS,  # Replace with actual body names
+            "contact_sensor_name": "contact_forces",
+            "undesired_contact_threshold": 1.0,
+        },
+    ) # Penalize undesired contacts between the robot and the ground to encourage the robot to
 @configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
@@ -320,3 +533,36 @@ class GraspRankingEnvPlayCfg(ManagerBasedRLEnvCfg):
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None
 
+        # Import the target object
+        self.scene.target_object_0 = OBJECT_TELEOPERATION_INFO[0].replace(prim_path="{ENV_REGEX_NS}/TargetObject0")
+@configclass
+class GraspRankingEnvEvalCfg(ManagerBasedRLEnvCfg):
+    # Scene settings
+    scene: GraspRankingSceneCfg = GraspRankingSceneCfg(num_envs=20, env_spacing=4.0)
+    # Basic settings
+    observations: ObservationsEvalCfg = ObservationsEvalCfg()
+    actions: ActionsCfg = ActionsCfg()
+    events: EventCfg = EventCfg()
+    # MDP settings
+    commands: CommandsEvalCfg = CommandsEvalCfg()
+    rewards: RewardsCfg = RewardsCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
+
+    # Post initialization
+    def __post_init__(self) -> None:
+        """Post initialization."""
+        # general settings
+        self.decimation = 4
+        self.episode_length_s = 20
+        # viewer settings
+        self.viewer.eye = (8.0, 0.0, 5.0)
+        # simulation settings
+        self.sim.dt = 1 / 200
+        self.sim.render_interval = self.decimation
+        
+        # Import the robot
+        self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+        self.scene.robot.spawn.joint_drive.gains.stiffness = None
+        
+        # Import the target object
+        self.scene.target_object_0 = OBJECT_TELEOPERATION_INFO[0].replace(prim_path="{ENV_REGEX_NS}/TargetObject0")

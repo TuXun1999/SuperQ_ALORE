@@ -20,7 +20,7 @@ class ReturnAgentHelper:
         
         # Return estimation agent (during middle of PPO training) configuration
         self.return_agent_interval = int(cfg.get("return_agent_interval", 1000)) # By default, only at the end of the training
-        self.return_agent_train_steps = int(cfg.get("return_agent_train_steps", 1000))
+        self.return_agent_train_steps = int(cfg.get("return_agent_train_steps", 5000))
         self.return_agent_batch_size = int(cfg.get("return_agent_batch_size", 256))
         self.return_agent_lr = float(cfg.get("return_agent_lr", 1e-3))
         self.gamma = float(cfg.get("gamma", 0.99))
@@ -37,7 +37,7 @@ class ReturnAgentHelper:
         self.return_agent_optimizer: torch.optim.Optimizer | None = None
         self.writer: Any = None
         self.logger_type: str = "tensorboard"
-        self.disable_logs: bool = True
+        self.disable_logs: bool = False
         self.log_dir: str | None = None
         
         
@@ -140,8 +140,8 @@ class ReturnAgentHelper:
                 start_loss = loss_value
             final_loss = loss_value
 
-            if self.log_dir is not None and not self.disable_logs and self.writer is not None:
-                self.writer.add_scalar("ReturnAgent/train_step_loss", loss_value, step)
+            # if self.log_dir is not None and not self.disable_logs and self.writer is not None:
+            #     self.writer.add_scalar("ReturnAgent/train_step_loss", loss_value, step)
 
         # if self.log_dir is not None and not self.disable_logs and self.writer is not None:
         #     with torch.inference_mode():
@@ -240,17 +240,17 @@ class ReturnAgentHelper:
                 start_loss = loss_value
             final_loss = loss_value
 
-            if self.log_dir is not None and not self.disable_logs and self.writer is not None:
-                self.writer.add_scalar("ReturnAgent/final_finetune_step_loss", loss_value, step)
+            # if self.log_dir is not None and not self.disable_logs and self.writer is not None:
+            #     self.writer.add_scalar("ReturnAgent/final_finetune_step_loss", loss_value, step)
 
-        if self.log_dir is not None and not self.disable_logs and self.writer is not None:
-            with torch.inference_mode():
-                pred_mean = float(self.return_agent(policy_obs).mean().item())
-            self.writer.add_scalar("ReturnAgent/final_finetune_loss", final_loss, it)
-            self.writer.add_scalar("ReturnAgent/final_finetune_start_loss", start_loss, it)
-            self.writer.add_scalar("ReturnAgent/final_finetune_loss_delta", start_loss - final_loss, it)
-            self.writer.add_scalar("ReturnAgent/final_real_return_mean", float(returns.mean().item()), it)
-            self.writer.add_scalar("ReturnAgent/final_pred_mean", pred_mean, it)
+        # if self.log_dir is not None and not self.disable_logs and self.writer is not None:
+        #     with torch.inference_mode():
+        #         pred_mean = float(self.return_agent(policy_obs).mean().item())
+        #     self.writer.add_scalar("ReturnAgent/final_finetune_loss", final_loss, it)
+        #     self.writer.add_scalar("ReturnAgent/final_finetune_start_loss", start_loss, it)
+        #     self.writer.add_scalar("ReturnAgent/final_finetune_loss_delta", start_loss - final_loss, it)
+        #     self.writer.add_scalar("ReturnAgent/final_real_return_mean", float(returns.mean().item()), it)
+        #     self.writer.add_scalar("ReturnAgent/final_pred_mean", pred_mean, it)
 
         print(
             f"[SuperQ-ALORE] Return-agent finetune from experimental rollout at iter {it}: "

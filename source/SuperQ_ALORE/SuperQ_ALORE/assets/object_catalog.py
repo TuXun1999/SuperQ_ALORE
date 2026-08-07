@@ -30,16 +30,16 @@ LEG_JOINT_NAMES: tuple[str, ...] = (
 CATALOG_PATH = Path(ASSET_DIR) / "objects" / "pre_grasping.yaml"
 
 
-# one immutable class for each (object, object pose, joint configuration) tuple defined in the YAML catalog
+# one immutable class for each (object, robot pose, joint configuration) tuple defined in the YAML catalog
 @dataclass(frozen=True)
 class PoseEntry:
-    """One (chair, pose) pair loaded from pre_grasping.yaml."""
+    """One (chair, robot pre-grasp pose) entry loaded from pre_grasping.yaml."""
     object_id: str
     pose_id: str
     asset_path: str
-    # Chair position relative to env origin (x, y, z) — wxyz quaternion
+    # Robot base position in world frame (x, y, z)
     position: tuple[float, float, float]
-    # TODO: ensure that the defined orientation matches with the defintion of RigidObjectCfg in isaaclab (currently assumed to be wxyz)
+    # Robot base orientation in world frame (wxyz)
     orientation: tuple[float, float, float, float]  # wxyz
     # All robot joints: arm joints from YAML, leg joints from SPOT defaults
     joint_positions: dict[str, float]
@@ -113,17 +113,26 @@ def load_pregrasp_catalog(catalog_path: Path | None = None) -> tuple[ObjectEntry
         if not poses_raw:
             raise ValueError(f"Object '{object_id}' must define at least one pose.")
 
-        # for each pose, process the position, orientation, and arm joint configuration, and create a PoseEntry for it. 
+        # for each pose, process the robot position/orientation and arm joint configuration,
+        # and create a PoseEntry for it.
         # Then create an ObjectEntry for this object containing all its poses.
         pose_entries: list[PoseEntry] = []
         for pose_id, pose_data in poses_raw.items():
-            pos = pose_data.get("position")
-            ori = pose_data.get("orientation")
+            # New semantics: `position`/`orientation` are robot base pose in world frame.
+            # Backward-compatible parsing for optional explicit key names.
+            pos = pose_data.get("robot_position", pose_data.get("position"))
+            ori = pose_data.get("robot_orientation", pose_data.get("orientation"))
             jcfg = pose_data.get("joint_configuration")
             if not isinstance(pos, list) or len(pos) != 3:
-                raise ValueError(f"Pose '{object_id}/{pose_id}': position must be a 3-element list.")
+                raise ValueError(
+                    f"Pose '{object_id}/{pose_id}': robot position must be a 3-element list "
+                    "(key: robot_position or position)."
+                )
             if not isinstance(ori, list) or len(ori) != 4:
-                raise ValueError(f"Pose '{object_id}/{pose_id}': orientation must be a 4-element list (wxyz).")
+                raise ValueError(
+                    f"Pose '{object_id}/{pose_id}': robot orientation must be a 4-element list (wxyz) "
+                    "(key: robot_orientation or orientation)."
+                )
             if not isinstance(jcfg, list):
                 raise ValueError(f"Pose '{object_id}/{pose_id}': joint_configuration must be a list.")
             pose_entries.append(PoseEntry(

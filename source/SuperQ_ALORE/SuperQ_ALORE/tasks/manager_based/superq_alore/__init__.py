@@ -31,6 +31,7 @@ gym.register(
     kwargs={
         "env_cfg_entry_point": f"{__name__}.superq_alore_env_cfg:SuperqAloreEnvPlayCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+        "rsl_rl_grasp_ranking_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerGraspRankingCfg",
         "rsl_rl_superqalore_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPOSuperQALORERunnerCfg",
     },
 )
@@ -46,13 +47,24 @@ gym.register(
     },
 )
 
-# TODO: Use the joint teleoperation environment temporarily
+# Grasp Ranking Environments
 gym.register(
     id="Grasp-Ranking-PLAY",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.grasp_ranking_env:GraspRankingEnvPlayCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
+        "rsl_rl_grasp_ranking_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerGraspRankingCfg",
+    },
+)
+
+gym.register(
+    id="Grasp-Ranking-EVAL",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.grasp_ranking_env:GraspRankingEnvEvalCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
         "rsl_rl_grasp_ranking_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerGraspRankingCfg",
     },

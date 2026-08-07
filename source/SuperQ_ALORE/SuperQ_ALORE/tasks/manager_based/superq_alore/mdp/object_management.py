@@ -57,7 +57,7 @@ def build_target_objects(pool_size = 4096):
     OBJECT_IDX_ENVS = []
     POSE_IDX_LOCAL_ENVS = []
     GRASP_POSE_JOINT_POSITIONS = []
-    OBJECT_POSE_ENVS = []
+    ROBOT_POSE_ENVS = []
     # Step 2: Map the pose IDXs to object IDs and pose IDs within that object
     for pose_idx in pose_idx_global:
         obj_idx = np.searchsorted(pose_num_cumsum, pose_idx, side='right')
@@ -70,12 +70,12 @@ def build_target_objects(pool_size = 4096):
         joint_angle_val = [joint_position[name] for name in ARM_JOINT_NAMES_IN_ORDER]
         GRASP_POSE_JOINT_POSITIONS.append(joint_angle_val)
         
-        # Initial object pose (position + orientation)
-        obj_init_pos = OBJECT_CATALOG[obj_idx].poses[pose_idx_within_obj].position
-        obj_init_quat = OBJECT_CATALOG[obj_idx].poses[pose_idx_within_obj].orientation
-        OBJECT_POSE_ENVS.append(obj_init_pos + obj_init_quat) # Merge the tuples
+        # Initial robot base pose (position + orientation)
+        robot_init_pos = OBJECT_CATALOG[obj_idx].poses[pose_idx_within_obj].position
+        robot_init_quat = OBJECT_CATALOG[obj_idx].poses[pose_idx_within_obj].orientation
+        ROBOT_POSE_ENVS.append(robot_init_pos + robot_init_quat) # Merge the tuples
         
-    return OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS, OBJECT_POSE_ENVS
+    return OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS, ROBOT_POSE_ENVS
 
 def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     """Initialise all per-env catalog tensors on env."""
@@ -89,7 +89,7 @@ def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     num_objects = len(OBJECT_CATALOG)
 
     # create the table for envs
-    OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS, OBJECT_POSE_ENVS = build_target_objects(pool_size = env.num_envs)
+    OBJECT_IDX_ENVS, POSE_IDX_LOCAL_ENVS, GRASP_POSE_JOINT_POSITIONS, ROBOT_POSE_ENVS = build_target_objects(pool_size = env.num_envs)
     
     # active_object_indices is the idx of the assigned object in each sub-env
     env.active_object_indices = torch.tensor(OBJECT_IDX_ENVS, dtype=torch.long, device=env.device)
@@ -100,8 +100,8 @@ def ensure_catalog_state(env: ManagerBasedEnv) -> None:
     # Arm joint targets [num_envs, 7], matching ARM_JOINT_NAMES_IN_ORDER
     env.active_arm_joint_reference = torch.tensor(GRASP_POSE_JOINT_POSITIONS, dtype=torch.float32, device=env.device)
 
-    # object pose targets [num_envs, 7], with position (3) + orientation (4)
-    env.active_object_pose = torch.tensor(OBJECT_POSE_ENVS, dtype=torch.float32, device=env.device)
+    # robot pose targets [num_envs, 7], with position (3) + orientation (4)
+    env.active_robot_pose = torch.tensor(ROBOT_POSE_ENVS, dtype=torch.float32, device=env.device)
     # next time when the function is called, the first "if" condition will be true 
     # and the function will return immediately
     env._catalog_ready = True
@@ -140,10 +140,10 @@ def ensure_catalog_state_grasp_ranking(env: ManagerBasedEnv, object_idx: int = N
     joint_angle_val = [joint_position[name] for name in ARM_JOINT_NAMES_IN_ORDER]
     GRASP_POSE_JOINT_POSITIONS = [joint_angle_val] * env.num_envs
 
-    # Initial object pose (position + orientation)
-    obj_init_pos = OBJECT_CATALOG[object_idx].poses[pose_idx].position
-    obj_init_quat = OBJECT_CATALOG[object_idx].poses[pose_idx].orientation
-    OBJECT_POSE_ENVS = [obj_init_pos + obj_init_quat] * env.num_envs
+    # Initial robot base pose (position + orientation)
+    robot_init_pos = OBJECT_CATALOG[object_idx].poses[pose_idx].position
+    robot_init_quat = OBJECT_CATALOG[object_idx].poses[pose_idx].orientation
+    ROBOT_POSE_ENVS = [robot_init_pos + robot_init_quat] * env.num_envs
 
     # active_object_indices is the idx of the assigned object in each sub-env
     env.active_object_indices = torch.tensor(OBJECT_IDX_ENVS, dtype=torch.long, device=env.device)
@@ -154,8 +154,8 @@ def ensure_catalog_state_grasp_ranking(env: ManagerBasedEnv, object_idx: int = N
     # Arm joint targets [num_envs, 7], matching ARM_JOINT_NAMES_IN_ORDER
     env.active_arm_joint_reference = torch.tensor(GRASP_POSE_JOINT_POSITIONS, dtype=torch.float32, device=env.device)
 
-    # object pose targets [num_envs, 7], with position (3) + orientation (4)
-    env.active_object_pose = torch.tensor(OBJECT_POSE_ENVS, dtype=torch.float32, device=env.device)
+    # robot pose targets [num_envs, 7], with position (3) + orientation (4)
+    env.active_robot_pose = torch.tensor(ROBOT_POSE_ENVS, dtype=torch.float32, device=env.device)
 
     env._catalog_ready = True
     
@@ -178,57 +178,6 @@ def get_active_pose_entries(
         # a list of pose records, one per env
         entries.append(OBJECT_CATALOG[obj_idx].poses[pose_idx])
     return entries
-
-
-def get_active_pose_position_orientation_tensors(
-    env: ManagerBasedEnv, env_ids: torch.Tensor
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """This function converts the catalog selection state into sim-ready tensors. But it is not real-time pose."""
-
-    # call the idepmpotent catalog function to ensure all the necessary tensors are initialized
-    ensure_catalog_state(env)
-
-    if env_ids.numel() == 0:
-        raise ValueError("env_ids must not be empty.")
-
-    # obtain the fixed object indices for the input env_ids, 
-    # which will be used to lookup the assigned pose for each env
-    fixed_obj_indices = env.active_object_indices[env_ids]
-    pos = torch.empty((env_ids.numel(), 3), dtype=torch.float32, device=env.device)
-    rot = torch.empty((env_ids.numel(), 4), dtype=torch.float32, device=env.device)
-
-    # iterate through each unique object type present in this batch of env_ids, 
-    # and update the position and orientation tensors for the envs with the same object together (to save some computation)
-    for object_index in torch.unique(fixed_obj_indices).tolist():
-
-        # mask: [num_envs_in_batch], True for envs with this object, False otherwise
-        mask = fixed_obj_indices == object_index
-
-        # sub_env_ids: [num_envs_with_this_object], the env ids that have the current object
-        sub_env_ids = env_ids[mask]
-
-        # chosen_pose_indices: [num_envs_with_this_object], the sampled pose index for each env with the current object
-        chosen_pose_indices = env.active_pose_indices[sub_env_ids]
-
-        # obtain the pose entries for the current object, 
-        # which will be used to lookup the position and orientation 
-        # corresponding to the sampled pose index for each env with the current object
-        poses = OBJECT_CATALOG[int(object_index)].poses
-
-        # only updates the rows in the pos tensor where the mask is True
-        pos[mask] = torch.tensor(
-            # iterates through the tensor of pose IDs sampled for this specifc object batch
-            [poses[int(pose_idx.item())].position for pose_idx in chosen_pose_indices],
-            dtype=torch.float32,
-            device=env.device,
-        )
-        rot[mask] = torch.tensor(
-            [poses[int(pose_idx.item())].orientation for pose_idx in chosen_pose_indices],
-            dtype=torch.float32,
-            device=env.device,
-        )
-
-    return pos, rot
 
 
 def get_active_arm_joint_reference(

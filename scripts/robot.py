@@ -28,7 +28,7 @@ from bosdyn.client.manipulation_api_client import ManipulationApiClient
 from bosdyn.client.gripper_camera_param import GripperCameraParamClient
 from bosdyn.client.robot_command import \
     RobotCommandBuilder, RobotCommandClient, \
-        block_until_arm_arrives, block_for_trajectory_cmd, blocking_stand
+        block_until_arm_arrives, block_for_trajectory_cmd, blocking_stand, blocking_selfright
 from bosdyn.client.math_helpers import SE3Pose, Quat
 from bosdyn.client.math_helpers import SE2Pose as bdSE2Pose
 from bosdyn.client.math_helpers import SE3Pose as bdSE3Pose
@@ -136,7 +136,9 @@ class SPOT:
         bosdyn.client.util.authenticate(self.robot)
         self.robot.sync_with_directory()
         self.robot.time_sync.wait_for_sync()
-
+        
+        
+    
         self.gripper_param_client = self.robot.ensure_client(\
             GripperCameraParamClient.default_service_name)
         # Optionally set the resolution of the hand camera
@@ -182,6 +184,10 @@ class SPOT:
         self.real2sim_mapped = False
         self.sim2real_mapped = False
     """Section I: Fundamental functionalities"""
+    def estop(self):
+        # Emergency stop handling => Self-right the robot
+        blocking_selfright(self.command_client, timeout_sec=10)
+        
     def lease_alive(self):
         self._lease_alive = bosdyn.client.lease.LeaseKeepAlive(\
             self.lease_client, must_acquire=True, return_at_exit=True)
@@ -1185,6 +1191,40 @@ class SPOT:
         
         return torch.cat([curr_body_lin_vel, curr_body_ang_vel, projected_gravity, joint_pos_rel, joint_vel_rel], dim=0)
 
+    def check_joint_limits(self, target_cmd_poses):
+        """Final guard to make sure that the joints are acceptable"""
+        # Manually measured limits for each joint of SPOT
+        joint_limits = {
+            "fl_hx": (DOF.FL_HX, -0.79, 0.79),
+            "fr_hx": (DOF.FR_HX, -0.79, 0.79),
+            "hl_hx": (DOF.HL_HX, -0.79, 0.79),
+            "hr_hx": (DOF.HR_HX, -0.79, 0.79),
+            "fl_hy": (DOF.FL_HY, -0.9, 0.9),
+            "fr_hy": (DOF.FR_HY, -0.9, 0.9),
+            "hl_hy": (DOF.HL_HY, -0.9, 0.9),
+            "hr_hy": (DOF.HR_HY, -0.9, 0.9),
+            "fl_kn": (DOF.FL_KN, -2.35, -0.25),
+            "fr_kn": (DOF.FR_KN, -2.35, -0.25),
+            "hl_kn": (DOF.HL_KN, -2.35, -0.25),
+            "hr_kn": (DOF.HR_KN, -2.35, -0.25),
+            "a0_sh0": (DOF.A0_SH0, -1.57, 1.57),
+            "a0_sh1": (DOF.A0_SH1, -2, 0.52),
+            "a0_el0": (DOF.A0_EL0, 0, 3.14),
+            "a0_el1": (DOF.A0_EL1, -2.79, 2.79),
+            "a0_wr0": (DOF.A0_WR0, -1.83, 1.83),
+            "a0_wr1": (DOF.A0_WR1, -2.88, 2.88),
+            "a0_f1x": (DOF.A0_F1X, -1.2, 0.0),
+        }
+        # Check each joint against its limits
+        for joint, (joint_idx, lower, upper) in joint_limits.items():
+            if not (lower <= target_cmd_poses[joint_idx] <= upper):
+                # Raise an error & E-stop
+                self.estop()
+                raise ValueError(f"Joint {joint} with index {joint_idx} is out of limits: {target_cmd_poses[joint_idx]} not in [{lower}, {upper}]")
+                # Truncated the value
+                # target_cmd_poses[joint_idx] = max(min(target_cmd_poses[joint_idx], upper), lower)
+        return True
+    
     def execute_actions(self, leg_actions, arm_actions, scale = 0.2):
         """Execute the leg actions on the robot"""
         leg_actions = leg_actions.squeeze()
@@ -1196,12 +1236,15 @@ class SPOT:
         current_cmd_poses = torch.tensor(cmd_poses, dtype=torch.float32).clone()
         target_cmd_poses = current_cmd_poses.clone()
         offset = self.build_joint_pos_default(target_cmd_poses.clone()) # Use the default joints as offset
+        
+        # Correct the order
         for idx, value in enumerate([DOF.FL_HX, DOF.FR_HX, DOF.HL_HX, DOF.HR_HX, DOF.FL_HY, DOF.FR_HY,
                                      DOF.HL_HY, DOF.HR_HY, DOF.FL_KN, DOF.FR_KN, DOF.HL_KN, DOF.HR_KN]):
             target_cmd_poses[value] = leg_actions[idx] * scale + offset[value]
         for idx, value in enumerate([DOF.A0_SH0, DOF.A0_SH1, DOF.A0_EL0, DOF.A0_EL1, DOF.A0_WR0, DOF.A0_WR1, DOF.A0_F1X]):
             target_cmd_poses[value] = target_cmd_poses[value] + arm_actions[idx]
 
+        self.check_joint_limits(target_cmd_poses)
         start_cmd_poses = current_cmd_poses
         print(current_cmd_poses)
         print(target_cmd_poses)

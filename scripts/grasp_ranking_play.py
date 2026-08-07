@@ -57,13 +57,13 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
-parser.add_argument("--x_range", type=float, nargs=2, default=(-2.0, 2.0), metavar=("X_MIN", "X_MAX"), help="Slider range for X in meters.")
-parser.add_argument("--y_range", type=float, nargs=2, default=(-2.0, 2.0), metavar=("Y_MIN", "Y_MAX"), help="Slider range for Y in meters.")
+parser.add_argument("--x_range", type=float, nargs=2, default=(-1.0, 1.0), metavar=("X_MIN", "X_MAX"), help="Slider range for X in meters.")
+parser.add_argument("--y_range", type=float, nargs=2, default=(-1.0, 1.0), metavar=("Y_MIN", "Y_MAX"), help="Slider range for Y in meters.")
 parser.add_argument(
     "--yaw_range",
     type=float,
     nargs=2,
-    default=(-3.1415926535, 3.1415926535),
+    default=(-3.1415926535/2, 3.1415926535/2),
     metavar=("YAW_MIN", "YAW_MAX"),
     help="Slider range for yaw in radians.",
 )
@@ -131,18 +131,17 @@ def _obs_append_goal_pose(obs: torch.Tensor, target_object, obj_goal_pos_w: torc
     obs["policy"][:, -3:] = objGoalPoseLocal.view(1, 3)
     return obs
 
-def _obj_init_pose_robot_frame(obj_init_pose_w: torch.Tensor, device = "cuda:0") -> torch.Tensor:
-    # Hard-coded initial robot pose in world frame
-    robot_init_pos = (-1.0, 0.0, 0.515)
-    robot_init_quat = (1.0, 0.0, 0.0, 0.0)
-    num_envs = obj_init_pose_w.shape[0]
-    robot_base_pos_init = torch.tensor(robot_init_pos, device=device).unsqueeze(0).repeat(num_envs, 1)
-    robot_quat_inv = quat_inverse_safe(torch.tensor(robot_init_quat, device=device).unsqueeze(0).repeat(num_envs, 1))
+def _obj_init_pose_robot_frame(robot_init_pose_w: torch.Tensor, device = "cuda:0") -> torch.Tensor:
+    # robot_init_pose_w: shape (num_envs, 7), with position (3) + orientation (4)
+    robot_init_pose = robot_init_pose_w.clone().to(device)
+    num_envs = robot_init_pose.shape[0]
+    robot_base_pos_init = robot_init_pose[:, :3]
+    robot_quat_inv = quat_inverse_safe(robot_init_pose[:, 3:])
 
-    # Initialized object initial pose in world frame
-    obj_init_pose = obj_init_pose_w.clone().to(device) # shape (num_envs, 7), with position (3) + orientation (4)
-    obj_pos_w_init = obj_init_pose[:, :3]
-    obj_quat_w_init = obj_init_pose[:, 3:]
+    # Object is fixed at the world origin with identity orientation
+    obj_pos_w_init = torch.zeros((num_envs, 3), dtype=robot_init_pose.dtype, device=device)
+    obj_quat_w_init = torch.zeros((num_envs, 4), dtype=robot_init_pose.dtype, device=device)
+    obj_quat_w_init[:, 0] = 1.0
 
     obj_pos_relative = obj_pos_w_init - robot_base_pos_init.to(device)
     obj_pos_in_robot_frame = quat_apply(robot_quat_inv.to(device), obj_pos_relative)
@@ -159,9 +158,9 @@ def _grasp_pose_ranking(return_agent, obj_goal_pose_local, device = "cuda:0"):
     return_est_list = []
     for pose_idx in range(len(OBJECT_CATALOG[obj_idx].poses)):
         pose = OBJECT_CATALOG[obj_idx].poses[pose_idx]
-        obj_init_pose_w = torch.tensor(pose.position + pose.orientation, device=device)  # (7,)
+        robot_init_pose_w = torch.tensor(pose.position + pose.orientation, device=device)  # (7,)
         # Initial obj pose in robot frame
-        obj_init_pose_robot_frame = _obj_init_pose_robot_frame(obj_init_pose_w.unsqueeze(0), device = device)  # (1, 3)
+        obj_init_pose_robot_frame = _obj_init_pose_robot_frame(robot_init_pose_w.unsqueeze(0), device = device)  # (1, 3)
         
         # Initial arm joint positions
         arm_joint_pos_init_list = [pose.joint_positions[joint_name] for joint_name in ARM_JOINT_NAMES_IN_ORDER]
@@ -658,7 +657,7 @@ def main():
     normal_quat = base_root_state[3:7].clone().view(1, 4)
 
     green_x_init = float(normal_pos[0, 0].item())
-    green_y_init = float(normal_pos[0, 1].item() + float(args_cli.green_offset_y))
+    green_y_init = float(normal_pos[0, 1].item())
     green_yaw_init = _quat_wxyz_to_yaw(normal_quat[0])
 
     gui = _TkChairGUI(

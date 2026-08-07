@@ -14,8 +14,8 @@ from isaaclab_rl.rsl_rl import (
 @configclass
 class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 6000
-    save_interval = 100
+    max_iterations = 8000
+    save_interval = 2000
     experiment_name = f"SuperQ_ALORE"
     empirical_normalization = False
     policy = RslRlPpoActorCriticCfg(
@@ -44,12 +44,12 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
 @configclass
 class PPORunnerGraspRankingCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24
-    max_iterations = 6000
-    save_interval = 1000
+    max_iterations = 8000
+    save_interval = 2000
     experiment_name = f"Grasp_Ranking"
     empirical_normalization = False
     class_name = "OnPolicyRunnerGraspRanking"
-    return_agent_interval = 6000
+    return_agent_interval = 8000
     policy = RslRlPpoActorCriticCfg(
         class_name = "ActorCritic",
         init_noise_std=1.0,

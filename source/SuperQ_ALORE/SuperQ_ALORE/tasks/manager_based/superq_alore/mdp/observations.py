@@ -156,11 +156,10 @@ def obj_pose_in_robot_frame_SE2_grasp_ranking(
 ) -> torch.Tensor:
     """The object pose in robot frame. Avoid initialization of env obj lists"""
     robot = env.scene[robot_name]
-
+    
     # Use active-object helper instead of fixed scene key
     obj_pos_w = env.scene[f"target_object_0"].data.root_pos_w  # (num_envs, 3)
     obj_quat_w = env.scene[f"target_object_0"].data.root_quat_w  # (num_envs, 4)
-
     robot_base_pos = robot.data.root_pos_w
     robot_quat_inv = quat_inverse_safe(robot.data.root_quat_w)
 
@@ -392,20 +391,17 @@ def object_idx(
 def obj_init_pose_in_robot_frame_SE2(
     env: ManagerBasedRLEnv,
 ) -> torch.Tensor:
-    
-    # Hard-coded initial robot pose in world frame
-    robot_init_pos = (-1.0, 0.0, 0.515)
-    robot_init_quat = (1.0, 0.0, 0.0, 0.0)
-    
-    robot_base_pos_init = torch.tensor(robot_init_pos, device=env.device).unsqueeze(0).repeat(env.num_envs, 1)
-    robot_quat_inv = quat_inverse_safe(torch.tensor(robot_init_quat, device=env.device).unsqueeze(0).repeat(env.num_envs, 1))
+    # Catalog pose now stores robot world pose in env-local coordinates.
+    # Object initial world pose is assumed at env origin with identity orientation.
+    robot_pose_local = env.active_robot_pose  # (num_envs, 7)
+    robot_pos_w = env.scene.env_origins + robot_pose_local[:, :3]
+    robot_quat_inv = quat_inverse_safe(robot_pose_local[:, 3:])
 
-    # Initialized object initial pose in world frame
-    obj_init_pose = env.active_object_pose  # shape (num_envs, 7), with position (3) + orientation (4)
-    obj_pos_w_init = obj_init_pose[:, :3]
-    obj_quat_w_init = obj_init_pose[:, 3:]
+    obj_pos_w_init = env.scene.env_origins
+    obj_quat_w_init = torch.zeros((env.num_envs, 4), device=env.device, dtype=robot_pose_local.dtype)
+    obj_quat_w_init[:, 0] = 1.0
 
-    obj_pos_relative = obj_pos_w_init - robot_base_pos_init
+    obj_pos_relative = obj_pos_w_init - robot_pos_w
     obj_pos_in_robot_frame = quat_apply(robot_quat_inv, obj_pos_relative)
     obj_quat_in_robot_frame = quat_mul(robot_quat_inv, obj_quat_w_init)
     # return torch.cat([obj_pos_in_robot_frame, obj_quat_in_robot_frame], dim=-1).to(env.device)  # (num_envs, 7)
