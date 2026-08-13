@@ -86,17 +86,17 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
     # remove the local variable from the namespace after using it.
     del _target_object_cfgs
     # contact sensors
-    # TODO: are they really... helpful?
+    # Contact forces to detect undesired collision
     contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, update_period=0.005, track_air_time=True
+        prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, update_period=0.005, track_air_time=False
     )
-    robot_to_ground_contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*",
-        history_length=3,
-        update_period=0.005,
-        track_air_time=True,
-        filter_prim_paths_expr=["/World/ground/terrain/mesh"],
-    )
+    # robot_to_ground_contact_forces = ContactSensorCfg(
+    #     prim_path="{ENV_REGEX_NS}/Robot/.*",
+    #     history_length=3,
+    #     update_period=0.005,
+    #     track_air_time=False,
+    #     filter_prim_paths_expr=["/World/ground/terrain/mesh"],
+    # )
     # lights
     light = AssetBaseCfg(
         prim_path="/World/light",
@@ -123,8 +123,8 @@ class CommandsCfg:
         curriculum_initial_yaw_range=(0, 0), # start with no yaw displacement
         curriculum_yaw_step=math.pi / 18.0, # increase yaw range by 10 degrees on each side per curriculum level
         curriculum_max_yaw=math.pi / 2.0, # maximum yaw range is 90 degrees
-        debug_vis=False,
-        debug_vis_keypoints=False,
+        debug_vis=True,
+        debug_vis_keypoints=True,
         debug_vis_keypoint_radius=0.04,
         # if enable_yaw_curriculum is set, then the yaw of the goal pose is not actually used. 
         # Instead, the curriculum will control the yaw range for sampling the goal pose, and 
@@ -635,7 +635,7 @@ class EventCfg:
         func=mdp.reset_object_physical_properties,
         mode="reset",
         params={
-            "mass_range": (11, 12),
+            "mass_range": (5, 8),
             "friction_range": (0.15, 0.35),
             "com_range": {
                 "x": (-0.15, 0.15),
@@ -758,33 +758,36 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     
     # (2) Terminate if illegal contact happens
-    # Reset the environment if too large action / velocities are detected
-    physics_explosion = DoneTerm(
-        func=mdp.outlier_detected,
-        params={"threshold": 1000.0} 
-    )
-    base_contact = DoneTerm(
-        func=isaac_mdp.illegal_contact,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["body"]),
-            "threshold": 2.0,
-        },
-    )
-    undesired_ground_contact = DoneTerm(
-        func=mdp.illegal_ground_contact,
-        params={
-            "sensor_cfg": SceneEntityCfg(
-                "robot_to_ground_contact_forces", body_names=[".*leg"]
-            ),
-            "threshold": 1.0,
-        },
-    )
+    # NOTE: Temporarily disabled, because from experiments they happen rarely. 
+    # We hope to accelerate the training
     
-    # Terminate if any joint velocity exceeds 30.0 rad/s
-    aggressive_joint_velocity = DoneTerm(
-        func=mdp.joint_velocity_limits,
-        params={"max_vel": 30.0},
-    )
+    # Reset the environment if too large action / velocities are detected
+    # physics_explosion = DoneTerm(
+    #     func=mdp.outlier_detected,
+    #     params={"threshold": 1000.0} 
+    # )
+    # base_contact = DoneTerm(
+    #     func=isaac_mdp.illegal_contact,
+    #     params={
+    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["body"]),
+    #         "threshold": 2.0,
+    #     },
+    # )
+    # undesired_ground_contact = DoneTerm(
+    #     func=mdp.illegal_ground_contact,
+    #     params={
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "robot_to_ground_contact_forces", body_names=[".*leg"]
+    #         ),
+    #         "threshold": 1.0,
+    #     },
+    # )
+    
+    # # Terminate if any joint velocity exceeds 30.0 rad/s
+    # aggressive_joint_velocity = DoneTerm(
+    #     func=mdp.joint_velocity_limits,
+    #     params={"max_vel": 30.0},
+    # )
 
     #(3) Terminate if the object falls off the gripper
     object_slide_off = DoneTerm(

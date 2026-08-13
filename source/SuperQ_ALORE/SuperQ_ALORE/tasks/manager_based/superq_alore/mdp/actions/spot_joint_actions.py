@@ -176,23 +176,27 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         arm_actions = torch.zeros_like(arm_actions_delta, device=arm_actions_delta.device) # dim: 7, which is the target joint position for the arm joints
 
         # assign per-env active arm joint reference
-        if hasattr(self._env, "active_arm_joint_reference"):
-            arm_reference = self._env.active_arm_joint_reference[:, : arm_actions.shape[1]]
-        else:
-            arm_joint_names = [joint_name for joint_name in GRASP_POSE_1_JOINT_POS.keys() if joint_name.startswith("arm")]
-            default_arm_ref = torch.tensor(
+        arm_joint_names = [joint_name for joint_name in GRASP_POSE_1_JOINT_POS.keys() if joint_name.startswith("arm")]
+        arm_reference = (
+            self._env.active_arm_joint_reference[:, : arm_actions.shape[1]]
+            if hasattr(self._env, "active_arm_joint_reference")
+            else torch.tensor(
                 [GRASP_POSE_1_JOINT_POS[joint_name] for joint_name in arm_joint_names],
                 device=self._env.unwrapped.device,
-            )
-            arm_reference = default_arm_ref.unsqueeze(0).expand(self.num_envs, -1)
+            ).unsqueeze(0).expand(self.num_envs, -1)
+        )
         
         
         # Grip the object in the beginning, and maintain the gripper pose after that
-        gripper_closing_mask = self._env.episode_length_buf > 1 
-        if gripper_closing_mask.any(): 
-            arm_actions[gripper_closing_mask, -1] = torch.clamp(
-                -0.9 + self._env.episode_length_buf[gripper_closing_mask]* self.gripper_vel, max= -0.15
-            )
+        gripper_closing_mask = self._env.episode_length_buf > 1
+        gripper_target = torch.clamp(
+            -0.9 + self._env.episode_length_buf * self.gripper_vel, max=-0.15
+        )
+        arm_actions[:, -1] = torch.where(
+            gripper_closing_mask,
+            gripper_target,
+            arm_actions[:, -1],
+        )
             
         start_moving_mask = self._env.episode_length_buf < self.gripper_closing_steps
         
@@ -201,22 +205,20 @@ class MixedPDArmMultiLegJointPositionAction(JointAction):
         # Arm joint: use the default ones read from the pre-calculated files
         # (FAILED) Leg joint: use the PD controller to force the robot to stand still
         # """
-        if start_moving_mask.any():
-            # Keep startup arm pose consistent with per-env reference.
-            # Only overwrite non-gripper joints so gripper closing logic stays active.
-            arm_actions[start_moving_mask, :-1] = arm_reference[start_moving_mask, :-1]
-            # leg_actions[start_moving_mask] = leg_grasp_pose_by_default
-            
-            # Also, force the robot to stand
-            base_velocity[start_moving_mask] = torch.zeros(3, device=base_velocity.device) # zero base velocity
-            
-            
+        startup_arm_reference = arm_reference[:, :-1]
+        moving_arm_reference = arm_reference[:, :-1] + arm_actions_delta[:, :-1]
+        arm_actions[:, :-1] = torch.where(
+            start_moving_mask.unsqueeze(-1),
+            startup_arm_reference,
+            moving_arm_reference,
+        )
 
-        # Section II: for moving episodes, offset reference with policy delta.
-        if (~start_moving_mask).any():
-            arm_actions[~start_moving_mask, :-1] = (
-                arm_reference[~start_moving_mask, :-1] + arm_actions_delta[~start_moving_mask, :-1]
-            )
+        # Also, force the robot to stand
+        base_velocity = torch.where(
+            start_moving_mask.unsqueeze(-1),
+            torch.zeros_like(base_velocity),
+            base_velocity,
+        )
 
         # Latch high-level command for low-level controller.
         arm_joints = arm_actions

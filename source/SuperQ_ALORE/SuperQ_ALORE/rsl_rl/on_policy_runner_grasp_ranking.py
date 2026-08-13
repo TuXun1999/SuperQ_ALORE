@@ -205,21 +205,21 @@ class OnPolicyRunnerGraspRanking():
         )
         
         # NOTE: Ablation study: whether to collect returns from experiments
-        print("Finetuning based on real experiment returns")
-        try:
-            self.return_agent_helper.bind_gamma(self.alg.gamma)
-            # Final PPO policy rollout on fresh reset states, then finetune the return agent on empirical returns.
-            policy_obs, experiment_returns = self.return_agent_helper.collect_final_experiment_returns(
-                env=self.env,
-                policy=self.alg.policy,
-            )
-            self.return_agent_helper.finetune_from_experiment_returns(
-                policy_obs=policy_obs,
-                returns=experiment_returns,
-                it=-1,
-            )
-        except Exception as e:
-            print(f"Error during finetuning from experiment returns: {e}")
+        # print("Finetuning based on real experiment returns")
+        # try:
+        #     self.return_agent_helper.bind_gamma(self.alg.gamma)
+        #     # Final PPO policy rollout on fresh reset states, then finetune the return agent on empirical returns.
+        #     policy_obs, experiment_returns = self.return_agent_helper.collect_final_experiment_returns(
+        #         env=self.env,
+        #         policy=self.alg.policy,
+        #     )
+        #     self.return_agent_helper.finetune_from_experiment_returns(
+        #         policy_obs=policy_obs,
+        #         returns=experiment_returns,
+        #         it=-1,
+        #     )
+        # except Exception as e:
+        #     print(f"Error during finetuning from experiment returns: {e}")
 
         # Save the final model after training
         if self.log_dir is not None and not self.disable_logs:

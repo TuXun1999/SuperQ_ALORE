@@ -70,10 +70,16 @@ def object_slide_off(
 
     gripper_fngr_id, _ = contact_sensor.find_bodies(gripper_links_names[0])
     gripper_jaw_ids, _ = contact_sensor.find_bodies(gripper_links_names[1])
-    if start_mask.any():  # 
-        gripper_fngr_contact = torch.max(torch.norm(net_contact_forces[start_mask, :, gripper_fngr_id], dim=-1), dim=1)[0] > 1.0
-        gripper_jaw_connect = torch.max(torch.norm(net_contact_forces[start_mask, :, gripper_jaw_ids], dim=-1), dim=1)[0] > 1.0
-        # print("gripperMover_contact", gripperMover_contact)
-        gripper_fail[start_mask] = (gripper_fngr_contact == False) & (gripper_jaw_connect == False)  # 
-    
-    return gripper_fail # shape (num_envs, 1))
+    gripper_fngr_contact = (
+        torch.max(torch.norm(net_contact_forces[:, :, gripper_fngr_id], dim=-1), dim=1).values.squeeze(-1) > 1.0
+    )
+    gripper_jaw_contact = (
+        torch.max(torch.norm(net_contact_forces[:, :, gripper_jaw_ids], dim=-1), dim=1).values.squeeze(-1) > 1.0
+    )
+    gripper_fail = torch.where(
+        start_mask,
+        (~gripper_fngr_contact) & (~gripper_jaw_contact),
+        gripper_fail,
+    )
+
+    return gripper_fail
