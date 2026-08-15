@@ -401,7 +401,7 @@ class EventCfg:
         func=mdp.reset_object_physical_properties_grasp_ranking,
         mode="reset",
         params={
-            "mass_range": (10, 12),
+            "mass_range": (5, 8),
             "friction_range": (0.15, 0.35),
             "com_range": {
                 "x": (-0.15, 0.15),

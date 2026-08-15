@@ -308,7 +308,7 @@ def _make_eval_plan(policy_test_type, vec_env, return_agent, env_ids, num_grasp_
         ranked_pose_idx, ranked_scores = _select_ranked_pose_idx(vec_env, return_agent, num_grasp_poses)
         
         eval_plan.append(("ranked", ranked_pose_idx))
-
+        eval_plan.append(("random", torch.randint(0, num_grasp_poses, (vec_env.unwrapped.num_envs,), device=vec_env.unwrapped.device)))
     # Baseline fixed-pose rollouts.
     eval_plan.extend(("fixed", pose_idx) for pose_idx in range(num_grasp_poses))
     return eval_plan
