@@ -22,6 +22,7 @@ import os
 import pathlib
 import time
 import tkinter as tk
+
 import numpy as np
 
 from isaaclab.app import AppLauncher
@@ -48,7 +49,7 @@ parser.add_argument("--task", type=str, default="Joint-GRASP-RANKING", help="Nam
 parser.add_argument(
     "--agent", type=str, default="rsl_rl_grasp_ranking_cfg_entry_point", help="Name of the RL agent configuration entry point."
 )
-parser.add_argument("--chair_object_id", type=str, default="chair_lab", help="Catalog chair object id used for both visual chairs.")
+parser.add_argument("--object_id", type=str, default="chair_lab", help="Catalog chair object id used for both visual chairs.")
 parser.add_argument("--green_offset_y", type=float, default=1.0, help="Initial y-offset (m) of the green chair from the normal chair.")
 parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
 parser.add_argument(
@@ -57,6 +58,28 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument("--video", action="store_true", default=False, help="Record a video of the rollout.")
+parser.add_argument("--video_length", type=int, default=300, help="Length of the recorded video (in steps).")
+
+parser.add_argument(
+    "--video_fps",
+    type=int,
+    default=None,
+    help="Output video FPS. Defaults to the environment control rate.",
+)
+parser.add_argument(
+    "--video_folder",
+    type=str,
+    default=None,
+    help="Optional output folder for video files. Defaults to '<log_dir>/videos/play'.",
+)
+parser.add_argument(
+    "--video_name_prefix",
+    type=str,
+    default="play",
+    help="Filename prefix for exported video files.",
+)
+
 parser.add_argument("--x_range", type=float, nargs=2, default=(-1.0, 1.0), metavar=("X_MIN", "X_MAX"), help="Slider range for X in meters.")
 parser.add_argument("--y_range", type=float, nargs=2, default=(-1.0, 1.0), metavar=("Y_MIN", "Y_MAX"), help="Slider range for Y in meters.")
 parser.add_argument(
@@ -73,6 +96,9 @@ cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
+
+if args_cli.video:
+    args_cli.enable_cameras = True
 
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
@@ -634,15 +660,37 @@ def main():
         use_fabric=not args_cli.disable_fabric,
     )
 
-    env = gym.make(args_cli.task, cfg=env_cfg)
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
     env.reset()
 
-    if args_cli.chair_object_id not in OBJECT_IDS:
+    if args_cli.video:
+        video_folder = args_cli.video_folder or os.path.join("logs", "rsl_rl", "playback", "videos", "play")
+        video_folder = os.path.abspath(video_folder)
+        os.makedirs(video_folder, exist_ok=True)
+
+        if hasattr(env, "metadata") and isinstance(env.metadata, dict):
+            env.metadata["render_fps"] = int(args_cli.video_fps) if args_cli.video_fps is not None else 30
+        if hasattr(env, "unwrapped") and hasattr(env.unwrapped, "metadata") and isinstance(env.unwrapped.metadata, dict):
+            env.unwrapped.metadata["render_fps"] = int(args_cli.video_fps) if args_cli.video_fps is not None else 30
+
+        video_kwargs = {
+            "video_folder": video_folder,
+            "step_trigger": lambda step: step == 0,
+            "video_length": args_cli.video_length,
+            "name_prefix": args_cli.video_name_prefix,
+            "disable_logger": True,
+        }
+        print(f"[INFO] Video output folder: {video_folder}")
+        print(f"[INFO] Video name prefix: {args_cli.video_name_prefix}")
+        print("[INFO] Recording rollout video.")
+        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+
+    if args_cli.object_id not in OBJECT_IDS:
         raise ValueError(
-            f"Invalid --chair_object_id='{args_cli.chair_object_id}'. Available: {list(OBJECT_IDS)}"
+            f"Invalid --object_id='{args_cli.object_id}'. Available: {list(OBJECT_IDS)}"
         )
 
-    obj_idx = OBJECT_IDS.index(args_cli.chair_object_id)
+    obj_idx = OBJECT_IDS.index(args_cli.object_id)
     chair_asset_path = OBJECT_CATALOG[obj_idx].asset_path
 
     green_marker = _build_chair_markers(chair_asset_path)
@@ -674,6 +722,7 @@ def main():
     vec_env, policy, policy_nn, action_clip, return_agent = _build_policy_agent(env, args_cli.task)
     obs = None
     simulation_started = False
+    rollout_steps = 0
     dt = float(env.unwrapped.step_dt)
 
     print("[GRASP-RANKING] Dual-chair GRASP-RANKING started.")
@@ -725,6 +774,7 @@ def main():
                 obs = vec_env.get_observations()
                 gui.mark_simulation_started()
                 simulation_started = True
+                rollout_steps = 0
                 print("[GRASP-RANKING] simulation started with loaded policy agent")
 
             green_marker.visualize(green_pos, green_quat)
@@ -745,8 +795,14 @@ def main():
                 actions = torch.zeros(env.action_space.shape, dtype=torch.float32, device=device)
 
             obs, _, dones, _ = vec_env.step(actions)
-            
+            if simulation_started and args_cli.video:
+                rollout_steps += 1
+
             policy_nn.reset(dones)
+            
+            # Exit the play loop after recording one video
+            if rollout_steps>= args_cli.video_length:
+                break
 
             sleep_time = dt - (time.time() - start_time)
             if args_cli.real_time and sleep_time > 0:
@@ -754,6 +810,8 @@ def main():
 
     gui.close()
     env.close()
+    if args_cli.video:
+            print(f"[INFO] Video export completed. Check folder: {video_folder}")
 
 
 if __name__ == "__main__":

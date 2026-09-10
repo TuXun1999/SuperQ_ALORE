@@ -74,7 +74,7 @@ def create_target_obj_teleoperation_cfg(object_idx = 0, pose_idx = 0):
     # obj_pos = OBJECT_CATALOG[object_idx].poses[pose_idx].position
     # obj_rot = OBJECT_CATALOG[object_idx].poses[pose_idx].orientation
     obj_pos = (0.0, 0.0, 0.0)
-    obj_rot = (0.707, 0.0, 0.0, -0.707)
+    obj_rot = (1.0, 0.0, 0.0, 0.0)
     # Construct the object
     target_obj_cfg = RigidObjectCfg(
         prim_path=f"/World/envs/env_0/target_object",

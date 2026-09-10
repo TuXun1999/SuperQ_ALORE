@@ -309,8 +309,10 @@ def _make_eval_plan(policy_test_type, vec_env, return_agent, env_ids, num_grasp_
         
         eval_plan.append(("ranked", ranked_pose_idx))
         eval_plan.append(("random", torch.randint(0, num_grasp_poses, (vec_env.unwrapped.num_envs,), device=vec_env.unwrapped.device)))
-    # Baseline fixed-pose rollouts.
-    eval_plan.extend(("fixed", pose_idx) for pose_idx in range(num_grasp_poses))
+    else:
+        # Baseline fixed-pose rollouts.
+        pose_idx = int(policy_test_type[-1])
+        eval_plan.append(("fixed", pose_idx))
     return eval_plan
 
 def _select_ranked_pose_idx(vec_env, return_agent, num_grasp_poses: int) -> tuple[torch.Tensor, torch.Tensor]:
@@ -417,7 +419,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
 
     dt = vec_env.unwrapped.step_dt
-    rollout_steps = 750
+    rollout_steps = 750  # 1000 during training, but I want to test more on model's robustness
     env_ids = torch.arange(vec_env.unwrapped.num_envs, device=vec_env.unwrapped.device, dtype=torch.long)
     object_idx = 0
 

@@ -54,43 +54,42 @@ objects:
   
 
 
-  ## Carts:
-  cart_1:
-    asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/cart-1.usdc"
-    # Weight: 5-8 - 12 kg
-    poses:
-      # handle:
-      #   robot_position: [-0.73, 0.0, 0.515]
-      #   robot_orientation: [1.0, 0.0, 0.0, 0.0]
-      #   joint_configuration: [0.00, -1.38, 1.64, 0.0, 1.54, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
-      # bucket_right:
-      #   robot_position: [0.4, -1.0, 0.515]
-      #   robot_orientation: [0.707, 0.0, 0.0, 0.707]
-      #   joint_configuration: [0.00, -1.19, 1.54, 0.00, 1.29, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
-      bucket_left:
-        robot_position: [0.4, 1.0, 0.515]
-        robot_orientation: [0.707, 0.0, 0.0, -0.707]
-        joint_configuration: [0.00, -1.19, 1.54, 0.00, 1.29, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
-  
-  # cart_2:
-  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/cart-2.usdc"
-  #   # Weight: 10 - 12 kg
+  # cart_1:
+  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/cart-1-fixed.usdc"
+  #   # Weight: 5-8 kg, friction: 0.02-0.05 (rolling)
   #   poses:
   #     handle:
-  #       robot_position: [0.0, 1.0, 0.515]
+  #       robot_position: [0.0, 0.8, 0.515]
   #       robot_orientation: [0.707, 0.0, 0.0, -0.707]
-  #       joint_configuration: [0.00, -1.87, 1.67, 0.0, 1.5, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #       joint_configuration: [0.00, -1.3, 1.55, 0.0, 1.2, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
   #     bucket_right:
-  #       robot_position: [-1.0, 0.0, 0.515]
+  #       robot_position: [-1.0, -0.4, 0.515]
   #       robot_orientation: [1.0, 0.0, 0.0, 0.0]
-  #       joint_configuration: [0.00, -1.36, 1.66, 0.00, 1.225, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #       joint_configuration: [0.00, -1.00, 1.53, 0.00, 1.00, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
   #     bucket_left:
-  #       robot_position: [1.0, 0.0, 0.515]
+  #       robot_position: [1.0, -0.4, 0.515]
   #       robot_orientation: [0.0, 0.0, 0.0, 1.0]
-  #       joint_configuration: [0.00, -1.36, 1.66, 0.00, 1.225, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
+  #       joint_configuration: [0.00, -1.00, 1.53, 0.00, 1.00, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
+  
+  # cart_2:(Error: long training time & high sliding out rate)
+  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/cart-2.usdc"
+  #   # Weight: 5 - 8 kg
+  #   poses:
+  #     handle:
+  #       robot_position: [0.0, 0.95, 0.515]
+  #       robot_orientation: [0.707, 0.0, 0.0, -0.707]
+  #       joint_configuration: [0.00, -1.87, 1.7, 0.0, 1.4, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+      # bucket_right:
+      #   robot_position: [-1.0, 0.0, 0.515]
+      #   robot_orientation: [1.0, 0.0, 0.0, 0.0]
+      #   joint_configuration: [0.00, -1.36, 1.66, 0.00, 1.225, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+      # bucket_left:
+      #   robot_position: [1.0, 0.0, 0.515]
+      #   robot_orientation: [0.0, 0.0, 0.0, 1.0]
+      #   joint_configuration: [0.00, -1.36, 1.66, 0.00, 1.225, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
   # cart_3:
   #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/cart-3.usdc"
-  #   # Weight: 10 - 12 kg
+  #   # Weight: 5 - 8 kg
   #   poses:
   #     handle:
   #       robot_position: [-1.0, 0.0, 0.515]
@@ -101,48 +100,66 @@ objects:
   #       robot_orientation: [0.707, 0.0, 0.0, 0.707]
   #       joint_configuration: [0.00, -1.42, 1.62, 0.00, 1.225, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
   #     bucket_left:
+  #       robot_position: [0.0, 0.9, 0.515]
+  #       robot_orientation: [0.707, 0.0, 0.0, -0.707]
+  #       joint_configuration: [0.2, -1.6, 1.72, 0.00, 1.17, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
+  
+  
+  ## Walker:
+  Walker_1:
+    asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/walker-1.usdc"
+    # Weight: 2 - 4 kg
+    poses:
+      handle_right:
+        robot_position: [-1.0, 0.0, 0.515]
+        robot_orientation: [1.0, 0.0, 0.0, 0.0]
+        joint_configuration: [0.00, -1.2, 1.87, 0.0, 0.845, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+      # handle_left:
+      #   robot_position: [1.0, 0.0, 0.515]
+      #   robot_orientation: [0.0, 0.0, 0.0, 1.0]
+      #   joint_configuration:  [0.00, -1.2, 1.87, 0.0, 0.845, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+      # bar:
+      #   robot_position: [0.0, -1.1, 0.515]
+      #   robot_orientation: [0.707, 0.0, 0.0, 0.707]
+      #   joint_configuration: [0.00, -0.42, 1.41, 0.00, 0.71, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
+  # Walker_2:
+  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/walker-2.usdc"
+  #   # Weight: 2 - 4 kg
+  #   poses:
+  #     handle_left:
+  #       robot_position: [0.0, -1.0, 0.515]
+  #       robot_orientation: [0.707, 0.0, 0.0, 0.707]
+  #       joint_configuration: [0.00, -0.75, 1.57, 0.0, 0.82, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #     handle_right:
   #       robot_position: [0.0, 1.0, 0.515]
   #       robot_orientation: [0.707, 0.0, 0.0, -0.707]
-  #       joint_configuration: [0.00, -1.2, 1.42, 0.00, 1.09, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
-  
-  ## Luggage cases:
-  # luggage_case_1:
-  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/luggage-case-1.usdc"
+  #       joint_configuration:  [0.00, -0.75, 1.57, 0.0, 0.82, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #     bar:
+  #       robot_position: [0.95, 0.0, 0.515]
+  #       robot_orientation: [0.0, 0.0, 0.0, 1.0]
+  #       joint_configuration: [0.00, -0.75, 1.57, 0.0, 0.82, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
+  # Walker_3:
+  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/walker-3.usdc"
   #   # Weight: 3 - 5 kg
   #   poses:
-  #     handle:
-  #       robot_position: [-0.8, 0.0, 0.515]
+  #     handle_left:
+  #       robot_position: [-1.0, 0.2, 0.515]
   #       robot_orientation: [1.0, 0.0, 0.0, 0.0]
-  #       joint_configuration: [0.00, -1.65, 1.34, 0.0, 1.34, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
-  #     bar_right:
-  #       robot_position: [-0.1, -1.0, 0.515]
+  #       joint_configuration: [0.00, -1.1, 1.54, 0.0, 1.16, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #     handle_right:
+  #       robot_position: [1.0, 0.2, 0.515]
+  #       robot_orientation: [0.0, 0.0, 0.0, 1.0]
+  #       joint_configuration:  [0.00, -1.1, 1.54, 0.0, 1.16, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #     bar:
+  #       robot_position: [0.0, -1.05, 0.515]
   #       robot_orientation: [0.707, 0.0, 0.0, 0.707]
-  #       joint_configuration:  [0.00, -1.53, 1.8, 0.00, -0.4746, 1.3128, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
-  #     bar_left:
-  #       robot_position: [-0.1, 1.0, 0.515]
-  #       robot_orientation: [0.707, 0.0, 0.0, -0.707]
-  #       joint_configuration: [0.00, -1.53, 1.8, 0.00, -0.4746, 1.3128, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
-  # luggage_case_2:
-  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/luggage-case-2.usdc"
-  #   # Weight: 3 - 5 kg
-  #   poses:
-  #     handle:
-  #       robot_position: [-0.8, 0.0, 0.515]
-  #       robot_orientation: [1.0, 0.0, 0.0, 0.0]
-  #       joint_configuration: [0.00, -1.75, 1.34, 0.0, 1.34, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
-  #     bar_right:
-  #       robot_position: [-0.1, -1.0, 0.515]
-  #       robot_orientation: [0.707, 0.0, 0.0, 0.707]
-  #       joint_configuration:  [0.00, -1.53, 1.8, 0.00, -0.4746, 1.5, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
-  #     bar_left:
-  #       robot_position: [-0.1, 1.0, 0.515]
-  #       robot_orientation: [0.707, 0.0, 0.0, -0.707]
-  #       joint_configuration: [0.00, -1.53, 1.8, 0.00, -0.4746, 1.5, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
+  #       joint_configuration: [0.00, -0.9, 1.52, 0.00, 0.83, 0.0, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x 
+
 
   ## Buckets:
   # bucket_1:
   #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/bucket-1.usd"
-  #   # Weight: 1.5 - 2.1 kg
+  #   # Weight: 5 - 8 kg
   #   poses:
   #     longer_side:
   #       robot_position: [-1.0, -0.0, 0.515]
@@ -152,15 +169,29 @@ objects:
   #       robot_position: [0.0, 1.0, 0.515]
   #       robot_orientation: [0.707, 0.0, -0.0, -0.707]
   #       joint_configuration: [0.00, -0.47, 1.78, 0.00, 0.49, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  
+  # NOT GOOD. 
   # bucket_2:
   #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/bucket-2.usdc"
-  #   # Weight: 1.5 - 2.1 kg
+  #   # Weight: 3 - 5 kg or 1.5 - 2.1 kg
   #   poses:
   #     longer_side:
   #       robot_position: [0.0, -1.1, 0.515]
   #       robot_orientation: [ 0.707, 0.0, 0, 0.707]
   #       joint_configuration: [0.00, -0.4, 1.49, 0.00, 0.5, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
   #     shorter_side:
-  #       robot_position: [-1.30, 0.0, 0.515]
+  #       robot_position: [-1.35, 0.0, 0.515]
   #       robot_orientation: [1.0, 0.0, -0.0, 0.0]
-  #       joint_configuration: [0.00, -0.38, 1.37, 0.00, 0.554, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #       joint_configuration: [0.00, -0.3, 1.37, 0.00, 0.4742, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  # bucket_3:
+  #   asset_path: "source/SuperQ_ALORE/SuperQ_ALORE/assets/objects/bucket-3.usdc"
+  #     # Weight: 2 - 4 kg
+  #   poses:
+  #     longer_side:
+  #       robot_position: [0.0, -1.0, 0.515]
+  #       robot_orientation: [ 0.707, 0.0, 0, 0.707]
+  #       joint_configuration: [0.00, -1.2, 1.6, 0.00, 1.13, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x
+  #     shorter_side:
+  #       robot_position: [-1.05, 0.0, 0.515]
+  #       robot_orientation: [1.0, 0.0, -0.0, 0.0]
+  #       joint_configuration: [0.00, -1.2, 1.71, 0.00, 1.13, 0.00, -0.9] # sh0, sh1, el0, el1, wr0, wr1, f1x

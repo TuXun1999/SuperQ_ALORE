@@ -635,7 +635,7 @@ class EventCfg:
         func=mdp.reset_object_physical_properties,
         mode="reset",
         params={
-            "mass_range": (5, 8),
+            "mass_range": (2, 4),
             "friction_range": (0.15, 0.35),
             "com_range": {
                 "x": (-0.15, 0.15),

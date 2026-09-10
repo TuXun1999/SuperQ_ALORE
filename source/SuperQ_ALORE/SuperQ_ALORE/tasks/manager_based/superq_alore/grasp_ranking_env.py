@@ -150,6 +150,8 @@ class ActionsCfg:
         arm_joint_names=ARM_JOINT_NAMES,
         leg_joint_names=LEG_JOINT_NAMES,
         scale=0.2,
+        low_level_update_decimation=2, 
+        # Setting Low-level frequency: 100 Hz
     )
 
 @configclass
@@ -401,7 +403,7 @@ class EventCfg:
         func=mdp.reset_object_physical_properties_grasp_ranking,
         mode="reset",
         params={
-            "mass_range": (5, 8),
+            "mass_range": (3, 5),
             "friction_range": (0.15, 0.35),
             "com_range": {
                 "x": (-0.15, 0.15),
