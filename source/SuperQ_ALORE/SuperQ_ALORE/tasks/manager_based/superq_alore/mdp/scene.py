@@ -70,11 +70,11 @@ CATALOG_OBJECT_CFGS = create_target_object_cfg()
 
 # Only for the teleoperation environment, where only one object is used
 def create_target_obj_teleoperation_cfg(object_idx = 0, pose_idx = 0):
-    # Object init pos & rot TODO: Adapt it to the new configuration
+    # Object init pos & rot
     # obj_pos = OBJECT_CATALOG[object_idx].poses[pose_idx].position
     # obj_rot = OBJECT_CATALOG[object_idx].poses[pose_idx].orientation
     obj_pos = (0.0, 0.0, 0.0)
-    obj_rot = (1.0, 0.0, 0.0, 0.0)
+    obj_rot = (0.707, 0.0, 0.0, 0.707)
     # Construct the object
     target_obj_cfg = RigidObjectCfg(
         prim_path=f"/World/envs/env_0/target_object",
@@ -91,8 +91,33 @@ def create_target_obj_teleoperation_cfg(object_idx = 0, pose_idx = 0):
     joint_position = OBJECT_CATALOG[object_idx].poses[pose_idx].joint_positions
     
     # An initial value to rise the robotic arm
-    joint_angle_val = [0.0, -2.05, 1.3366, 0.0, 1.2281, 0.0, -0.9]
+    joint_angle_val = [
+        -0.000942,  # arm_sh0
+        -3.114827,  # arm_sh1
+        3.133373,   # arm_el0
+        1.559898,   # arm_el1
+        -0.002241,  # arm_wr0
+        -1.569777,  # arm_wr1
+        -1.556664,  # arm_f1x
+    ]
     joint_angle_ref = {ARM_JOINT_NAMES_IN_ORDER[i]: joint_angle_val[i] for i in range(len(ARM_JOINT_NAMES_IN_ORDER))}
+    
+    
+    joint_angle_ref["fl_hx"] = +0.017192 + 0.12
+    joint_angle_ref["fr_hx"] = +0.010593 - 0.12
+    joint_angle_ref["hl_hx"] = +0.012298 +0.12
+    joint_angle_ref["hr_hx"] = +0.011882 - 0.12
+
+    joint_angle_ref["fl_hy"] = +0.193184 + 0.5
+    joint_angle_ref["fr_hy"] = +0.191340 + 0.5
+    joint_angle_ref["hl_hy"] = +0.190885 + 0.5
+    joint_angle_ref["hr_hy"] = +0.191736 + 0.5
+
+    joint_angle_ref["fl_kn"] = -0.437494 - 1.0
+    joint_angle_ref["fr_kn"] = -0.429058 - 1.0
+    joint_angle_ref["hl_kn"] = -0.437132 - 1.0
+    joint_angle_ref["hr_kn"] = -0.429248 - 1.0
+
     return [target_obj_cfg, joint_angle_ref, obj_pos, obj_rot]
 
 OBJECT_TELEOPERATION_INFO = create_target_obj_teleoperation_cfg(0, 0)

@@ -7,7 +7,7 @@ import numpy as np
 
 
 # Each sub-policy needs one success rate per object, in the same order.
-OBJECTS = ["Chair1", "Chair2", "Cart", "Bucket"]
+OBJECTS = ["Chair1", "Chair2", "Chair3", "Cart1", "Cart2", "Bucket1", "Bucket2", "Bucket3"]
 SUB_POLICY_RESULTS = {
     # First three: warm-color group => PPO-i
     # "Sub-policy Alpha": [69.20, 61.47, 56.23, 85.38],
@@ -15,10 +15,10 @@ SUB_POLICY_RESULTS = {
     # "Sub-policy Gamma": [70.48, 62.70, 69.41, 0.00],
     
     # Best $PPO_i$
-    "Best $PPO_i$": [0.7083, 0.6594, 0.7434, 0.8538],
+    "Best $PPO_i$": [0.7820, 0.7151, 0.7593, 0.8213, 0.8132, 0.8889, 0.8108, 0.7991],
     # Last two: cool colors, with spacing between them => PPO random & Grasp-TAGS.
-    "$PPO_g +$ random": [0.7083, 0.5344, 0.5757, 0.7715],
-    "$\mathbf{Grasp-TAGS ({Ours})}$": [0.8699, 0.7937, 0.8354, 0.8994],
+    "$PPO_g +$ random": [0.7588, 0.6028, 0.7249, 0.8462, 0.6438, 0.8186, 0.8223, 0.7085],
+    "$\mathbf{Grasp-TAGS ({Ours})}$": [0.9365, 0.8472, 0.8962, 0.9551, 0.8689, 0.9258, 0.9187, 0.8389],
 }
 
 PLOT_TITLE = "Policy Success Rates by Object"

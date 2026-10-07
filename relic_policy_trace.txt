@@ -1,0 +1,2972 @@
+# ReLIC policy trace: exact 84-D input and raw 12-D output.
+# joint_pos_rel and joint_vel_rel use the IsaacLab articulation order.
+
+=== ReLIC update 1 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [-0.0011725134681910276, 0.00022146016999613494, 0.00022429075033869594]
+base_ang_vel       [ 3: 6] (rad/s): [-0.00905867200344801, 0.005159252323210239, 0.001999501371756196]
+projected_gravity  [ 6: 9] (unit): [0.00443601980805397, 0.010599104687571526, -0.999934196472168]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.000942 rad
+  [35] fl_hx    = +0.017192 rad
+  [36] fr_hx    = +0.010593 rad
+  [37] hl_hx    = +0.012298 rad
+  [38] hr_hx    = +0.011882 rad
+  [39] arm_sh1  = -2.214827 rad
+  [40] fl_hy    = +0.193184 rad
+  [41] fr_hy    = +0.191340 rad
+  [42] hl_hy    = +0.190885 rad
+  [43] hr_hy    = +0.191736 rad
+  [44] arm_el0  = +1.333374 rad
+  [45] fl_kn    = -0.437494 rad
+  [46] fr_kn    = -0.429058 rad
+  [47] hl_kn    = -0.437132 rad
+  [48] hr_kn    = -0.429248 rad
+  [49] arm_el1  = +1.559898 rad
+  [50] arm_wr0  = +0.897759 rad
+  [51] arm_wr1  = -1.569777 rad
+  [52] arm_f1x  = -0.016664 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.003628 rad/s
+  [54] fl_hx    = +0.002068 rad/s
+  [55] fr_hx    = +0.009381 rad/s
+  [56] hl_hx    = +0.001515 rad/s
+  [57] hr_hx    = -0.006401 rad/s
+  [58] arm_sh1  = -0.000831 rad/s
+  [59] fl_hy    = +0.004157 rad/s
+  [60] fr_hy    = +0.000533 rad/s
+  [61] hl_hy    = -0.009572 rad/s
+  [62] hr_hy    = -0.015466 rad/s
+  [63] arm_el0  = -0.004774 rad/s
+  [64] fl_kn    = +0.029079 rad/s
+  [65] fr_kn    = +0.009644 rad/s
+  [66] hl_kn    = -0.001789 rad/s
+  [67] hr_kn    = +0.010340 rad/s
+  [68] arm_el1  = +0.012772 rad/s
+  [69] arm_wr0  = -0.018264 rad/s
+  [70] arm_wr1  = -0.001736 rad/s
+  [71] arm_f1x  = +0.006850 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = +0.000000 raw action
+  [73] fr_hx    = +0.000000 raw action
+  [74] hl_hx    = +0.000000 raw action
+  [75] hr_hx    = +0.000000 raw action
+  [76] fl_hy    = +0.000000 raw action
+  [77] fr_hy    = +0.000000 raw action
+  [78] hl_hy    = +0.000000 raw action
+  [79] hr_hy    = +0.000000 raw action
+  [80] fl_kn    = +0.000000 raw action
+  [81] fr_kn    = +0.000000 raw action
+  [82] hl_kn    = +0.000000 raw action
+  [83] hr_kn    = +0.000000 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.457867 raw action
+  [01] fr_hx    = +0.831127 raw action
+  [02] hl_hx    = -0.766693 raw action
+  [03] hr_hx    = +0.395562 raw action
+  [04] fl_hy    = +1.030861 raw action
+  [05] fr_hy    = +1.063794 raw action
+  [06] hl_hy    = +1.720612 raw action
+  [07] hr_hy    = +1.607222 raw action
+  [08] fl_kn    = -0.662499 raw action
+  [09] fr_kn    = -0.293896 raw action
+  [10] hl_kn    = -0.434910 raw action
+  [11] hr_kn    = -0.707138 raw action
+===============================
+
+=== ReLIC update 2 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [-0.0015672969166189432, 0.00045745473471470177, 0.00035894388565793633]
+base_ang_vel       [ 3: 6] (rad/s): [-0.007094172295182943, 0.007111713755875826, 0.00445202412083745]
+projected_gravity  [ 6: 9] (unit): [0.004446724895387888, 0.010608424432575703, -0.9999340176582336]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.000963 rad
+  [35] fl_hx    = +0.017173 rad
+  [36] fr_hx    = +0.010580 rad
+  [37] hl_hx    = +0.012298 rad
+  [38] hr_hx    = +0.011895 rad
+  [39] arm_sh1  = -2.214827 rad
+  [40] fl_hy    = +0.193190 rad
+  [41] fr_hy    = +0.191352 rad
+  [42] hl_hy    = +0.190904 rad
+  [43] hr_hy    = +0.191755 rad
+  [44] arm_el0  = +1.333398 rad
+  [45] fl_kn    = -0.437542 rad
+  [46] fr_kn    = -0.429106 rad
+  [47] hl_kn    = -0.437132 rad
+  [48] hr_kn    = -0.429264 rad
+  [49] arm_el1  = +1.559889 rad
+  [50] arm_wr0  = +0.897777 rad
+  [51] arm_wr1  = -1.569805 rad
+  [52] arm_f1x  = -0.016640 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -0.002672 rad/s
+  [54] fl_hx    = +0.001832 rad/s
+  [55] fr_hx    = -0.000059 rad/s
+  [56] hl_hx    = -0.009517 rad/s
+  [57] hr_hx    = +0.014751 rad/s
+  [58] arm_sh1  = -0.003841 rad/s
+  [59] fl_hy    = +0.003735 rad/s
+  [60] fr_hy    = -0.000667 rad/s
+  [61] hl_hy    = +0.000772 rad/s
+  [62] hr_hy    = +0.004457 rad/s
+  [63] arm_el0  = -0.000654 rad/s
+  [64] fl_kn    = -0.016060 rad/s
+  [65] fr_kn    = +0.001687 rad/s
+  [66] hl_kn    = +0.007195 rad/s
+  [67] hr_kn    = -0.003867 rad/s
+  [68] arm_el1  = -0.000263 rad/s
+  [69] arm_wr0  = +0.014644 rad/s
+  [70] arm_wr1  = -0.012181 rad/s
+  [71] arm_f1x  = +0.002592 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.457867 raw action
+  [73] fr_hx    = +0.831127 raw action
+  [74] hl_hx    = -0.766693 raw action
+  [75] hr_hx    = +0.395562 raw action
+  [76] fl_hy    = +1.030861 raw action
+  [77] fr_hy    = +1.063794 raw action
+  [78] hl_hy    = +1.720612 raw action
+  [79] hr_hy    = +1.607222 raw action
+  [80] fl_kn    = -0.662499 raw action
+  [81] fr_kn    = -0.293896 raw action
+  [82] hl_kn    = -0.434910 raw action
+  [83] hr_kn    = -0.707138 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.435001 raw action
+  [01] fr_hx    = +1.161052 raw action
+  [02] hl_hx    = -1.061393 raw action
+  [03] hr_hx    = +0.449019 raw action
+  [04] fl_hy    = +1.235585 raw action
+  [05] fr_hy    = +1.422199 raw action
+  [06] hl_hy    = +1.979844 raw action
+  [07] hr_hy    = +1.732366 raw action
+  [08] fl_kn    = -1.001261 raw action
+  [09] fr_kn    = -0.429122 raw action
+  [10] hl_kn    = -0.163804 raw action
+  [11] hr_kn    = -0.736868 raw action
+===============================
+
+=== ReLIC update 3 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.0004405194194987416, -0.0021751008462160826, 0.04514075815677643]
+base_ang_vel       [ 3: 6] (rad/s): [0.22540892660617828, -0.11669160425662994, -0.020067311823368073]
+projected_gravity  [ 6: 9] (unit): [0.003961999900639057, 0.009654815308749676, -0.9999456405639648]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.000705 rad
+  [35] fl_hx    = +0.010219 rad
+  [36] fr_hx    = +0.020484 rad
+  [37] hl_hx    = -0.001433 rad
+  [38] hr_hx    = +0.010826 rad
+  [39] arm_sh1  = -2.217423 rad
+  [40] fl_hy    = +0.193120 rad
+  [41] fr_hy    = +0.192992 rad
+  [42] hl_hy    = +0.198673 rad
+  [43] hr_hy    = +0.197962 rad
+  [44] arm_el0  = +1.334412 rad
+  [45] fl_kn    = -0.423161 rad
+  [46] fr_kn    = -0.420861 rad
+  [47] hl_kn    = -0.428407 rad
+  [48] hr_kn    = -0.423607 rad
+  [49] arm_el1  = +1.559122 rad
+  [50] arm_wr0  = +0.898417 rad
+  [51] arm_wr1  = -1.569714 rad
+  [52] arm_f1x  = -0.017287 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.036649 rad/s
+  [54] fl_hx    = -0.508804 rad/s
+  [55] fr_hx    = +0.970195 rad/s
+  [56] hl_hx    = -1.102383 rad/s
+  [57] hr_hx    = -0.338731 rad/s
+  [58] arm_sh1  = -0.432860 rad/s
+  [59] fl_hy    = +0.016369 rad/s
+  [60] fr_hy    = +0.293459 rad/s
+  [61] hl_hy    = +0.265377 rad/s
+  [62] hr_hy    = +0.016837 rad/s
+  [63] arm_el0  = +0.156575 rad/s
+  [64] fl_kn    = +0.867068 rad/s
+  [65] fr_kn    = +0.226289 rad/s
+  [66] hl_kn    = +0.495472 rad/s
+  [67] hr_kn    = +0.162790 rad/s
+  [68] arm_el1  = -0.311241 rad/s
+  [69] arm_wr0  = +0.226957 rad/s
+  [70] arm_wr1  = -0.055424 rad/s
+  [71] arm_f1x  = +0.069833 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.435001 raw action
+  [73] fr_hx    = +1.161052 raw action
+  [74] hl_hx    = -1.061393 raw action
+  [75] hr_hx    = +0.449019 raw action
+  [76] fl_hy    = +1.235585 raw action
+  [77] fr_hy    = +1.422199 raw action
+  [78] hl_hy    = +1.979844 raw action
+  [79] hr_hy    = +1.732366 raw action
+  [80] fl_kn    = -1.001261 raw action
+  [81] fr_kn    = -0.429122 raw action
+  [82] hl_kn    = -0.163804 raw action
+  [83] hr_kn    = -0.736868 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.324858 raw action
+  [01] fr_hx    = +0.809102 raw action
+  [02] hl_hx    = -0.911536 raw action
+  [03] hr_hx    = +0.634246 raw action
+  [04] fl_hy    = +1.357850 raw action
+  [05] fr_hy    = +1.566757 raw action
+  [06] hl_hy    = +1.965804 raw action
+  [07] hr_hy    = +1.654101 raw action
+  [08] fl_kn    = -1.569401 raw action
+  [09] fr_kn    = -0.467781 raw action
+  [10] hl_kn    = -0.050805 raw action
+  [11] hr_kn    = -0.479941 raw action
+===============================
+
+=== ReLIC update 4 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.038979969918727875, 0.014320854097604752, 0.17903953790664673]
+base_ang_vel       [ 3: 6] (rad/s): [0.03363395109772682, -0.41122883558273315, -0.04163695126771927]
+projected_gravity  [ 6: 9] (unit): [-0.00028624426340684295, 0.008095414377748966, -0.9999673366546631]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.000123 rad
+  [35] fl_hx    = +0.007525 rad
+  [36] fr_hx    = +0.026035 rad
+  [37] hl_hx    = -0.008919 rad
+  [38] hr_hx    = +0.009725 rad
+  [39] arm_sh1  = -2.218632 rad
+  [40] fl_hy    = +0.191985 rad
+  [41] fr_hy    = +0.192915 rad
+  [42] hl_hy    = +0.205770 rad
+  [43] hr_hy    = +0.202610 rad
+  [44] arm_el0  = +1.335802 rad
+  [45] fl_kn    = -0.408444 rad
+  [46] fr_kn    = -0.407838 rad
+  [47] hl_kn    = -0.424652 rad
+  [48] hr_kn    = -0.418590 rad
+  [49] arm_el1  = +1.554154 rad
+  [50] arm_wr0  = +0.900553 rad
+  [51] arm_wr1  = -1.570627 rad
+  [52] arm_f1x  = -0.006118 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.110482 rad/s
+  [54] fl_hx    = -0.435865 rad/s
+  [55] fr_hx    = +0.247640 rad/s
+  [56] hl_hx    = +0.207060 rad/s
+  [57] hr_hx    = +0.211200 rad/s
+  [58] arm_sh1  = -0.047677 rad/s
+  [59] fl_hy    = -0.025173 rad/s
+  [60] fr_hy    = +0.022513 rad/s
+  [61] hl_hy    = +0.696158 rad/s
+  [62] hr_hy    = +0.601646 rad/s
+  [63] arm_el0  = +0.081314 rad/s
+  [64] fl_kn    = +2.303147 rad/s
+  [65] fr_kn    = +1.864404 rad/s
+  [66] hl_kn    = +0.550470 rad/s
+  [67] hr_kn    = +0.816346 rad/s
+  [68] arm_el1  = -0.155628 rad/s
+  [69] arm_wr0  = -0.235779 rad/s
+  [70] arm_wr1  = -0.041796 rad/s
+  [71] arm_f1x  = +1.071510 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.324858 raw action
+  [73] fr_hx    = +0.809102 raw action
+  [74] hl_hx    = -0.911536 raw action
+  [75] hr_hx    = +0.634246 raw action
+  [76] fl_hy    = +1.357850 raw action
+  [77] fr_hy    = +1.566757 raw action
+  [78] hl_hy    = +1.965804 raw action
+  [79] hr_hy    = +1.654101 raw action
+  [80] fl_kn    = -1.569401 raw action
+  [81] fr_kn    = -0.467781 raw action
+  [82] hl_kn    = -0.050805 raw action
+  [83] hr_kn    = -0.479941 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.115835 raw action
+  [01] fr_hx    = +0.890737 raw action
+  [02] hl_hx    = -0.901240 raw action
+  [03] hr_hx    = +0.503710 raw action
+  [04] fl_hy    = +1.370485 raw action
+  [05] fr_hy    = +1.424512 raw action
+  [06] hl_hy    = +1.616966 raw action
+  [07] hr_hy    = +1.571208 raw action
+  [08] fl_kn    = -1.816289 raw action
+  [09] fr_kn    = -1.326438 raw action
+  [10] hl_kn    = -0.025651 raw action
+  [11] hr_kn    = -0.479393 raw action
+===============================
+
+=== ReLIC update 5 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.09415086358785629, 0.008185380138456821, 0.3061853349208832]
+base_ang_vel       [ 3: 6] (rad/s): [-0.25225794315338135, -0.7226887941360474, -0.05001823231577873]
+projected_gravity  [ 6: 9] (unit): [-0.007459618151187897, 0.00926901400089264, -0.9999294281005859]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.001846 rad
+  [35] fl_hx    = +0.001578 rad
+  [36] fr_hx    = +0.031140 rad
+  [37] hl_hx    = -0.000091 rad
+  [38] hr_hx    = +0.017144 rad
+  [39] arm_sh1  = -2.218426 rad
+  [40] fl_hy    = +0.190869 rad
+  [41] fr_hy    = +0.190671 rad
+  [42] hl_hy    = +0.214250 rad
+  [43] hr_hy    = +0.210772 rad
+  [44] arm_el0  = +1.336026 rad
+  [45] fl_kn    = -0.379235 rad
+  [46] fr_kn    = -0.381904 rad
+  [47] hl_kn    = -0.418676 rad
+  [48] hr_kn    = -0.412294 rad
+  [49] arm_el1  = +1.555506 rad
+  [50] arm_wr0  = +0.894189 rad
+  [51] arm_wr1  = -1.570682 rad
+  [52] arm_f1x  = +0.002511 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.276149 rad/s
+  [54] fl_hx    = -0.267120 rad/s
+  [55] fr_hx    = +0.633776 rad/s
+  [56] hl_hx    = +0.584924 rad/s
+  [57] hr_hx    = +0.605613 rad/s
+  [58] arm_sh1  = +0.322858 rad/s
+  [59] fl_hy    = -0.036199 rad/s
+  [60] fr_hy    = -0.232385 rad/s
+  [61] hl_hy    = +0.913660 rad/s
+  [62] hr_hy    = +0.884419 rad/s
+  [63] arm_el0  = -0.076055 rad/s
+  [64] fl_kn    = +2.556993 rad/s
+  [65] fr_kn    = +2.547465 rad/s
+  [66] hl_kn    = +0.596694 rad/s
+  [67] hr_kn    = +0.454737 rad/s
+  [68] arm_el1  = +0.494102 rad/s
+  [69] arm_wr0  = -0.938099 rad/s
+  [70] arm_wr1  = +0.021608 rad/s
+  [71] arm_f1x  = -0.065930 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.115835 raw action
+  [73] fr_hx    = +0.890737 raw action
+  [74] hl_hx    = -0.901240 raw action
+  [75] hr_hx    = +0.503710 raw action
+  [76] fl_hy    = +1.370485 raw action
+  [77] fr_hy    = +1.424512 raw action
+  [78] hl_hy    = +1.616966 raw action
+  [79] hr_hy    = +1.571208 raw action
+  [80] fl_kn    = -1.816289 raw action
+  [81] fr_kn    = -1.326438 raw action
+  [82] hl_kn    = -0.025651 raw action
+  [83] hr_kn    = -0.479393 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.047748 raw action
+  [01] fr_hx    = +0.386489 raw action
+  [02] hl_hx    = -0.804120 raw action
+  [03] hr_hx    = +0.409740 raw action
+  [04] fl_hy    = +1.393837 raw action
+  [05] fr_hy    = +1.353511 raw action
+  [06] hl_hy    = +1.593565 raw action
+  [07] hr_hy    = +1.477688 raw action
+  [08] fl_kn    = -1.805748 raw action
+  [09] fr_kn    = -2.317071 raw action
+  [10] hl_kn    = -0.071088 raw action
+  [11] hr_kn    = -0.457175 raw action
+===============================
+
+=== ReLIC update 6 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.2147148698568344, -0.011370161548256874, 0.41921740770339966]
+base_ang_vel       [ 3: 6] (rad/s): [-0.5296348333358765, -0.9975765943527222, -0.19988198578357697]
+projected_gravity  [ 6: 9] (unit): [-0.02132187969982624, 0.014608249068260193, -0.9996660947799683]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.005047 rad
+  [35] fl_hx    = +0.001642 rad
+  [36] fr_hx    = +0.045588 rad
+  [37] hl_hx    = +0.003777 rad
+  [38] hr_hx    = +0.023859 rad
+  [39] arm_sh1  = -2.212504 rad
+  [40] fl_hy    = +0.193421 rad
+  [41] fr_hy    = +0.190922 rad
+  [42] hl_hy    = +0.232460 rad
+  [43] hr_hy    = +0.224551 rad
+  [44] arm_el0  = +1.333773 rad
+  [45] fl_kn    = -0.334334 rad
+  [46] fr_kn    = -0.338074 rad
+  [47] hl_kn    = -0.412045 rad
+  [48] hr_kn    = -0.401301 rad
+  [49] arm_el1  = +1.566655 rad
+  [50] arm_wr0  = +0.885944 rad
+  [51] arm_wr1  = -1.570143 rad
+  [52] arm_f1x  = -0.007400 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.089192 rad/s
+  [54] fl_hx    = +0.017776 rad/s
+  [55] fr_hx    = +1.251290 rad/s
+  [56] hl_hx    = +0.140303 rad/s
+  [57] hr_hx    = +0.337727 rad/s
+  [58] arm_sh1  = +0.137019 rad/s
+  [59] fl_hy    = +0.455400 rad/s
+  [60] fr_hy    = +0.316318 rad/s
+  [61] hl_hy    = +1.541050 rad/s
+  [62] hr_hy    = +1.061667 rad/s
+  [63] arm_el0  = -0.137872 rad/s
+  [64] fl_kn    = +3.434301 rad/s
+  [65] fr_kn    = +2.830135 rad/s
+  [66] hl_kn    = +0.490885 rad/s
+  [67] hr_kn    = +0.988783 rad/s
+  [68] arm_el1  = +0.434928 rad/s
+  [69] arm_wr0  = +0.358556 rad/s
+  [70] arm_wr1  = -0.112245 rad/s
+  [71] arm_f1x  = -1.452353 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.047748 raw action
+  [73] fr_hx    = +0.386489 raw action
+  [74] hl_hx    = -0.804120 raw action
+  [75] hr_hx    = +0.409740 raw action
+  [76] fl_hy    = +1.393837 raw action
+  [77] fr_hy    = +1.353511 raw action
+  [78] hl_hy    = +1.593565 raw action
+  [79] hr_hy    = +1.477688 raw action
+  [80] fl_kn    = -1.805748 raw action
+  [81] fr_kn    = -2.317071 raw action
+  [82] hl_kn    = -0.071088 raw action
+  [83] hr_kn    = -0.457175 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.295437 raw action
+  [01] fr_hx    = +0.011173 raw action
+  [02] hl_hx    = -0.560302 raw action
+  [03] hr_hx    = +0.394163 raw action
+  [04] fl_hy    = +1.163640 raw action
+  [05] fr_hy    = +0.972367 raw action
+  [06] hl_hy    = +1.256068 raw action
+  [07] hr_hy    = +1.301152 raw action
+  [08] fl_kn    = -1.801120 raw action
+  [09] fr_kn    = -2.326498 raw action
+  [10] hl_kn    = +0.006125 raw action
+  [11] hr_kn    = -0.986668 raw action
+===============================
+
+=== ReLIC update 7 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.3468301296234131, -0.0305902361869812, 0.5098628401756287]
+base_ang_vel       [ 3: 6] (rad/s): [-0.5059732794761658, -1.2089036703109741, -0.20757126808166504]
+projected_gravity  [ 6: 9] (unit): [-0.03890011087059975, 0.02195316180586815, -0.9990020990371704]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.003181 rad
+  [35] fl_hx    = -0.004548 rad
+  [36] fr_hx    = +0.075867 rad
+  [37] hl_hx    = +0.007957 rad
+  [38] hr_hx    = +0.030676 rad
+  [39] arm_sh1  = -2.210461 rad
+  [40] fl_hy    = +0.216213 rad
+  [41] fr_hy    = +0.220516 rad
+  [42] hl_hy    = +0.256568 rad
+  [43] hr_hy    = +0.243158 rad
+  [44] arm_el0  = +1.332223 rad
+  [45] fl_kn    = -0.288842 rad
+  [46] fr_kn    = -0.297487 rad
+  [47] hl_kn    = -0.404727 rad
+  [48] hr_kn    = -0.387862 rad
+  [49] arm_el1  = +1.567467 rad
+  [50] arm_wr0  = +0.903183 rad
+  [51] arm_wr1  = -1.570034 rad
+  [52] arm_f1x  = -0.027042 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -0.335752 rad/s
+  [54] fl_hx    = -1.609622 rad/s
+  [55] fr_hx    = +2.882615 rad/s
+  [56] hl_hx    = +0.324931 rad/s
+  [57] hr_hx    = +0.416665 rad/s
+  [58] arm_sh1  = -0.132761 rad/s
+  [59] fl_hy    = +2.717858 rad/s
+  [60] fr_hy    = +3.575948 rad/s
+  [61] hl_hy    = +1.478039 rad/s
+  [62] hr_hy    = +1.312173 rad/s
+  [63] arm_el0  = +0.061616 rad/s
+  [64] fl_kn    = +2.904354 rad/s
+  [65] fr_kn    = +2.045867 rad/s
+  [66] hl_kn    = +0.883729 rad/s
+  [67] hr_kn    = +1.105261 rad/s
+  [68] arm_el1  = -0.563013 rad/s
+  [69] arm_wr0  = +1.741235 rad/s
+  [70] arm_wr1  = +0.522807 rad/s
+  [71] arm_f1x  = +0.639223 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.295437 raw action
+  [73] fr_hx    = +0.011173 raw action
+  [74] hl_hx    = -0.560302 raw action
+  [75] hr_hx    = +0.394163 raw action
+  [76] fl_hy    = +1.163640 raw action
+  [77] fr_hy    = +0.972367 raw action
+  [78] hl_hy    = +1.256068 raw action
+  [79] hr_hy    = +1.301152 raw action
+  [80] fl_kn    = -1.801120 raw action
+  [81] fr_kn    = -2.326498 raw action
+  [82] hl_kn    = +0.006125 raw action
+  [83] hr_kn    = -0.986668 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.247934 raw action
+  [01] fr_hx    = -0.272970 raw action
+  [02] hl_hx    = -0.611608 raw action
+  [03] hr_hx    = +0.462119 raw action
+  [04] fl_hy    = +0.762860 raw action
+  [05] fr_hy    = +0.452821 raw action
+  [06] hl_hy    = +0.780800 raw action
+  [07] hr_hy    = +0.951648 raw action
+  [08] fl_kn    = -2.127483 raw action
+  [09] fr_kn    = -2.242941 raw action
+  [10] hl_kn    = +0.178567 raw action
+  [11] hr_kn    = -0.963005 raw action
+===============================
+
+=== ReLIC update 8 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.4645795226097107, -0.011441316455602646, 0.602492094039917]
+base_ang_vel       [ 3: 6] (rad/s): [0.18599535524845123, -1.1872295141220093, -0.12475438416004181]
+projected_gravity  [ 6: 9] (unit): [-0.05771258845925331, 0.023078294470906258, -0.9980664253234863]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.005964 rad
+  [35] fl_hx    = -0.054252 rad
+  [36] fr_hx    = +0.133056 rad
+  [37] hl_hx    = +0.003578 rad
+  [38] hr_hx    = +0.030740 rad
+  [39] arm_sh1  = -2.215535 rad
+  [40] fl_hy    = +0.276258 rad
+  [41] fr_hy    = +0.301382 rad
+  [42] hl_hy    = +0.275617 rad
+  [43] hr_hy    = +0.260894 rad
+  [44] arm_el0  = +1.333014 rad
+  [45] fl_kn    = -0.260479 rad
+  [46] fr_kn    = -0.287213 rad
+  [47] hl_kn    = -0.386926 rad
+  [48] hr_kn    = -0.370317 rad
+  [49] arm_el1  = +1.549324 rad
+  [50] arm_wr0  = +0.931160 rad
+  [51] arm_wr1  = -1.571375 rad
+  [52] arm_f1x  = -0.026827 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -0.610265 rad/s
+  [54] fl_hx    = -5.166987 rad/s
+  [55] fr_hx    = +4.044971 rad/s
+  [56] hl_hx    = -0.683263 rad/s
+  [57] hr_hx    = -0.159052 rad/s
+  [58] arm_sh1  = -0.408837 rad/s
+  [59] fl_hy    = +4.877473 rad/s
+  [60] fr_hy    = +5.920415 rad/s
+  [61] hl_hy    = +0.249367 rad/s
+  [62] hr_hy    = +0.459697 rad/s
+  [63] arm_el0  = +0.116836 rad/s
+  [64] fl_kn    = +0.748313 rad/s
+  [65] fr_kn    = +0.129269 rad/s
+  [66] hl_kn    = +2.001774 rad/s
+  [67] hr_kn    = +1.737155 rad/s
+  [68] arm_el1  = -0.847434 rad/s
+  [69] arm_wr0  = +0.845565 rad/s
+  [70] arm_wr1  = -0.525289 rad/s
+  [71] arm_f1x  = -0.157260 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.247934 raw action
+  [73] fr_hx    = -0.272970 raw action
+  [74] hl_hx    = -0.611608 raw action
+  [75] hr_hx    = +0.462119 raw action
+  [76] fl_hy    = +0.762860 raw action
+  [77] fr_hy    = +0.452821 raw action
+  [78] hl_hy    = +0.780800 raw action
+  [79] hr_hy    = +0.951648 raw action
+  [80] fl_kn    = -2.127483 raw action
+  [81] fr_kn    = -2.242941 raw action
+  [82] hl_kn    = +0.178567 raw action
+  [83] hr_kn    = -0.963005 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.172834 raw action
+  [01] fr_hx    = -0.587267 raw action
+  [02] hl_hx    = -0.368487 raw action
+  [03] hr_hx    = +0.648095 raw action
+  [04] fl_hy    = +0.596662 raw action
+  [05] fr_hy    = +0.366657 raw action
+  [06] hl_hy    = +0.691132 raw action
+  [07] hr_hy    = +0.682317 raw action
+  [08] fl_kn    = -2.550790 raw action
+  [09] fr_kn    = -2.339528 raw action
+  [10] hl_kn    = -0.402891 raw action
+  [11] hr_kn    = -0.885582 raw action
+===============================
+
+=== ReLIC update 9 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.4871717393398285, 0.04904858395457268, 0.6757505536079407]
+base_ang_vel       [ 3: 6] (rad/s): [1.0148571729660034, -0.5262232422828674, 0.09882818162441254]
+projected_gravity  [ 6: 9] (unit): [-0.06779750436544418, 0.014783693477511406, -0.9975898265838623]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.014991 rad
+  [35] fl_hx    = -0.140021 rad
+  [36] fr_hx    = +0.169480 rad
+  [37] hl_hx    = -0.008567 rad
+  [38] hr_hx    = +0.026240 rad
+  [39] arm_sh1  = -2.222453 rad
+  [40] fl_hy    = +0.340843 rad
+  [41] fr_hy    = +0.370254 rad
+  [42] hl_hy    = +0.270333 rad
+  [43] hr_hy    = +0.260829 rad
+  [44] arm_el0  = +1.331991 rad
+  [45] fl_kn    = -0.261438 rad
+  [46] fr_kn    = -0.307554 rad
+  [47] hl_kn    = -0.352108 rad
+  [48] hr_kn    = -0.342083 rad
+  [49] arm_el1  = +1.538751 rad
+  [50] arm_wr0  = +0.928959 rad
+  [51] arm_wr1  = -1.576133 rad
+  [52] arm_f1x  = -0.027030 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -0.720376 rad/s
+  [54] fl_hx    = -8.554555 rad/s
+  [55] fr_hx    = +1.697317 rad/s
+  [56] hl_hx    = -1.173746 rad/s
+  [57] hr_hx    = -0.586606 rad/s
+  [58] arm_sh1  = -0.819358 rad/s
+  [59] fl_hy    = +5.422413 rad/s
+  [60] fr_hy    = +4.354007 rad/s
+  [61] hl_hy    = -1.660018 rad/s
+  [62] hr_hy    = -0.903885 rad/s
+  [63] arm_el0  = -0.199239 rad/s
+  [64] fl_kn    = -1.512013 rad/s
+  [65] fr_kn    = -3.111740 rad/s
+  [66] hl_kn    = +3.726204 rad/s
+  [67] hr_kn    = +2.855348 rad/s
+  [68] arm_el1  = -0.203105 rad/s
+  [69] arm_wr0  = -1.401123 rad/s
+  [70] arm_wr1  = -0.329586 rad/s
+  [71] arm_f1x  = -0.044868 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.172834 raw action
+  [73] fr_hx    = -0.587267 raw action
+  [74] hl_hx    = -0.368487 raw action
+  [75] hr_hx    = +0.648095 raw action
+  [76] fl_hy    = +0.596662 raw action
+  [77] fr_hy    = +0.366657 raw action
+  [78] hl_hy    = +0.691132 raw action
+  [79] hr_hy    = +0.682317 raw action
+  [80] fl_kn    = -2.550790 raw action
+  [81] fr_kn    = -2.339528 raw action
+  [82] hl_kn    = -0.402891 raw action
+  [83] hr_kn    = -0.885582 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = +0.124262 raw action
+  [01] fr_hx    = -0.224152 raw action
+  [02] hl_hx    = +0.062383 raw action
+  [03] hr_hx    = +0.674659 raw action
+  [04] fl_hy    = +0.492389 raw action
+  [05] fr_hy    = +0.499020 raw action
+  [06] hl_hy    = +0.856911 raw action
+  [07] hr_hy    = +0.562532 raw action
+  [08] fl_kn    = -2.566309 raw action
+  [09] fr_kn    = -2.148489 raw action
+  [10] hl_kn    = -1.169472 raw action
+  [11] hr_kn    = -1.075999 raw action
+===============================
+
+=== ReLIC update 10 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.37886327505111694, 0.14143384993076324, 0.8026407361030579]
+base_ang_vel       [ 3: 6] (rad/s): [1.982245683670044, 0.9156209230422974, 0.28949302434921265]
+projected_gravity  [ 6: 9] (unit): [-0.0633813738822937, -0.009853052906692028, -0.9979408979415894]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.020087 rad
+  [35] fl_hx    = -0.270631 rad
+  [36] fr_hx    = +0.135666 rad
+  [37] hl_hx    = -0.044320 rad
+  [38] hr_hx    = +0.003868 rad
+  [39] arm_sh1  = -2.237505 rad
+  [40] fl_hy    = +0.387261 rad
+  [41] fr_hy    = +0.375470 rad
+  [42] hl_hy    = +0.218644 rad
+  [43] hr_hy    = +0.218890 rad
+  [44] arm_el0  = +1.322668 rad
+  [45] fl_kn    = -0.335628 rad
+  [46] fr_kn    = -0.368466 rad
+  [47] hl_kn    = -0.273060 rad
+  [48] hr_kn    = -0.276041 rad
+  [49] arm_el1  = +1.562993 rad
+  [50] arm_wr0  = +0.872330 rad
+  [51] arm_wr1  = -1.575768 rad
+  [52] arm_f1x  = -0.027234 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -0.118940 rad/s
+  [54] fl_hx    = -7.558681 rad/s
+  [55] fr_hx    = -5.037178 rad/s
+  [56] hl_hx    = -2.287952 rad/s
+  [57] hr_hx    = -1.346167 rad/s
+  [58] arm_sh1  = -0.802861 rad/s
+  [59] fl_hy    = +0.146845 rad/s
+  [60] fr_hy    = -3.499885 rad/s
+  [61] hl_hy    = -4.684959 rad/s
+  [62] hr_hy    = -4.318485 rad/s
+  [63] arm_el0  = -1.065256 rad/s
+  [64] fl_kn    = -7.372153 rad/s
+  [65] fr_kn    = -6.248811 rad/s
+  [66] hl_kn    = +6.518934 rad/s
+  [67] hr_kn    = +5.764673 rad/s
+  [68] arm_el1  = +2.442799 rad/s
+  [69] arm_wr0  = -4.382041 rad/s
+  [70] arm_wr1  = +0.404862 rad/s
+  [71] arm_f1x  = -0.133133 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = +0.124262 raw action
+  [73] fr_hx    = -0.224152 raw action
+  [74] hl_hx    = +0.062383 raw action
+  [75] hr_hx    = +0.674659 raw action
+  [76] fl_hy    = +0.492389 raw action
+  [77] fr_hy    = +0.499020 raw action
+  [78] hl_hy    = +0.856911 raw action
+  [79] hr_hy    = +0.562532 raw action
+  [80] fl_kn    = -2.566309 raw action
+  [81] fr_kn    = -2.148489 raw action
+  [82] hl_kn    = -1.169472 raw action
+  [83] hr_kn    = -1.075999 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.006957 raw action
+  [01] fr_hx    = +0.560692 raw action
+  [02] hl_hx    = -0.370766 raw action
+  [03] hr_hx    = +0.055953 raw action
+  [04] fl_hy    = +0.734348 raw action
+  [05] fr_hy    = +1.233877 raw action
+  [06] hl_hy    = +1.033661 raw action
+  [07] hr_hy    = +0.417853 raw action
+  [08] fl_kn    = -1.675476 raw action
+  [09] fr_kn    = -1.639444 raw action
+  [10] hl_kn    = -0.967435 raw action
+  [11] hr_kn    = -0.895055 raw action
+===============================
+
+=== ReLIC update 11 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.09806237369775772, 0.06631997972726822, 0.7652291059494019]
+base_ang_vel       [ 3: 6] (rad/s): [-0.10387348383665085, 2.677096128463745, -0.08230286091566086]
+projected_gravity  [ 6: 9] (unit): [-0.007147958967834711, -0.02733517624437809, -0.9996010661125183]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.001839 rad
+  [35] fl_hx    = -0.265986 rad
+  [36] fr_hx    = -0.063270 rad
+  [37] hl_hx    = -0.060512 rad
+  [38] hr_hx    = +0.006685 rad
+  [39] arm_sh1  = -2.238013 rad
+  [40] fl_hy    = +0.244392 rad
+  [41] fr_hy    = +0.153270 rad
+  [42] hl_hy    = +0.045074 rad
+  [43] hr_hy    = +0.051535 rad
+  [44] arm_el0  = +1.273804 rad
+  [45] fl_kn    = -0.568282 rad
+  [46] fr_kn    = -0.563936 rad
+  [47] hl_kn    = -0.055826 rad
+  [48] hr_kn    = -0.070153 rad
+  [49] arm_el1  = +1.607159 rad
+  [50] arm_wr0  = +0.761098 rad
+  [51] arm_wr1  = -1.549699 rad
+  [52] arm_f1x  = -0.027018 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.462030 rad/s
+  [54] fl_hx    = +7.013190 rad/s
+  [55] fr_hx    = -8.034537 rad/s
+  [56] hl_hx    = -0.466731 rad/s
+  [57] hr_hx    = +0.713730 rad/s
+  [58] arm_sh1  = +0.655519 rad/s
+  [59] fl_hy    = -10.149067 rad/s
+  [60] fr_hy    = -10.512931 rad/s
+  [61] hl_hy    = -6.345894 rad/s
+  [62] hr_hy    = -7.220444 rad/s
+  [63] arm_el0  = -2.128407 rad/s
+  [64] fl_kn    = -9.706431 rad/s
+  [65] fr_kn    = -8.288818 rad/s
+  [66] hl_kn    = +7.751650 rad/s
+  [67] hr_kn    = +8.522957 rad/s
+  [68] arm_el1  = -0.357433 rad/s
+  [69] arm_wr0  = -1.553880 rad/s
+  [70] arm_wr1  = +0.063140 rad/s
+  [71] arm_f1x  = +0.019579 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.006957 raw action
+  [73] fr_hx    = +0.560692 raw action
+  [74] hl_hx    = -0.370766 raw action
+  [75] hr_hx    = +0.055953 raw action
+  [76] fl_hy    = +0.734348 raw action
+  [77] fr_hy    = +1.233877 raw action
+  [78] hl_hy    = +1.033661 raw action
+  [79] hr_hy    = +0.417853 raw action
+  [80] fl_kn    = -1.675476 raw action
+  [81] fr_kn    = -1.639444 raw action
+  [82] hl_kn    = -0.967435 raw action
+  [83] hr_kn    = -0.895055 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -1.337152 raw action
+  [01] fr_hx    = +0.448599 raw action
+  [02] hl_hx    = -1.387400 raw action
+  [03] hr_hx    = -0.536338 raw action
+  [04] fl_hy    = +2.266325 raw action
+  [05] fr_hy    = +2.384635 raw action
+  [06] hl_hy    = -0.857238 raw action
+  [07] hr_hy    = +0.381340 raw action
+  [08] fl_kn    = +0.556991 raw action
+  [09] fr_kn    = -0.813648 raw action
+  [10] hl_kn    = -1.422143 raw action
+  [11] hr_kn    = -0.148314 raw action
+===============================
+
+=== ReLIC update 12 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.02477336674928665, -0.038285572081804276, 0.6368861794471741]
+base_ang_vel       [ 3: 6] (rad/s): [-0.999819815158844, 2.7762951850891113, -0.3950039744377136]
+projected_gravity  [ 6: 9] (unit): [0.026485588401556015, -0.021016426384449005, -0.999428391456604]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.009959 rad
+  [35] fl_hx    = -0.161813 rad
+  [36] fr_hx    = -0.144676 rad
+  [37] hl_hx    = -0.066080 rad
+  [38] hr_hx    = +0.033058 rad
+  [39] arm_sh1  = -2.225380 rad
+  [40] fl_hy    = +0.102113 rad
+  [41] fr_hy    = +0.016572 rad
+  [42] hl_hy    = -0.016120 rad
+  [43] hr_hy    = -0.031267 rad
+  [44] arm_el0  = +1.253631 rad
+  [45] fl_kn    = -0.628107 rad
+  [46] fr_kn    = -0.624896 rad
+  [47] hl_kn    = +0.009592 rad
+  [48] hr_kn    = +0.020815 rad
+  [49] arm_el1  = +1.574215 rad
+  [50] arm_wr0  = +0.792937 rad
+  [51] arm_wr1  = -1.556437 rad
+  [52] arm_f1x  = -0.027354 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.750324 rad/s
+  [54] fl_hx    = +10.130579 rad/s
+  [55] fr_hx    = -5.007365 rad/s
+  [56] hl_hx    = -1.792892 rad/s
+  [57] hr_hx    = +3.526954 rad/s
+  [58] arm_sh1  = +1.444829 rad/s
+  [59] fl_hy    = -12.814159 rad/s
+  [60] fr_hy    = -11.088402 rad/s
+  [61] hl_hy    = -4.126431 rad/s
+  [62] hr_hy    = -6.394669 rad/s
+  [63] arm_el0  = -1.524322 rad/s
+  [64] fl_kn    = -1.446909 rad/s
+  [65] fr_kn    = -2.067292 rad/s
+  [66] hl_kn    = +3.702412 rad/s
+  [67] hr_kn    = +6.336879 rad/s
+  [68] arm_el1  = -4.815512 rad/s
+  [69] arm_wr0  = +5.643293 rad/s
+  [70] arm_wr1  = -1.520797 rad/s
+  [71] arm_f1x  = -0.045599 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -1.337152 raw action
+  [73] fr_hx    = +0.448599 raw action
+  [74] hl_hx    = -1.387400 raw action
+  [75] hr_hx    = -0.536338 raw action
+  [76] fl_hy    = +2.266325 raw action
+  [77] fr_hy    = +2.384635 raw action
+  [78] hl_hy    = -0.857238 raw action
+  [79] hr_hy    = +0.381340 raw action
+  [80] fl_kn    = +0.556991 raw action
+  [81] fr_kn    = -0.813648 raw action
+  [82] hl_kn    = -1.422143 raw action
+  [83] hr_kn    = -0.148314 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -1.984533 raw action
+  [01] fr_hx    = +1.806841 raw action
+  [02] hl_hx    = -1.339432 raw action
+  [03] hr_hx    = -1.033859 raw action
+  [04] fl_hy    = +2.333987 raw action
+  [05] fr_hy    = +2.381440 raw action
+  [06] hl_hy    = -1.946482 raw action
+  [07] hr_hy    = +0.325516 raw action
+  [08] fl_kn    = +1.395327 raw action
+  [09] fr_kn    = +0.093432 raw action
+  [10] hl_kn    = -3.180293 raw action
+  [11] hr_kn    = -1.121171 raw action
+===============================
+
+=== ReLIC update 13 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.05838934704661369, -0.09889301657676697, 0.5816250443458557]
+base_ang_vel       [ 3: 6] (rad/s): [-0.898081362247467, 2.2467005252838135, -0.6161706447601318]
+projected_gravity  [ 6: 9] (unit): [0.06543571501970291, -0.003254818730056286, -0.9978517293930054]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.012142 rad
+  [35] fl_hx    = -0.013671 rad
+  [36] fr_hx    = -0.180252 rad
+  [37] hl_hx    = -0.128227 rad
+  [38] hr_hx    = +0.084210 rad
+  [39] arm_sh1  = -2.206648 rad
+  [40] fl_hy    = -0.066460 rad
+  [41] fr_hy    = -0.108125 rad
+  [42] hl_hy    = -0.056740 rad
+  [43] hr_hy    = -0.095494 rad
+  [44] arm_el0  = +1.244155 rad
+  [45] fl_kn    = -0.544441 rad
+  [46] fr_kn    = -0.570663 rad
+  [47] hl_kn    = -0.017844 rad
+  [48] hr_kn    = +0.083853 rad
+  [49] arm_el1  = +1.497726 rad
+  [50] arm_wr0  = +0.924750 rad
+  [51] arm_wr1  = -1.587346 rad
+  [52] arm_f1x  = -0.027342 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -0.473590 rad/s
+  [54] fl_hx    = +7.605760 rad/s
+  [55] fr_hx    = +0.060496 rad/s
+  [56] hl_hx    = -5.952407 rad/s
+  [57] hr_hx    = +2.488367 rad/s
+  [58] arm_sh1  = +1.112150 rad/s
+  [59] fl_hy    = -7.649996 rad/s
+  [60] fr_hy    = -4.577716 rad/s
+  [61] hl_hy    = -2.416372 rad/s
+  [62] hr_hy    = -1.441939 rad/s
+  [63] arm_el0  = +0.194505 rad/s
+  [64] fl_kn    = +8.447199 rad/s
+  [65] fr_kn    = +7.691518 rad/s
+  [66] hl_kn    = -6.309890 rad/s
+  [67] hr_kn    = +2.004555 rad/s
+  [68] arm_el1  = -3.360373 rad/s
+  [69] arm_wr0  = +11.103440 rad/s
+  [70] arm_wr1  = -1.971672 rad/s
+  [71] arm_f1x  = -0.093782 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -1.984533 raw action
+  [73] fr_hx    = +1.806841 raw action
+  [74] hl_hx    = -1.339432 raw action
+  [75] hr_hx    = -1.033859 raw action
+  [76] fl_hy    = +2.333987 raw action
+  [77] fr_hy    = +2.381440 raw action
+  [78] hl_hy    = -1.946482 raw action
+  [79] hr_hy    = +0.325516 raw action
+  [80] fl_kn    = +1.395327 raw action
+  [81] fr_kn    = +0.093432 raw action
+  [82] hl_kn    = -3.180293 raw action
+  [83] hr_kn    = -1.121171 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -1.541717 raw action
+  [01] fr_hx    = +1.127883 raw action
+  [02] hl_hx    = +0.437543 raw action
+  [03] hr_hx    = -1.411420 raw action
+  [04] fl_hy    = -0.410362 raw action
+  [05] fr_hy    = +0.907576 raw action
+  [06] hl_hy    = -0.294662 raw action
+  [07] hr_hy    = -1.237979 raw action
+  [08] fl_kn    = +0.952199 raw action
+  [09] fr_kn    = +0.513029 raw action
+  [10] hl_kn    = -2.812433 raw action
+  [11] hr_kn    = -1.747098 raw action
+===============================
+
+=== ReLIC update 14 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.23413220047950745, -0.0170761551707983, 0.5269204378128052]
+base_ang_vel       [ 3: 6] (rad/s): [0.8056773543357849, 0.9469954967498779, -0.4903870224952698]
+projected_gravity  [ 6: 9] (unit): [0.08743076771497726, -0.0030032340437173843, -0.9961662888526917]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.001126 rad
+  [35] fl_hx    = +0.031774 rad
+  [36] fr_hx    = -0.145333 rad
+  [37] hl_hx    = -0.247490 rad
+  [38] hr_hx    = +0.086386 rad
+  [39] arm_sh1  = -2.195453 rad
+  [40] fl_hy    = -0.110947 rad
+  [41] fr_hy    = -0.110357 rad
+  [42] hl_hy    = -0.095497 rad
+  [43] hr_hy    = -0.064660 rad
+  [44] arm_el0  = +1.269130 rad
+  [45] fl_kn    = -0.389733 rad
+  [46] fr_kn    = -0.423929 rad
+  [47] hl_kn    = -0.150405 rad
+  [48] hr_kn    = +0.013705 rad
+  [49] arm_el1  = +1.513906 rad
+  [50] arm_wr0  = +1.097113 rad
+  [51] arm_wr1  = -1.606666 rad
+  [52] arm_f1x  = -0.027402 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -0.952023 rad/s
+  [54] fl_hx    = +0.019965 rad/s
+  [55] fr_hx    = +3.971037 rad/s
+  [56] hl_hx    = -7.485875 rad/s
+  [57] hr_hx    = -1.710604 rad/s
+  [58] arm_sh1  = +0.697257 rad/s
+  [59] fl_hy    = +1.023417 rad/s
+  [60] fr_hy    = +3.390826 rad/s
+  [61] hl_hy    = -3.580747 rad/s
+  [62] hr_hy    = +3.698062 rad/s
+  [63] arm_el0  = +2.888761 rad/s
+  [64] fl_kn    = +9.377359 rad/s
+  [65] fr_kn    = +11.729156 rad/s
+  [66] hl_kn    = -9.971582 rad/s
+  [67] hr_kn    = -7.466613 rad/s
+  [68] arm_el1  = +5.047583 rad/s
+  [69] arm_wr0  = +10.207753 rad/s
+  [70] arm_wr1  = +0.419058 rad/s
+  [71] arm_f1x  = +0.058552 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -1.541717 raw action
+  [73] fr_hx    = +1.127883 raw action
+  [74] hl_hx    = +0.437543 raw action
+  [75] hr_hx    = -1.411420 raw action
+  [76] fl_hy    = -0.410362 raw action
+  [77] fr_hy    = +0.907576 raw action
+  [78] hl_hy    = -0.294662 raw action
+  [79] hr_hy    = -1.237979 raw action
+  [80] fl_kn    = +0.952199 raw action
+  [81] fr_kn    = +0.513029 raw action
+  [82] hl_kn    = -2.812433 raw action
+  [83] hr_kn    = -1.747098 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.903903 raw action
+  [01] fr_hx    = -0.529066 raw action
+  [02] hl_hx    = +0.657462 raw action
+  [03] hr_hx    = -0.083095 raw action
+  [04] fl_hy    = -0.435539 raw action
+  [05] fr_hy    = +0.003319 raw action
+  [06] hl_hy    = +1.337971 raw action
+  [07] hr_hy    = -1.668140 raw action
+  [08] fl_kn    = -0.097741 raw action
+  [09] fr_kn    = -0.009789 raw action
+  [10] hl_kn    = -2.225925 raw action
+  [11] hr_kn    = -1.695215 raw action
+===============================
+
+=== ReLIC update 15 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.36937057971954346, 0.12410159409046173, 0.2915002703666687]
+base_ang_vel       [ 3: 6] (rad/s): [-1.3368897438049316, -0.08100154250860214, -0.0769687220454216]
+projected_gravity  [ 6: 9] (unit): [0.09144517034292221, 0.0032439192291349173, -0.9958049654960632]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.030372 rad
+  [35] fl_hx    = -0.035469 rad
+  [36] fr_hx    = +0.032059 rad
+  [37] hl_hx    = -0.354876 rad
+  [38] hr_hx    = +0.005411 rad
+  [39] arm_sh1  = -2.198897 rad
+  [40] fl_hy    = -0.019061 rad
+  [41] fr_hy    = +0.024714 rad
+  [42] hl_hy    = -0.222547 rad
+  [43] hr_hy    = +0.026798 rad
+  [44] arm_el0  = +1.340468 rad
+  [45] fl_kn    = -0.093291 rad
+  [46] fr_kn    = -0.102113 rad
+  [47] hl_kn    = -0.397951 rad
+  [48] hr_kn    = -0.198687 rad
+  [49] arm_el1  = +1.620992 rad
+  [50] arm_wr0  = +1.177227 rad
+  [51] arm_wr1  = -1.557469 rad
+  [52] arm_f1x  = -0.028109 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.856087 rad/s
+  [54] fl_hx    = -5.778945 rad/s
+  [55] fr_hx    = +5.898221 rad/s
+  [56] hl_hx    = -0.652294 rad/s
+  [57] hr_hx    = -5.310568 rad/s
+  [58] arm_sh1  = +1.287696 rad/s
+  [59] fl_hy    = +5.199573 rad/s
+  [60] fr_hy    = +6.141521 rad/s
+  [61] hl_hy    = -4.814081 rad/s
+  [62] hr_hy    = +1.102753 rad/s
+  [63] arm_el0  = -0.587294 rad/s
+  [64] fl_kn    = +14.279818 rad/s
+  [65] fr_kn    = +16.595156 rad/s
+  [66] hl_kn    = -11.107944 rad/s
+  [67] hr_kn    = -8.970636 rad/s
+  [68] arm_el1  = +0.185737 rad/s
+  [69] arm_wr0  = -4.156468 rad/s
+  [70] arm_wr1  = +3.402294 rad/s
+  [71] arm_f1x  = -0.112032 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.903903 raw action
+  [73] fr_hx    = -0.529066 raw action
+  [74] hl_hx    = +0.657462 raw action
+  [75] hr_hx    = -0.083095 raw action
+  [76] fl_hy    = -0.435539 raw action
+  [77] fr_hy    = +0.003319 raw action
+  [78] hl_hy    = +1.337971 raw action
+  [79] hr_hy    = -1.668140 raw action
+  [80] fl_kn    = -0.097741 raw action
+  [81] fr_kn    = -0.009789 raw action
+  [82] hl_kn    = -2.225925 raw action
+  [83] hr_kn    = -1.695215 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -1.852176 raw action
+  [01] fr_hx    = +0.543504 raw action
+  [02] hl_hx    = -0.374293 raw action
+  [03] hr_hx    = -0.307601 raw action
+  [04] fl_hy    = -1.397802 raw action
+  [05] fr_hy    = +0.060833 raw action
+  [06] hl_hy    = +1.504790 raw action
+  [07] hr_hy    = +0.268863 raw action
+  [08] fl_kn    = +0.322769 raw action
+  [09] fr_kn    = -1.056696 raw action
+  [10] hl_kn    = -1.889831 raw action
+  [11] hr_kn    = -0.728283 raw action
+===============================
+
+=== ReLIC update 16 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.3698573112487793, 0.07459446787834167, 0.0475640594959259]
+base_ang_vel       [ 3: 6] (rad/s): [1.026601791381836, 0.09153992682695389, -0.08918953686952591]
+projected_gravity  [ 6: 9] (unit): [0.09451301395893097, 0.00529338326305151, -0.9955098032951355]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.031176 rad
+  [35] fl_hx    = -0.073568 rad
+  [36] fr_hx    = +0.063800 rad
+  [37] hl_hx    = -0.362144 rad
+  [38] hr_hx    = -0.097738 rad
+  [39] arm_sh1  = -2.187046 rad
+  [40] fl_hy    = +0.004064 rad
+  [41] fr_hy    = +0.067754 rad
+  [42] hl_hy    = -0.265679 rad
+  [43] hr_hy    = +0.019739 rad
+  [44] arm_el0  = +1.341403 rad
+  [45] fl_kn    = -0.056620 rad
+  [46] fr_kn    = -0.051108 rad
+  [47] hl_kn    = -0.543488 rad
+  [48] hr_kn    = -0.312841 rad
+  [49] arm_el1  = +1.581775 rad
+  [50] arm_wr0  = +1.080294 rad
+  [51] arm_wr1  = -1.552913 rad
+  [52] arm_f1x  = -0.031093 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.033184 rad/s
+  [54] fl_hx    = +3.423368 rad/s
+  [55] fr_hx    = -3.392049 rad/s
+  [56] hl_hx    = +0.380762 rad/s
+  [57] hr_hx    = -10.939671 rad/s
+  [58] arm_sh1  = +1.181408 rad/s
+  [59] fl_hy    = -1.990157 rad/s
+  [60] fr_hy    = -2.134796 rad/s
+  [61] hl_hy    = -0.983867 rad/s
+  [62] hr_hy    = -1.908261 rad/s
+  [63] arm_el0  = -0.386397 rad/s
+  [64] fl_kn    = -2.204544 rad/s
+  [65] fr_kn    = +0.809348 rad/s
+  [66] hl_kn    = -12.121202 rad/s
+  [67] hr_kn    = -8.543317 rad/s
+  [68] arm_el1  = -3.111534 rad/s
+  [69] arm_wr0  = -9.514373 rad/s
+  [70] arm_wr1  = -2.181983 rad/s
+  [71] arm_f1x  = -4.516822 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -1.852176 raw action
+  [73] fr_hx    = +0.543504 raw action
+  [74] hl_hx    = -0.374293 raw action
+  [75] hr_hx    = -0.307601 raw action
+  [76] fl_hy    = -1.397802 raw action
+  [77] fr_hy    = +0.060833 raw action
+  [78] hl_hy    = +1.504790 raw action
+  [79] hr_hy    = +0.268863 raw action
+  [80] fl_kn    = +0.322769 raw action
+  [81] fr_kn    = -1.056696 raw action
+  [82] hl_kn    = -1.889831 raw action
+  [83] hr_kn    = -0.728283 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -2.282635 raw action
+  [01] fr_hx    = +0.561969 raw action
+  [02] hl_hx    = -0.420095 raw action
+  [03] hr_hx    = +1.001023 raw action
+  [04] fl_hy    = +0.637463 raw action
+  [05] fr_hy    = +0.615510 raw action
+  [06] hl_hy    = +0.949007 raw action
+  [07] hr_hy    = +0.662740 raw action
+  [08] fl_kn    = +1.383410 raw action
+  [09] fr_kn    = -1.138481 raw action
+  [10] hl_kn    = -1.583020 raw action
+  [11] hr_kn    = -0.479591 raw action
+===============================
+
+=== ReLIC update 17 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.41337573528289795, 0.0015959610464051366, -0.07826773822307587]
+base_ang_vel       [ 3: 6] (rad/s): [-0.13053186237812042, -0.8755017518997192, 0.10950026661157608]
+projected_gravity  [ 6: 9] (unit): [0.08283749967813492, -0.003927872981876135, -0.9965553283691406]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.024281 rad
+  [35] fl_hx    = -0.051923 rad
+  [36] fr_hx    = +0.017625 rad
+  [37] hl_hx    = -0.289347 rad
+  [38] hr_hx    = -0.245926 rad
+  [39] arm_sh1  = -2.165009 rad
+  [40] fl_hy    = -0.000733 rad
+  [41] fr_hy    = +0.080712 rad
+  [42] hl_hy    = -0.228203 rad
+  [43] hr_hy    = -0.043071 rad
+  [44] arm_el0  = +1.336322 rad
+  [45] fl_kn    = -0.038867 rad
+  [46] fr_kn    = -0.103519 rad
+  [47] hl_kn    = -0.683575 rad
+  [48] hr_kn    = -0.401412 rad
+  [49] arm_el1  = +1.538988 rad
+  [50] arm_wr0  = +0.898690 rad
+  [51] arm_wr1  = -1.587099 rad
+  [52] arm_f1x  = +0.016520 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -1.148514 rad/s
+  [54] fl_hx    = -1.994900 rad/s
+  [55] fr_hx    = -0.723388 rad/s
+  [56] hl_hx    = +8.126551 rad/s
+  [57] hr_hx    = -8.535933 rad/s
+  [58] arm_sh1  = -0.082736 rad/s
+  [59] fl_hy    = +2.126297 rad/s
+  [60] fr_hy    = +2.926289 rad/s
+  [61] hl_hy    = +5.388582 rad/s
+  [62] hr_hy    = -5.404994 rad/s
+  [63] arm_el0  = +0.359424 rad/s
+  [64] fl_kn    = +3.687970 rad/s
+  [65] fr_kn    = -7.661925 rad/s
+  [66] hl_kn    = -6.318650 rad/s
+  [67] hr_kn    = -3.589130 rad/s
+  [68] arm_el1  = -2.802192 rad/s
+  [69] arm_wr0  = -12.346980 rad/s
+  [70] arm_wr1  = -2.596853 rad/s
+  [71] arm_f1x  = -0.377682 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -2.282635 raw action
+  [73] fr_hx    = +0.561969 raw action
+  [74] hl_hx    = -0.420095 raw action
+  [75] hr_hx    = +1.001023 raw action
+  [76] fl_hy    = +0.637463 raw action
+  [77] fr_hy    = +0.615510 raw action
+  [78] hl_hy    = +0.949007 raw action
+  [79] hr_hy    = +0.662740 raw action
+  [80] fl_kn    = +1.383410 raw action
+  [81] fr_kn    = -1.138481 raw action
+  [82] hl_kn    = -1.583020 raw action
+  [83] hr_kn    = -0.479591 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -2.442507 raw action
+  [01] fr_hx    = +0.312697 raw action
+  [02] hl_hx    = -1.497726 raw action
+  [03] hr_hx    = +1.419561 raw action
+  [04] fl_hy    = -0.412409 raw action
+  [05] fr_hy    = +0.836124 raw action
+  [06] hl_hy    = +0.418656 raw action
+  [07] hr_hy    = +1.184982 raw action
+  [08] fl_kn    = +0.402261 raw action
+  [09] fr_kn    = -2.775360 raw action
+  [10] hl_kn    = -3.580128 raw action
+  [11] hr_kn    = -0.103995 raw action
+===============================
+
+=== ReLIC update 18 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.4678400754928589, -0.09859132766723633, -0.039711352437734604]
+base_ang_vel       [ 3: 6] (rad/s): [-1.841068148612976, -1.7652993202209473, 0.31563377380371094]
+projected_gravity  [ 6: 9] (unit): [0.06012982875108719, 0.009867565706372261, -0.9981417059898376]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.016249 rad
+  [35] fl_hx    = -0.035963 rad
+  [36] fr_hx    = +0.044573 rad
+  [37] hl_hx    = -0.126827 rad
+  [38] hr_hx    = -0.321729 rad
+  [39] arm_sh1  = -2.181802 rad
+  [40] fl_hy    = +0.017923 rad
+  [41] fr_hy    = +0.134582 rad
+  [42] hl_hy    = -0.122155 rad
+  [43] hr_hy    = -0.114794 rad
+  [44] arm_el0  = +1.340588 rad
+  [45] fl_kn    = +0.002854 rad
+  [46] fr_kn    = -0.178524 rad
+  [47] hl_kn    = -0.667500 rad
+  [48] hr_kn    = -0.374136 rad
+  [49] arm_el1  = +1.537463 rad
+  [50] arm_wr0  = +0.706477 rad
+  [51] arm_wr1  = -1.595846 rad
+  [52] arm_f1x  = -0.015358 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -1.085178 rad/s
+  [54] fl_hx    = +3.749053 rad/s
+  [55] fr_hx    = +5.737560 rad/s
+  [56] hl_hx    = +11.732571 rad/s
+  [57] hr_hx    = -1.877126 rad/s
+  [58] arm_sh1  = -1.355050 rad/s
+  [59] fl_hy    = -0.421924 rad/s
+  [60] fr_hy    = +4.633358 rad/s
+  [61] hl_hy    = +8.617455 rad/s
+  [62] hr_hy    = -2.730996 rad/s
+  [63] arm_el0  = +0.376131 rad/s
+  [64] fl_kn    = +3.033496 rad/s
+  [65] fr_kn    = -8.749756 rad/s
+  [66] hl_kn    = +5.388490 rad/s
+  [67] hr_kn    = +5.745970 rad/s
+  [68] arm_el1  = +2.843877 rad/s
+  [69] arm_wr0  = -12.494193 rad/s
+  [70] arm_wr1  = +0.258157 rad/s
+  [71] arm_f1x  = +4.276399 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -2.442507 raw action
+  [73] fr_hx    = +0.312697 raw action
+  [74] hl_hx    = -1.497726 raw action
+  [75] hr_hx    = +1.419561 raw action
+  [76] fl_hy    = -0.412409 raw action
+  [77] fr_hy    = +0.836124 raw action
+  [78] hl_hy    = +0.418656 raw action
+  [79] hr_hy    = +1.184982 raw action
+  [80] fl_kn    = +0.402261 raw action
+  [81] fr_kn    = -2.775360 raw action
+  [82] hl_kn    = -3.580128 raw action
+  [83] hr_kn    = -0.103995 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -2.222348 raw action
+  [01] fr_hx    = -0.797160 raw action
+  [02] hl_hx    = -1.230209 raw action
+  [03] hr_hx    = +0.901000 raw action
+  [04] fl_hy    = +0.274853 raw action
+  [05] fr_hy    = +1.872859 raw action
+  [06] hl_hy    = +0.114851 raw action
+  [07] hr_hy    = +0.856760 raw action
+  [08] fl_kn    = +0.683805 raw action
+  [09] fr_kn    = -2.817987 raw action
+  [10] hl_kn    = -2.855234 raw action
+  [11] hr_kn    = +0.911207 raw action
+===============================
+
+=== ReLIC update 19 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.5460366010665894, -0.1828368753194809, 0.010993911884725094]
+base_ang_vel       [ 3: 6] (rad/s): [-1.4838457107543945, -2.1531529426574707, 0.33757108449935913]
+projected_gravity  [ 6: 9] (unit): [0.03499449044466019, 0.03225808963179588, -0.9988665580749512]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.016960 rad
+  [35] fl_hx    = -0.012612 rad
+  [36] fr_hx    = +0.112706 rad
+  [37] hl_hx    = +0.005797 rad
+  [38] hr_hx    = -0.315898 rad
+  [39] arm_sh1  = -2.202349 rad
+  [40] fl_hy    = +0.023374 rad
+  [41] fr_hy    = +0.207313 rad
+  [42] hl_hy    = -0.005340 rad
+  [43] hr_hy    = -0.119539 rad
+  [44] arm_el0  = +1.341707 rad
+  [45] fl_kn    = +0.051334 rad
+  [46] fr_kn    = -0.289849 rad
+  [47] hl_kn    = -0.610935 rad
+  [48] hr_kn    = -0.298348 rad
+  [49] arm_el1  = +1.595207 rad
+  [50] arm_wr0  = +0.614128 rad
+  [51] arm_wr1  = -1.572298 rad
+  [52] arm_f1x  = +0.050208 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -4.285987 rad/s
+  [54] fl_hx    = +0.321456 rad/s
+  [55] fr_hx    = +5.837146 rad/s
+  [56] hl_hx    = +9.050912 rad/s
+  [57] hr_hx    = +2.057400 rad/s
+  [58] arm_sh1  = -1.795379 rad/s
+  [59] fl_hy    = +1.284580 rad/s
+  [60] fr_hy    = +7.063098 rad/s
+  [61] hl_hy    = +10.522082 rad/s
+  [62] hr_hy    = +2.298381 rad/s
+  [63] arm_el0  = +0.051576 rad/s
+  [64] fl_kn    = +4.669267 rad/s
+  [65] fr_kn    = -10.500464 rad/s
+  [66] hl_kn    = +4.538940 rad/s
+  [67] hr_kn    = +7.002361 rad/s
+  [68] arm_el1  = +4.431112 rad/s
+  [69] arm_wr0  = -3.551648 rad/s
+  [70] arm_wr1  = +2.976245 rad/s
+  [71] arm_f1x  = +6.444493 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -2.222348 raw action
+  [73] fr_hx    = -0.797160 raw action
+  [74] hl_hx    = -1.230209 raw action
+  [75] hr_hx    = +0.901000 raw action
+  [76] fl_hy    = +0.274853 raw action
+  [77] fr_hy    = +1.872859 raw action
+  [78] hl_hy    = +0.114851 raw action
+  [79] hr_hy    = +0.856760 raw action
+  [80] fl_kn    = +0.683805 raw action
+  [81] fr_kn    = -2.817987 raw action
+  [82] hl_kn    = -2.855234 raw action
+  [83] hr_kn    = +0.911207 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -1.267909 raw action
+  [01] fr_hx    = -0.849778 raw action
+  [02] hl_hx    = -1.638672 raw action
+  [03] hr_hx    = +0.975481 raw action
+  [04] fl_hy    = +0.227213 raw action
+  [05] fr_hy    = +1.655106 raw action
+  [06] hl_hy    = -0.205084 raw action
+  [07] hr_hy    = +0.184074 raw action
+  [08] fl_kn    = -0.238077 raw action
+  [09] fr_kn    = -2.114988 raw action
+  [10] hl_kn    = -3.051024 raw action
+  [11] hr_kn    = +1.344743 raw action
+===============================
+
+=== ReLIC update 20 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.6018625497817993, -0.22598856687545776, -0.008281687274575233]
+base_ang_vel       [ 3: 6] (rad/s): [1.3629710674285889, -2.342735528945923, 0.5233221054077148]
+projected_gravity  [ 6: 9] (unit): [0.006975600961595774, 0.030564289540052414, -0.9995082020759583]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.087633 rad
+  [35] fl_hx    = -0.035636 rad
+  [36] fr_hx    = +0.150719 rad
+  [37] hl_hx    = +0.075199 rad
+  [38] hr_hx    = -0.292437 rad
+  [39] arm_sh1  = -2.217681 rad
+  [40] fl_hy    = +0.031890 rad
+  [41] fr_hy    = +0.306841 rad
+  [42] hl_hy    = +0.128404 rad
+  [43] hr_hy    = -0.069219 rad
+  [44] arm_el0  = +1.340292 rad
+  [45] fl_kn    = +0.105854 rad
+  [46] fr_kn    = -0.441969 rad
+  [47] hl_kn    = -0.555088 rad
+  [48] hr_kn    = -0.188764 rad
+  [49] arm_el1  = +1.594878 rad
+  [50] arm_wr0  = +0.633166 rad
+  [51] arm_wr1  = -1.536705 rad
+  [52] arm_f1x  = +0.161002 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -7.331165 rad/s
+  [54] fl_hx    = -2.865997 rad/s
+  [55] fr_hx    = +0.467544 rad/s
+  [56] hl_hx    = +2.345220 rad/s
+  [57] hr_hx    = +2.528420 rad/s
+  [58] arm_sh1  = -1.466523 rad/s
+  [59] fl_hy    = -0.155153 rad/s
+  [60] fr_hy    = +9.117703 rad/s
+  [61] hl_hy    = +10.797914 rad/s
+  [62] hr_hy    = +5.911516 rad/s
+  [63] arm_el0  = -0.291975 rad/s
+  [64] fl_kn    = +4.427080 rad/s
+  [65] fr_kn    = -13.762773 rad/s
+  [66] hl_kn    = +4.297463 rad/s
+  [67] hr_kn    = +10.257804 rad/s
+  [68] arm_el1  = -3.428245 rad/s
+  [69] arm_wr0  = +6.615128 rad/s
+  [70] arm_wr1  = +1.564360 rad/s
+  [71] arm_f1x  = +7.711630 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -1.267909 raw action
+  [73] fr_hx    = -0.849778 raw action
+  [74] hl_hx    = -1.638672 raw action
+  [75] hr_hx    = +0.975481 raw action
+  [76] fl_hy    = +0.227213 raw action
+  [77] fr_hy    = +1.655106 raw action
+  [78] hl_hy    = -0.205084 raw action
+  [79] hr_hy    = +0.184074 raw action
+  [80] fl_kn    = -0.238077 raw action
+  [81] fr_kn    = -2.114988 raw action
+  [82] hl_kn    = -3.051024 raw action
+  [83] hr_kn    = +1.344743 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.426177 raw action
+  [01] fr_hx    = -0.197799 raw action
+  [02] hl_hx    = -1.576923 raw action
+  [03] hr_hx    = +1.532179 raw action
+  [04] fl_hy    = +0.276272 raw action
+  [05] fr_hy    = +1.311848 raw action
+  [06] hl_hy    = -0.063707 raw action
+  [07] hr_hy    = -0.440516 raw action
+  [08] fl_kn    = -0.913041 raw action
+  [09] fr_kn    = -2.001626 raw action
+  [10] hl_kn    = -1.552259 raw action
+  [11] hr_kn    = +2.003643 raw action
+===============================
+
+=== ReLIC update 21 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.5842137336730957, -0.05490272492170334, -0.03183736279606819]
+base_ang_vel       [ 3: 6] (rad/s): [4.984009265899658, -1.9632608890533447, 1.2574810981750488]
+projected_gravity  [ 6: 9] (unit): [-0.02470068261027336, -0.025809191167354584, -0.9993615746498108]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.195897 rad
+  [35] fl_hx    = -0.110794 rad
+  [36] fr_hx    = +0.090997 rad
+  [37] hl_hx    = +0.043346 rad
+  [38] hr_hx    = -0.244262 rad
+  [39] arm_sh1  = -2.251326 rad
+  [40] fl_hy    = +0.024650 rad
+  [41] fr_hy    = +0.445815 rad
+  [42] hl_hy    = +0.276731 rad
+  [43] hr_hy    = +0.038474 rad
+  [44] arm_el0  = +1.333949 rad
+  [45] fl_kn    = +0.179693 rad
+  [46] fr_kn    = -0.639037 rad
+  [47] hl_kn    = -0.497932 rad
+  [48] hr_kn    = -0.009097 rad
+  [49] arm_el1  = +1.530104 rad
+  [50] arm_wr0  = +0.792846 rad
+  [51] arm_wr1  = -1.541782 rad
+  [52] arm_f1x  = +0.274852 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -5.948059 rad/s
+  [54] fl_hx    = -6.333054 rad/s
+  [55] fr_hx    = -6.977914 rad/s
+  [56] hl_hx    = -5.308133 rad/s
+  [57] hr_hx    = +5.138972 rad/s
+  [58] arm_sh1  = -0.951192 rad/s
+  [59] fl_hy    = -0.686883 rad/s
+  [60] fr_hy    = +8.535055 rad/s
+  [61] hl_hy    = +7.502677 rad/s
+  [62] hr_hy    = +7.659328 rad/s
+  [63] arm_el0  = -0.145010 rad/s
+  [64] fl_kn    = +3.935247 rad/s
+  [65] fr_kn    = -11.698380 rad/s
+  [66] hl_kn    = +3.385177 rad/s
+  [67] hr_kn    = +13.321012 rad/s
+  [68] arm_el1  = -3.873512 rad/s
+  [69] arm_wr0  = +14.409988 rad/s
+  [70] arm_wr1  = -2.139482 rad/s
+  [71] arm_f1x  = +3.584394 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.426177 raw action
+  [73] fr_hx    = -0.197799 raw action
+  [74] hl_hx    = -1.576923 raw action
+  [75] hr_hx    = +1.532179 raw action
+  [76] fl_hy    = +0.276272 raw action
+  [77] fr_hy    = +1.311848 raw action
+  [78] hl_hy    = -0.063707 raw action
+  [79] hr_hy    = -0.440516 raw action
+  [80] fl_kn    = -0.913041 raw action
+  [81] fr_kn    = -2.001626 raw action
+  [82] hl_kn    = -1.552259 raw action
+  [83] hr_kn    = +2.003643 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = +0.608832 raw action
+  [01] fr_hx    = +0.862979 raw action
+  [02] hl_hx    = -0.594931 raw action
+  [03] hr_hx    = +0.404546 raw action
+  [04] fl_hy    = +0.284888 raw action
+  [05] fr_hy    = +0.903864 raw action
+  [06] hl_hy    = +0.938189 raw action
+  [07] hr_hy    = -0.981978 raw action
+  [08] fl_kn    = -1.251867 raw action
+  [09] fr_kn    = -0.940788 raw action
+  [10] hl_kn    = -0.674797 raw action
+  [11] hr_kn    = +0.917889 raw action
+===============================
+
+=== ReLIC update 22 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.5269701480865479, -0.006707978434860706, -0.06920838356018066]
+base_ang_vel       [ 3: 6] (rad/s): [5.5149970054626465, -1.182766318321228, 1.7718358039855957]
+projected_gravity  [ 6: 9] (unit): [-0.048206526786088943, -0.10721581429243088, -0.993066668510437]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.256844 rad
+  [35] fl_hx    = -0.210830 rad
+  [36] fr_hx    = -0.056985 rad
+  [37] hl_hx    = -0.059527 rad
+  [38] hr_hx    = -0.157941 rad
+  [39] arm_sh1  = -2.251030 rad
+  [40] fl_hy    = +0.024002 rad
+  [41] fr_hy    = +0.536443 rad
+  [42] hl_hy    = +0.328945 rad
+  [43] hr_hy    = +0.145673 rad
+  [44] arm_el0  = +1.307775 rad
+  [45] fl_kn    = +0.127250 rad
+  [46] fr_kn    = -0.731811 rad
+  [47] hl_kn    = -0.395570 rad
+  [48] hr_kn    = +0.129968 rad
+  [49] arm_el1  = +1.507131 rad
+  [50] arm_wr0  = +1.023244 rad
+  [51] arm_wr1  = -1.599124 rad
+  [52] arm_f1x  = +0.247049 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -2.110035 rad/s
+  [54] fl_hx    = -7.412503 rad/s
+  [55] fr_hx    = -11.175857 rad/s
+  [56] hl_hx    = -6.158494 rad/s
+  [57] hr_hx    = -2.467628 rad/s
+  [58] arm_sh1  = -0.039181 rad/s
+  [59] fl_hy    = -0.713749 rad/s
+  [60] fr_hy    = +2.403889 rad/s
+  [61] hl_hy    = -0.523063 rad/s
+  [62] hr_hy    = +3.449646 rad/s
+  [63] arm_el0  = -1.706283 rad/s
+  [64] fl_kn    = -8.582379 rad/s
+  [65] fr_kn    = -2.850613 rad/s
+  [66] hl_kn    = +9.477264 rad/s
+  [67] hr_kn    = -0.509395 rad/s
+  [68] arm_el1  = +0.552709 rad/s
+  [69] arm_wr0  = +13.126016 rad/s
+  [70] arm_wr1  = -3.845347 rad/s
+  [71] arm_f1x  = -0.069730 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = +0.608832 raw action
+  [73] fr_hx    = +0.862979 raw action
+  [74] hl_hx    = -0.594931 raw action
+  [75] hr_hx    = +0.404546 raw action
+  [76] fl_hy    = +0.284888 raw action
+  [77] fr_hy    = +0.903864 raw action
+  [78] hl_hy    = +0.938189 raw action
+  [79] hr_hy    = -0.981978 raw action
+  [80] fl_kn    = -1.251867 raw action
+  [81] fr_kn    = -0.940788 raw action
+  [82] hl_kn    = -0.674797 raw action
+  [83] hr_kn    = +0.917889 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = +0.136565 raw action
+  [01] fr_hx    = +2.465979 raw action
+  [02] hl_hx    = -0.713659 raw action
+  [03] hr_hx    = +0.293544 raw action
+  [04] fl_hy    = +0.831109 raw action
+  [05] fr_hy    = +0.375145 raw action
+  [06] hl_hy    = +1.875265 raw action
+  [07] hr_hy    = -1.464515 raw action
+  [08] fl_kn    = -1.500952 raw action
+  [09] fr_kn    = +0.558790 raw action
+  [10] hl_kn    = -1.297534 raw action
+  [11] hr_kn    = +1.060180 raw action
+===============================
+
+=== ReLIC update 23 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.2917349636554718, 0.1325353980064392, 0.05604378134012222]
+base_ang_vel       [ 3: 6] (rad/s): [0.9043231010437012, -0.18827155232429504, 0.5094133615493774]
+projected_gravity  [ 6: 9] (unit): [-0.05833149328827858, -0.14534831047058105, -0.9876596331596375]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.233782 rad
+  [35] fl_hx    = -0.239563 rad
+  [36] fr_hx    = -0.165051 rad
+  [37] hl_hx    = -0.167892 rad
+  [38] hr_hx    = -0.238962 rad
+  [39] arm_sh1  = -2.231273 rad
+  [40] fl_hy    = -0.005780 rad
+  [41] fr_hy    = +0.492637 rad
+  [42] hl_hy    = +0.271210 rad
+  [43] hr_hy    = +0.139217 rad
+  [44] arm_el0  = +1.292004 rad
+  [45] fl_kn    = -0.043917 rad
+  [46] fr_kn    = -0.647218 rad
+  [47] hl_kn    = -0.213091 rad
+  [48] hr_kn    = +0.081759 rad
+  [49] arm_el1  = +1.569275 rad
+  [50] arm_wr0  = +1.087681 rad
+  [51] arm_wr1  = -1.613487 rad
+  [52] arm_f1x  = +0.138364 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +3.786553 rad/s
+  [54] fl_hx    = +1.656701 rad/s
+  [55] fr_hx    = -3.331226 rad/s
+  [56] hl_hx    = -7.010435 rad/s
+  [57] hr_hx    = -0.809732 rad/s
+  [58] arm_sh1  = +3.332509 rad/s
+  [59] fl_hy    = -2.745253 rad/s
+  [60] fr_hy    = -5.987998 rad/s
+  [61] hl_hy    = -7.227226 rad/s
+  [62] hr_hy    = -2.330933 rad/s
+  [63] arm_el0  = -0.141418 rad/s
+  [64] fl_kn    = -12.694592 rad/s
+  [65] fr_kn    = +10.084035 rad/s
+  [66] hl_kn    = +13.466845 rad/s
+  [67] hr_kn    = -2.310012 rad/s
+  [68] arm_el1  = +6.361135 rad/s
+  [69] arm_wr0  = -3.907665 rad/s
+  [70] arm_wr1  = +1.392830 rad/s
+  [71] arm_f1x  = -6.928554 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = +0.136565 raw action
+  [73] fr_hx    = +2.465979 raw action
+  [74] hl_hx    = -0.713659 raw action
+  [75] hr_hx    = +0.293544 raw action
+  [76] fl_hy    = +0.831109 raw action
+  [77] fr_hy    = +0.375145 raw action
+  [78] hl_hy    = +1.875265 raw action
+  [79] hr_hy    = -1.464515 raw action
+  [80] fl_kn    = -1.500952 raw action
+  [81] fr_kn    = +0.558790 raw action
+  [82] hl_kn    = -1.297534 raw action
+  [83] hr_kn    = +1.060180 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.741447 raw action
+  [01] fr_hx    = +0.786604 raw action
+  [02] hl_hx    = -1.133976 raw action
+  [03] hr_hx    = -0.372275 raw action
+  [04] fl_hy    = +1.117591 raw action
+  [05] fr_hy    = +0.685878 raw action
+  [06] hl_hy    = +2.465301 raw action
+  [07] hr_hy    = +0.368831 raw action
+  [08] fl_kn    = -1.158632 raw action
+  [09] fr_kn    = -0.874308 raw action
+  [10] hl_kn    = -1.718758 raw action
+  [11] hr_kn    = -0.223234 raw action
+===============================
+
+=== ReLIC update 24 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.2015860229730606, -0.13841667771339417, 0.17455708980560303]
+base_ang_vel       [ 3: 6] (rad/s): [-3.8787992000579834, 0.6104314923286438, -0.6295695304870605]
+projected_gravity  [ 6: 9] (unit): [-0.047813721001148224, -0.11311406642198563, -0.9924311637878418]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.124161 rad
+  [35] fl_hx    = -0.129815 rad
+  [36] fr_hx    = -0.116267 rad
+  [37] hl_hx    = -0.278909 rad
+  [38] hr_hx    = -0.191830 rad
+  [39] arm_sh1  = -2.207806 rad
+  [40] fl_hy    = -0.044232 rad
+  [41] fr_hy    = +0.347644 rad
+  [42] hl_hy    = +0.141880 rad
+  [43] hr_hy    = +0.023111 rad
+  [44] arm_el0  = +1.305155 rad
+  [45] fl_kn    = -0.296735 rad
+  [46] fr_kn    = -0.425479 rad
+  [47] hl_kn    = -0.025434 rad
+  [48] hr_kn    = +0.203647 rad
+  [49] arm_el1  = +1.658009 rad
+  [50] arm_wr0  = +0.902516 rad
+  [51] arm_wr1  = -1.551133 rad
+  [52] arm_f1x  = -0.019336 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +7.451546 rad/s
+  [54] fl_hx    = +8.486630 rad/s
+  [55] fr_hx    = +6.905115 rad/s
+  [56] hl_hx    = -4.219735 rad/s
+  [57] hr_hx    = +5.787168 rad/s
+  [58] arm_sh1  = +0.335334 rad/s
+  [59] fl_hy    = -0.614459 rad/s
+  [60] fr_hy    = -9.454600 rad/s
+  [61] hl_hy    = -3.500876 rad/s
+  [62] hr_hy    = -7.960151 rad/s
+  [63] arm_el0  = +1.251942 rad/s
+  [64] fl_kn    = -13.276504 rad/s
+  [65] fr_kn    = +14.081427 rad/s
+  [66] hl_kn    = +5.115171 rad/s
+  [67] hr_kn    = +9.661449 rad/s
+  [68] arm_el1  = +3.218060 rad/s
+  [69] arm_wr0  = -12.512196 rad/s
+  [70] arm_wr1  = +3.083950 rad/s
+  [71] arm_f1x  = -7.914188 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.741447 raw action
+  [73] fr_hx    = +0.786604 raw action
+  [74] hl_hx    = -1.133976 raw action
+  [75] hr_hx    = -0.372275 raw action
+  [76] fl_hy    = +1.117591 raw action
+  [77] fr_hy    = +0.685878 raw action
+  [78] hl_hy    = +2.465301 raw action
+  [79] hr_hy    = +0.368831 raw action
+  [80] fl_kn    = -1.158632 raw action
+  [81] fr_kn    = -0.874308 raw action
+  [82] hl_kn    = -1.718758 raw action
+  [83] hr_kn    = -0.223234 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -1.759536 raw action
+  [01] fr_hx    = -0.464347 raw action
+  [02] hl_hx    = -0.680573 raw action
+  [03] hr_hx    = -1.839561 raw action
+  [04] fl_hy    = +1.797696 raw action
+  [05] fr_hy    = +1.397907 raw action
+  [06] hl_hy    = +0.035487 raw action
+  [07] hr_hy    = +0.776871 raw action
+  [08] fl_kn    = +0.786817 raw action
+  [09] fr_kn    = -0.962021 raw action
+  [10] hl_kn    = -0.782149 raw action
+  [11] hr_kn    = -1.758533 raw action
+===============================
+
+=== ReLIC update 25 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.2457312047481537, -0.21982519328594208, 0.28536519408226013]
+base_ang_vel       [ 3: 6] (rad/s): [-5.763634204864502, 0.6925459504127502, -0.45251086354255676]
+projected_gravity  [ 6: 9] (unit): [-0.03582688793540001, -0.04465435817837715, -0.9983600378036499]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.002753 rad
+  [35] fl_hx    = +0.008859 rad
+  [36] fr_hx    = +0.014868 rad
+  [37] hl_hx    = -0.186008 rad
+  [38] hr_hx    = -0.106425 rad
+  [39] arm_sh1  = -2.216051 rad
+  [40] fl_hy    = -0.020985 rad
+  [41] fr_hy    = +0.188632 rad
+  [42] hl_hy    = +0.188079 rad
+  [43] hr_hy    = -0.012872 rad
+  [44] arm_el0  = +1.338647 rad
+  [45] fl_kn    = -0.485926 rad
+  [46] fr_kn    = -0.200655 rad
+  [47] hl_kn    = -0.073131 rad
+  [48] hr_kn    = +0.238768 rad
+  [49] arm_el1  = +1.605251 rad
+  [50] arm_wr0  = +0.752314 rad
+  [51] arm_wr1  = -1.523777 rad
+  [52] arm_f1x  = -0.027018 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +8.404601 rad/s
+  [54] fl_hx    = +8.050060 rad/s
+  [55] fr_hx    = +8.313253 rad/s
+  [56] hl_hx    = +6.648394 rad/s
+  [57] hr_hx    = +2.823877 rad/s
+  [58] arm_sh1  = -1.077671 rad/s
+  [59] fl_hy    = +4.735268 rad/s
+  [60] fr_hy    = -11.313635 rad/s
+  [61] hl_hy    = +1.807914 rad/s
+  [62] hr_hy    = +2.043220 rad/s
+  [63] arm_el0  = +1.869107 rad/s
+  [64] fl_kn    = -8.244548 rad/s
+  [65] fr_kn    = +16.329531 rad/s
+  [66] hl_kn    = -0.259632 rad/s
+  [67] hr_kn    = -5.034560 rad/s
+  [68] arm_el1  = -8.313008 rad/s
+  [69] arm_wr0  = -5.923744 rad/s
+  [70] arm_wr1  = -1.055731 rad/s
+  [71] arm_f1x  = -0.376878 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -1.759536 raw action
+  [73] fr_hx    = -0.464347 raw action
+  [74] hl_hx    = -0.680573 raw action
+  [75] hr_hx    = -1.839561 raw action
+  [76] fl_hy    = +1.797696 raw action
+  [77] fr_hy    = +1.397907 raw action
+  [78] hl_hy    = +0.035487 raw action
+  [79] hr_hy    = +0.776871 raw action
+  [80] fl_kn    = +0.786817 raw action
+  [81] fr_kn    = -0.962021 raw action
+  [82] hl_kn    = -0.782149 raw action
+  [83] hr_kn    = -1.758533 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -3.881597 raw action
+  [01] fr_hx    = +0.156163 raw action
+  [02] hl_hx    = -2.602641 raw action
+  [03] hr_hx    = -1.361577 raw action
+  [04] fl_hy    = +0.789013 raw action
+  [05] fr_hy    = +0.580008 raw action
+  [06] hl_hy    = -0.850861 raw action
+  [07] hr_hy    = +0.780655 raw action
+  [08] fl_kn    = +2.843771 raw action
+  [09] fr_kn    = -2.564470 raw action
+  [10] hl_kn    = +0.807799 raw action
+  [11] hr_kn    = -0.548888 raw action
+===============================
+
+=== ReLIC update 26 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.3068618178367615, -0.08621568232774734, 0.22286783158779144]
+base_ang_vel       [ 3: 6] (rad/s): [-3.1159400939941406, 0.6167046427726746, -0.4691159129142761]
+projected_gravity  [ 6: 9] (unit): [-0.02763400785624981, 0.00987531803548336, -0.9995694160461426]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.081097 rad
+  [35] fl_hx    = +0.066556 rad
+  [36] fr_hx    = +0.102470 rad
+  [37] hl_hx    = -0.140775 rad
+  [38] hr_hx    = -0.084072 rad
+  [39] arm_sh1  = -2.225270 rad
+  [40] fl_hy    = +0.037091 rad
+  [41] fr_hy    = +0.055813 rad
+  [42] hl_hy    = +0.177626 rad
+  [43] hr_hy    = +0.031017 rad
+  [44] arm_el0  = +1.343768 rad
+  [45] fl_kn    = -0.497239 rad
+  [46] fr_kn    = -0.012199 rad
+  [47] hl_kn    = -0.021503 rad
+  [48] hr_kn    = +0.109435 rad
+  [49] arm_el1  = +1.502684 rad
+  [50] arm_wr0  = +0.741211 rad
+  [51] arm_wr1  = -1.555853 rad
+  [52] arm_f1x  = -0.022428 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +3.869815 rad/s
+  [54] fl_hx    = +0.997925 rad/s
+  [55] fr_hx    = +5.458781 rad/s
+  [56] hl_hx    = +3.043100 rad/s
+  [57] hr_hx    = -0.699244 rad/s
+  [58] arm_sh1  = +0.478454 rad/s
+  [59] fl_hy    = +5.863914 rad/s
+  [60] fr_hy    = -11.210609 rad/s
+  [61] hl_hy    = -3.113542 rad/s
+  [62] hr_hy    = +5.067059 rad/s
+  [63] arm_el0  = +0.257377 rad/s
+  [64] fl_kn    = +4.779233 rad/s
+  [65] fr_kn    = +15.417601 rad/s
+  [66] hl_kn    = +6.153404 rad/s
+  [67] hr_kn    = -11.936069 rad/s
+  [68] arm_el1  = -5.262123 rad/s
+  [69] arm_wr0  = +3.257477 rad/s
+  [70] arm_wr1  = -4.047220 rad/s
+  [71] arm_f1x  = +2.634892 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -3.881597 raw action
+  [73] fr_hx    = +0.156163 raw action
+  [74] hl_hx    = -2.602641 raw action
+  [75] hr_hx    = -1.361577 raw action
+  [76] fl_hy    = +0.789013 raw action
+  [77] fr_hy    = +0.580008 raw action
+  [78] hl_hy    = -0.850861 raw action
+  [79] hr_hy    = +0.780655 raw action
+  [80] fl_kn    = +2.843771 raw action
+  [81] fr_kn    = -2.564470 raw action
+  [82] hl_kn    = +0.807799 raw action
+  [83] hr_kn    = -0.548888 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -3.404834 raw action
+  [01] fr_hx    = +1.694682 raw action
+  [02] hl_hx    = -2.347450 raw action
+  [03] hr_hx    = -1.631217 raw action
+  [04] fl_hy    = -1.660936 raw action
+  [05] fr_hy    = +0.649090 raw action
+  [06] hl_hy    = +0.238603 raw action
+  [07] hr_hy    = -0.176175 raw action
+  [08] fl_kn    = +2.054460 raw action
+  [09] fr_kn    = -0.614715 raw action
+  [10] hl_kn    = +1.000402 raw action
+  [11] hr_kn    = +0.129438 raw action
+===============================
+
+=== ReLIC update 27 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.29297325015068054, -0.012825867161154747, -0.028607165440917015]
+base_ang_vel       [ 3: 6] (rad/s): [2.2212607860565186, 1.3161579370498657, 0.041047487407922745]
+projected_gravity  [ 6: 9] (unit): [-0.014454033225774765, 0.00499927019700408, -0.9998830556869507]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.113193 rad
+  [35] fl_hx    = +0.000032 rad
+  [36] fr_hx    = +0.132896 rad
+  [37] hl_hx    = -0.176131 rad
+  [38] hr_hx    = -0.150305 rad
+  [39] arm_sh1  = -2.183454 rad
+  [40] fl_hy    = +0.139949 rad
+  [41] fr_hy    = -0.067040 rad
+  [42] hl_hy    = +0.116983 rad
+  [43] hr_hy    = +0.129547 rad
+  [44] arm_el0  = +1.334348 rad
+  [45] fl_kn    = -0.366931 rad
+  [46] fr_kn    = +0.062327 rad
+  [47] hl_kn    = +0.070616 rad
+  [48] hr_kn    = -0.106009 rad
+  [49] arm_el1  = +1.455907 rad
+  [50] arm_wr0  = +0.869718 rad
+  [51] arm_wr1  = -1.625923 rad
+  [52] arm_f1x  = -0.025005 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = +0.054977 rad/s
+  [54] fl_hx    = -8.191486 rad/s
+  [55] fr_hx    = +0.630419 rad/s
+  [56] hl_hx    = -3.942837 rad/s
+  [57] hr_hx    = -7.047142 rad/s
+  [58] arm_sh1  = +2.268147 rad/s
+  [59] fl_hy    = +6.184302 rad/s
+  [60] fr_hy    = -4.970954 rad/s
+  [61] hl_hy    = -2.484381 rad/s
+  [62] hr_hy    = +6.870286 rad/s
+  [63] arm_el0  = -1.833856 rad/s
+  [64] fl_kn    = +10.979157 rad/s
+  [65] fr_kn    = -5.149853 rad/s
+  [66] hl_kn    = +3.085106 rad/s
+  [67] hr_kn    = -12.567224 rad/s
+  [68] arm_el1  = -1.670949 rad/s
+  [69] arm_wr0  = +12.310540 rad/s
+  [70] arm_wr1  = -2.897321 rad/s
+  [71] arm_f1x  = +0.142832 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -3.404834 raw action
+  [73] fr_hx    = +1.694682 raw action
+  [74] hl_hx    = -2.347450 raw action
+  [75] hr_hx    = -1.631217 raw action
+  [76] fl_hy    = -1.660936 raw action
+  [77] fr_hy    = +0.649090 raw action
+  [78] hl_hy    = +0.238603 raw action
+  [79] hr_hy    = -0.176175 raw action
+  [80] fl_kn    = +2.054460 raw action
+  [81] fr_kn    = -0.614715 raw action
+  [82] hl_kn    = +1.000402 raw action
+  [83] hr_kn    = +0.129438 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.839042 raw action
+  [01] fr_hx    = +0.788485 raw action
+  [02] hl_hx    = +0.147477 raw action
+  [03] hr_hx    = -0.414066 raw action
+  [04] fl_hy    = -1.701693 raw action
+  [05] fr_hy    = +0.567896 raw action
+  [06] hl_hy    = +1.261999 raw action
+  [07] hr_hy    = -0.503092 raw action
+  [08] fl_kn    = +0.711562 raw action
+  [09] fr_kn    = +1.715124 raw action
+  [10] hl_kn    = +0.041113 raw action
+  [11] hr_kn    = -0.773925 raw action
+===============================
+
+=== ReLIC update 28 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.26220908761024475, 0.0462021678686142, 0.05537765845656395]
+base_ang_vel       [ 3: 6] (rad/s): [4.023401737213135, 1.6291788816452026, 0.43115565180778503]
+projected_gravity  [ 6: 9] (unit): [0.004016013815999031, -0.041763078421354294, -0.9991195201873779]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.101157 rad
+  [35] fl_hx    = -0.118454 rad
+  [36] fr_hx    = +0.147681 rad
+  [37] hl_hx    = -0.229629 rad
+  [38] hr_hx    = -0.243980 rad
+  [39] arm_sh1  = -2.166300 rad
+  [40] fl_hy    = +0.183673 rad
+  [41] fr_hy    = -0.106395 rad
+  [42] hl_hy    = +0.066845 rad
+  [43] hr_hy    = +0.205207 rad
+  [44] arm_el0  = +1.315749 rad
+  [45] fl_kn    = -0.193895 rad
+  [46] fr_kn    = -0.053473 rad
+  [47] hl_kn    = +0.130952 rad
+  [48] hr_kn    = -0.229830 rad
+  [49] arm_el1  = +1.493927 rad
+  [50] arm_wr0  = +1.046135 rad
+  [51] arm_wr1  = -1.634022 rad
+  [52] arm_f1x  = -0.026515 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -1.439268 rad/s
+  [54] fl_hx    = -10.658265 rad/s
+  [55] fr_hx    = +2.138128 rad/s
+  [56] hl_hx    = -4.677622 rad/s
+  [57] hr_hx    = -8.150251 rad/s
+  [58] arm_sh1  = +1.041384 rad/s
+  [59] fl_hy    = +0.876865 rad/s
+  [60] fr_hy    = -1.469306 rad/s
+  [61] hl_hy    = -4.934915 rad/s
+  [62] hr_hy    = +5.196571 rad/s
+  [63] arm_el0  = -1.616257 rad/s
+  [64] fl_kn    = +15.153870 rad/s
+  [65] fr_kn    = -10.440569 rad/s
+  [66] hl_kn    = +6.955486 rad/s
+  [67] hr_kn    = -8.265617 rad/s
+  [68] arm_el1  = +6.855546 rad/s
+  [69] arm_wr0  = +15.318379 rad/s
+  [70] arm_wr1  = +1.266061 rad/s
+  [71] arm_f1x  = +0.580913 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = -0.839042 raw action
+  [73] fr_hx    = +0.788485 raw action
+  [74] hl_hx    = +0.147477 raw action
+  [75] hr_hx    = -0.414066 raw action
+  [76] fl_hy    = -1.701693 raw action
+  [77] fr_hy    = +0.567896 raw action
+  [78] hl_hy    = +1.261999 raw action
+  [79] hr_hy    = -0.503092 raw action
+  [80] fl_kn    = +0.711562 raw action
+  [81] fr_kn    = +1.715124 raw action
+  [82] hl_kn    = +0.041113 raw action
+  [83] hr_kn    = -0.773925 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = +1.141104 raw action
+  [01] fr_hx    = +0.806064 raw action
+  [02] hl_hx    = +0.490126 raw action
+  [03] hr_hx    = -0.013491 raw action
+  [04] fl_hy    = -1.058537 raw action
+  [05] fr_hy    = +1.836917 raw action
+  [06] hl_hy    = +0.805165 raw action
+  [07] hr_hy    = -1.368965 raw action
+  [08] fl_kn    = -1.519644 raw action
+  [09] fr_kn    = +3.491827 raw action
+  [10] hl_kn    = -0.348378 raw action
+  [11] hr_kn    = -0.317310 raw action
+===============================
+
+=== ReLIC update 29 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.19724909961223602, 0.06184293329715729, 0.11440332233905792]
+base_ang_vel       [ 3: 6] (rad/s): [1.944315791130066, 2.1314897537231445, 0.7842451333999634]
+projected_gravity  [ 6: 9] (unit): [0.03330592066049576, -0.09114167094230652, -0.995280921459198]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = +0.067940 rad
+  [35] fl_hx    = -0.280112 rad
+  [36] fr_hx    = +0.212528 rad
+  [37] hl_hx    = -0.242753 rad
+  [38] hr_hx    = -0.331152 rad
+  [39] arm_sh1  = -2.161425 rad
+  [40] fl_hy    = +0.132703 rad
+  [41] fr_hy    = -0.105945 rad
+  [42] hl_hy    = +0.004159 rad
+  [43] hr_hy    = +0.234451 rad
+  [44] arm_el0  = +1.319009 rad
+  [45] fl_kn    = +0.084554 rad
+  [46] fr_kn    = -0.144153 rad
+  [47] hl_kn    = +0.217270 rad
+  [48] hr_kn    = -0.310252 rad
+  [49] arm_el1  = +1.620627 rad
+  [50] arm_wr0  = +1.203487 rad
+  [51] arm_wr1  = -1.560410 rad
+  [52] arm_f1x  = -0.025808 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -1.790500 rad/s
+  [54] fl_hx    = -8.681471 rad/s
+  [55] fr_hx    = +7.137630 rad/s
+  [56] hl_hx    = -0.548875 rad/s
+  [57] hr_hx    = -4.696451 rad/s
+  [58] arm_sh1  = -0.849972 rad/s
+  [59] fl_hy    = -6.655447 rad/s
+  [60] fr_hy    = +1.832134 rad/s
+  [61] hl_hy    = -4.108496 rad/s
+  [62] hr_hy    = -0.735725 rad/s
+  [63] arm_el0  = +0.745829 rad/s
+  [64] fl_kn    = +15.965895 rad/s
+  [65] fr_kn    = +0.621951 rad/s
+  [66] hl_kn    = +4.913348 rad/s
+  [67] hr_kn    = -3.080845 rad/s
+  [68] arm_el1  = +5.938371 rad/s
+  [69] arm_wr0  = +6.346254 rad/s
+  [70] arm_wr1  = +6.674434 rad/s
+  [71] arm_f1x  = +0.233965 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = +1.141104 raw action
+  [73] fr_hx    = +0.806064 raw action
+  [74] hl_hx    = +0.490126 raw action
+  [75] hr_hx    = -0.013491 raw action
+  [76] fl_hy    = -1.058537 raw action
+  [77] fr_hy    = +1.836917 raw action
+  [78] hl_hy    = +0.805165 raw action
+  [79] hr_hy    = -1.368965 raw action
+  [80] fl_kn    = -1.519644 raw action
+  [81] fr_kn    = +3.491827 raw action
+  [82] hl_kn    = -0.348378 raw action
+  [83] hr_kn    = -0.317310 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = +0.666706 raw action
+  [01] fr_hx    = +0.034870 raw action
+  [02] hl_hx    = -0.320596 raw action
+  [03] hr_hx    = +0.066086 raw action
+  [04] fl_hy    = -0.310333 raw action
+  [05] fr_hy    = +0.130366 raw action
+  [06] hl_hy    = +0.563319 raw action
+  [07] hr_hy    = -0.475668 raw action
+  [08] fl_kn    = -0.311276 raw action
+  [09] fr_kn    = +2.541301 raw action
+  [10] hl_kn    = -1.267611 raw action
+  [11] hr_kn    = +0.229181 raw action
+===============================
+
+=== ReLIC update 30 ===
+-- LocomotionPolicyCfg: base state --
+base_lin_vel       [ 0: 3] (m/s): [0.29473817348480225, -0.18335531651973724, 0.36713120341300964]
+base_ang_vel       [ 3: 6] (rad/s): [0.23043064773082733, 1.064318060874939, 0.07782751321792603]
+projected_gravity  [ 6: 9] (unit): [0.06867125630378723, -0.11932598054409027, -0.990477442741394]
+-- action-term insertion into the ReLIC input --
+base_velocity      [ 9:12] (vx, vy, yaw rad/s): [0.0, 0.0, 0.0]
+arm_joint_target   [12:19] (rad):
+  [12] arm_sh0  = -0.000942 rad
+  [13] arm_sh1  = -3.114827 rad
+  [14] arm_el0  = +3.133373 rad
+  [15] arm_el1  = +1.559898 rad
+  [16] arm_wr0  = -0.002241 rad
+  [17] arm_wr1  = -1.569777 rad
+  [18] arm_f1x  = -1.556664 rad
+leg_joint_command  [19:31]:
+  [19] fl_hx    = +0.000000 raw command
+  [20] fr_hx    = +0.000000 raw command
+  [21] hl_hx    = +0.000000 raw command
+  [22] hr_hx    = +0.000000 raw command
+  [23] fl_hy    = +0.000000 raw command
+  [24] fr_hy    = +0.000000 raw command
+  [25] hl_hy    = +0.000000 raw command
+  [26] hr_hy    = +0.000000 raw command
+  [27] fl_kn    = +0.000000 raw command
+  [28] fr_kn    = +0.000000 raw command
+  [29] hl_kn    = +0.000000 raw command
+  [30] hr_kn    = +0.000000 raw command
+base_pose          [31:34] (roll rad, pitch rad, height m): [0.0, 0.0, 0.550000011920929]
+-- LocomotionPolicyCfg: joint state and previous action --
+joint_pos_rel      [34:53] (rad):
+  [34] arm_sh0  = -0.015979 rad
+  [35] fl_hx    = -0.237542 rad
+  [36] fr_hx    = +0.402173 rad
+  [37] hl_hx    = -0.170148 rad
+  [38] hr_hx    = -0.322472 rad
+  [39] arm_sh1  = -2.202791 rad
+  [40] fl_hy    = +0.088062 rad
+  [41] fr_hy    = -0.050101 rad
+  [42] hl_hy    = +0.010583 rad
+  [43] hr_hy    = +0.120321 rad
+  [44] arm_el0  = +1.342633 rad
+  [45] fl_kn    = +0.073385 rad
+  [46] fr_kn    = -0.042639 rad
+  [47] hl_kn    = +0.120933 rad
+  [48] hr_kn    = -0.231588 rad
+  [49] arm_el1  = +1.626525 rad
+  [50] arm_wr0  = +1.126058 rad
+  [51] arm_wr1  = -1.442275 rad
+  [52] arm_f1x  = -0.027306 rad
+joint_vel_rel      [53:72] (rad/s):
+  [53] arm_sh0  = -3.825933 rad/s
+  [54] fl_hx    = +3.138425 rad/s
+  [55] fr_hx    = +1.860011 rad/s
+  [56] hl_hx    = +6.215004 rad/s
+  [57] hr_hx    = +4.906362 rad/s
+  [58] arm_sh1  = -0.850243 rad/s
+  [59] fl_hy    = -1.433468 rad/s
+  [60] fr_hy    = -1.901448 rad/s
+  [61] hl_hy    = +2.879401 rad/s
+  [62] hr_hy    = -7.178075 rad/s
+  [63] arm_el0  = -0.341444 rad/s
+  [64] fl_kn    = -3.486148 rad/s
+  [65] fr_kn    = +10.989337 rad/s
+  [66] hl_kn    = -8.408610 rad/s
+  [67] hr_kn    = +6.540477 rad/s
+  [68] arm_el1  = -3.513465 rad/s
+  [69] arm_wr0  = -10.830575 rad/s
+  [70] arm_wr1  = +1.195204 rad/s
+  [71] arm_f1x  = -0.702771 rad/s
+actions            [72:84] (previous raw leg action):
+  [72] fl_hx    = +0.666706 raw action
+  [73] fr_hx    = +0.034870 raw action
+  [74] hl_hx    = -0.320596 raw action
+  [75] hr_hx    = +0.066086 raw action
+  [76] fl_hy    = -0.310333 raw action
+  [77] fr_hy    = +0.130366 raw action
+  [78] hl_hy    = +0.563319 raw action
+  [79] hr_hy    = -0.475668 raw action
+  [80] fl_kn    = -0.311276 raw action
+  [81] fr_kn    = +2.541301 raw action
+  [82] hl_kn    = -1.267611 raw action
+  [83] hr_kn    = +0.229181 raw action
+-- ReLIC policy output --
+leg_actions         [ 0:12] (raw):
+  [00] fl_hx    = -0.792051 raw action
+  [01] fr_hx    = -0.532301 raw action
+  [02] hl_hx    = -0.280688 raw action
+  [03] hr_hx    = -2.127610 raw action
+  [04] fl_hy    = +0.891979 raw action
+  [05] fr_hy    = -0.060667 raw action
+  [06] hl_hy    = +1.246386 raw action
+  [07] hr_hy    = +1.744721 raw action
+  [08] fl_kn    = -0.560507 raw action
+  [09] fr_kn    = +0.400610 raw action
+  [10] hl_kn    = -1.400949 raw action
+  [11] hr_kn    = -0.049591 raw action
+===============================

@@ -8,6 +8,7 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import os
 
 from isaaclab.app import AppLauncher
 
@@ -19,22 +20,39 @@ parser.add_argument(
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(
-    "--object_id",
-    type=str,
+    "--video",
+    action="store_true",
+    default=False,
+    help="Export one rendered video of the zero-action rollout.",
+)
+parser.add_argument("--video_length", type=int, default=200, help="Number of rollout frames to export.")
+parser.add_argument(
+    "--video_fps",
+    type=int,
     default=None,
-    help="Optional catalog object id to force for all envs (e.g. chair_1).",
+    help="Output video FPS. Defaults to the environment control frequency.",
 )
 parser.add_argument(
-    "--pose_id",
+    "--video_folder",
     type=str,
     default=None,
-    help="Optional pose id to force for all envs (e.g. back, handle). Requires --object_id.",
+    help="Output folder for videos. Defaults to './logs/videos'.",
+)
+parser.add_argument(
+    "--video_name_prefix",
+    type=str,
+    default="",
+    help="Optional prefix for the exported video filename.",
 )
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
+
+# Cameras must be enabled before launching Isaac Sim for rgb-array recording.
+if args_cli.video:
+    args_cli.enable_cameras = True
 
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
@@ -47,105 +65,28 @@ import isaaclab_tasks  # noqa: F401
 import SuperQ_ALORE.tasks  # noqa: F401
 import torch
 from isaaclab_tasks.utils import parse_env_cfg
-from SuperQ_ALORE.assets.object_catalog import (
-    ARM_JOINT_NAMES_IN_ORDER,
-    OBJECT_CATALOG,
-    OBJECT_IDS,
-    POSE_IDS_BY_OBJECT,
-)
-from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
-from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import event as mdp_event
-from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management as mdp_object_management
+from isaaclab.utils.dict import print_dict
 
 
-def _apply_catalog_selection(env, object_id: str | None, pose_id: str | None) -> None:
-    """Optionally force all envs to one catalog (object, pose) selection."""
-    if object_id is None and pose_id is None:
-        return
-    if object_id is None or pose_id is None:
-        raise ValueError("Both --object_id and --pose_id must be provided together.")
-    if object_id not in OBJECT_IDS:
-        raise ValueError(f"Invalid --object_id='{object_id}'. Available: {list(OBJECT_IDS)}")
-    if pose_id not in POSE_IDS_BY_OBJECT[object_id]:
-        raise ValueError(
-            f"Invalid --pose_id='{pose_id}' for object '{object_id}'. "
-            f"Available: {list(POSE_IDS_BY_OBJECT[object_id])}"
-        )
+def _estimate_step_dt_from_cfg(env_cfg) -> float:
+    """Estimate the environment control period for a sensible default video FPS."""
+    sim_dt = float(getattr(getattr(env_cfg, "sim", None), "dt", 1.0 / 60.0))
+    decimation = int(getattr(env_cfg, "decimation", 1) or 1)
+    return sim_dt * decimation
 
-    # load objects and initialize the catalog
-    mdp_object_management.ensure_catalog_state(env)
 
-    # shape: (num_envs,) long tensor of the selected catalog object index for each env
-    env_ids = torch.arange(env.num_envs, dtype=torch.long, device=env.device)
+def _filename_component(value: str) -> str:
+    """Convert a user-supplied filename component to a portable form."""
+    return "".join(char if char.isalnum() or char in "-_" else "_" for char in value)
 
-    # look for the indices of the specified object and pose in the catalog, and set them as the active ones for all envs
-    obj_idx = OBJECT_IDS.index(object_id)
-    pose_idx = POSE_IDS_BY_OBJECT[object_id].index(pose_id)
-    pose_entry = OBJECT_CATALOG[obj_idx].poses[pose_idx]
 
-    env.active_object_indices[env_ids] = obj_idx
-    env.active_pose_indices[env_ids] = pose_idx
+def _build_video_name() -> str:
+    """Create a descriptive filename for the one zero-action rollout."""
+    parts = ["zero-agent"]
+    if args_cli.video_name_prefix:
+        parts.insert(0, _filename_component(args_cli.video_name_prefix))
+    return "-".join(parts)
 
-    # set the arm joint reference for all envs to the specified pose's joint positions, 
-    # so that the default zero action will hold the arm at the desired pose
-    ref = torch.tensor(
-        [pose_entry.joint_positions[name] for name in ARM_JOINT_NAMES_IN_ORDER],
-        dtype=torch.float32,
-        device=env.device,
-    )
-
-    # obtain the tensor of shape (num_envs, num_arm_joints) for the active arm joint reference
-    # by expanding the pose's joint positions to all envs
-    env.active_arm_joint_reference[env_ids] = ref.unsqueeze(0).expand(env.num_envs, -1)
-
-    # set the flag to indicate that the target assignment is ready, so that there will be no random target assignment in the event function 
-    # and the specified catalog selection will be used for all envs
-    env.target_assignment_ready[env_ids] = True
-
-    # obtain the active pose
-    origins = env.scene.env_origins[env_ids]
-    pose_pos = torch.tensor(pose_entry.position, dtype=torch.float32, device=env.device).unsqueeze(0)
-    pose_rot = torch.tensor(pose_entry.orientation, dtype=torch.float32, device=env.device).unsqueeze(0)
-    pose_pos = pose_pos.expand(env.num_envs, -1)
-    pose_rot = pose_rot.expand(env.num_envs, -1)
-
-    # the underground pose for non-active objects: same position for all envs, with a z value underground; and identity rotation
-    underground_pos = origins.clone()
-    underground_pos[:, 2] = -100.0
-    underground_rot = torch.zeros_like(pose_rot)
-    underground_rot[:, 0] = 1.0
-
-    # iterate through all the objects
-    for idx in range(len(OBJECT_CATALOG)):
-
-        # obtain the object entry from the scene
-        obj = env.scene[f"target_object_{idx}"]
-        state = obj.data.default_root_state[env_ids].clone()
-        state[:, 7:] = 0.0
-
-        # for specified active object, set it to its active pose
-        if idx == obj_idx:
-            state[:, 0:3] = origins + pose_pos
-            state[:, 3:7] = pose_rot
-
-        # for other non-active objects, set them to the underground pose
-        else:
-            state[:, 0:3] = underground_pos
-            state[:, 3:7] = underground_rot
-        obj.write_root_state_to_sim(state, env_ids=env_ids)
-
-    # set the arm joints corresponding to the active object and its active pose 
-    mdp_event.reset_joints_around_grasp_pose(
-        env=env,
-        env_ids=env_ids,
-        position_range=(0.0, 0.0),
-        velocity_range=(0.0, 0.0),
-        joint_position_ref={
-            # obtain the corresponding joint positions from the pose_entry
-            name: float(pose_entry.joint_positions[name])
-            for name in ARM_JOINT_NAMES_IN_ORDER
-        },
-    )
 
 def main():
     """Zero actions agent with Isaac Lab environment."""
@@ -153,20 +94,59 @@ def main():
     env_cfg = parse_env_cfg(
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
     )
+    if args_cli.video and args_cli.video_length <= 0:
+        raise ValueError(f"--video_length must be positive when --video is set, got {args_cli.video_length}.")
+
     # create environment
-    env = gym.make(args_cli.task, cfg=env_cfg)
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+
+    video_recorder = None
+    if args_cli.video:
+        video_folder = os.path.abspath(args_cli.video_folder or "./logs/videos")
+        os.makedirs(video_folder, exist_ok=True)
+        render_fps = (
+            int(args_cli.video_fps)
+            if args_cli.video_fps is not None and int(args_cli.video_fps) > 0
+            else max(1, int(round(1.0 / max(1.0e-4, _estimate_step_dt_from_cfg(env_cfg)))))
+        )
+        try:
+            if hasattr(env, "metadata") and isinstance(env.metadata, dict):
+                env.metadata["render_fps"] = render_fps
+            if hasattr(env, "unwrapped") and hasattr(env.unwrapped, "metadata") and isinstance(env.unwrapped.metadata, dict):
+                env.unwrapped.metadata["render_fps"] = render_fps
+        except Exception:
+            pass
+
+        video_kwargs = {
+            "video_folder": video_folder,
+            # Recording starts explicitly after the initial environment reset.
+            "step_trigger": lambda _step: False,
+            "video_length": args_cli.video_length,
+            "name_prefix": "",
+            "fps": render_fps,
+            "disable_logger": True,
+        }
+        print(f"[INFO] Video FPS set to: {render_fps}")
+        print(f"[INFO] Video output folder: {video_folder}")
+        print_dict(video_kwargs, nesting=4)
+        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+        video_recorder = env
 
     # print info (this is vectorized environment)
     print(f"[INFO]: Gym observation space: {env.observation_space}")
     print(f"[INFO]: Gym action space: {env.action_space}")
     # reset environment
     env.reset()
-    _apply_catalog_selection(env.unwrapped, args_cli.object_id, args_cli.pose_id)
 
-    dt = env.unwrapped.step_dt
+    if video_recorder is not None:
+        video_name = _build_video_name()
+        video_recorder.start_recording(video_name)
+        print(f"[INFO] Recording zero-action rollout: {video_name}.mp4")
+
     steps = env.unwrapped.max_episode_length
 
     timestep = 0
+    recorded_steps = 0
     
     while simulation_app.is_running():
         # run everything in inference mode
@@ -191,8 +171,19 @@ def main():
 
             timestep += 1
             timestep = timestep % steps
+            recorded_steps += 1
+
+            if (
+                video_recorder is not None
+                and video_recorder.recording
+                and recorded_steps >= args_cli.video_length
+            ):
+                video_recorder.stop_recording()
+                print(f"[INFO] Video export completed after {recorded_steps} frames.")
 
     # close the simulator
+    if video_recorder is not None and video_recorder.recording:
+        video_recorder.stop_recording()
     env.close()
 
 

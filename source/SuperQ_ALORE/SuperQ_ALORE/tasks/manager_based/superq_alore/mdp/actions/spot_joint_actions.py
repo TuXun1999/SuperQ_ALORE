@@ -5,6 +5,7 @@ from __future__ import annotations
 import torch
 from typing import TYPE_CHECKING
 import os
+from pathlib import Path
 from isaaclab.utils.io.torchscript import load_torchscript_model
 
 from isaaclab.envs.mdp.actions import JointAction
@@ -15,6 +16,25 @@ if TYPE_CHECKING:
     from . import spot_actions_cfg
 from SuperQ_ALORE.assets.spot.constants import GRASP_POSE_1_JOINT_POS
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene import ARM_JOINT_NAMES_IN_ORDER, OBJECT_TELEOPERATION_INFO
+
+
+# Articulation-native order used by the 19-D ReLIC joint-state observations.
+_RELIC_OBSERVATION_JOINT_NAMES = (
+    "arm_sh0",
+    "fl_hx", "fr_hx", "hl_hx", "hr_hx",
+    "arm_sh1",
+    "fl_hy", "fr_hy", "hl_hy", "hr_hy",
+    "arm_el0",
+    "fl_kn", "fr_kn", "hl_kn", "hr_kn",
+    "arm_el1", "arm_wr0", "arm_wr1", "arm_f1x",
+)
+_RELIC_LEG_ACTION_JOINT_NAMES = (
+    "fl_hx", "fr_hx", "hl_hx", "hr_hx",
+    "fl_hy", "fr_hy", "hl_hy", "hr_hy",
+    "fl_kn", "fr_kn", "hl_kn", "hr_kn",
+)
+
+
 # Input: high-level controller action
 # Output: process it
 # into low-level joint control actions
@@ -320,6 +340,8 @@ class MixedPDArmMultiLegJointPositionActionTele(JointAction):
         # Low-level update cadence in sim steps.
         self._low_level_update_decimation = max(1, int(self.cfg.low_level_update_decimation))
         self._low_level_step_counter = 0
+        self._policy_env_obs_dump_path = Path.cwd() / "relic_policy_env_obs.txt"
+        self._policy_env_obs_dump_count = 0
 
     def _update_low_level_leg_actions(self):
         """Run low-level locomotion policy using the most recent latched high-level command."""
@@ -348,7 +370,52 @@ class MixedPDArmMultiLegJointPositionActionTele(JointAction):
                 dim=1,
             )
 
+            # Append environment 0's exact 84-D ReLIC input.  The five
+            # LocomotionPolicyCfg terms retain their original order; velocity
+            # and the 22-D command are inserted by this action term.
+            obs = policy_env_obs[0].detach().cpu().tolist()
+            joint_pos_lines = "\n".join(
+                f"  [{34 + index:02d}] {name:<8} = {value:+.6f} rad"
+                for index, (name, value) in enumerate(
+                    zip(_RELIC_OBSERVATION_JOINT_NAMES, obs[34:53])
+                )
+            )
+            joint_vel_lines = "\n".join(
+                f"  [{53 + index:02d}] {name:<8} = {value:+.6f} rad/s"
+                for index, (name, value) in enumerate(
+                    zip(_RELIC_OBSERVATION_JOINT_NAMES, obs[53:72])
+                )
+            )
+
             leg_actions = self._locomotion_policy(policy_env_obs)
+            raw_leg_output = leg_actions[0].detach().cpu().tolist()
+            leg_output_lines = "\n".join(
+                f"  [{index:02d}] {name:<8} = {value:+.6f} raw action"
+                for index, (name, value) in enumerate(
+                    zip(_RELIC_LEG_ACTION_JOINT_NAMES, raw_leg_output)
+                )
+            )
+            self._policy_env_obs_dump_count += 1
+            with self._policy_env_obs_dump_path.open("a", encoding="utf-8") as dump_file:
+                dump_file.write(
+                    f"\n=== ReLIC policy_env_obs[0], update {self._policy_env_obs_dump_count} (84-D) ===\n"
+                    f"base_lin_vel       [ 0: 3] (3): {obs[0:3]}\n"
+                    f"base_ang_vel       [ 3: 6] (3): {obs[3:6]}\n"
+                    f"projected_gravity  [ 6: 9] (3): {obs[6:9]}\n"
+                    "-- injected ReLIC command --\n"
+                    f"base_velocity      [ 9:12] (3): {obs[9:12]}\n"
+                    f"arm_joint_target   [12:19] (7): {obs[12:19]}\n"
+                    f"leg_joint_command  [19:31] (12): {obs[19:31]}\n"
+                    f"base_pose          [31:34] (3): {obs[31:34]}\n"
+                    "-- LocomotionPolicyCfg joint_pos_rel [34:53] --\n"
+                    f"{joint_pos_lines}\n"
+                    "-- LocomotionPolicyCfg joint_vel_rel [53:72] --\n"
+                    f"{joint_vel_lines}\n"
+                    f"actions            [72:84] (12): {obs[72:84]}\n"
+                    "-- ReLIC policy output (raw leg action) --\n"
+                    f"{leg_output_lines}\n"
+                    "====================================================\n"
+                )
             # print("=== Test leg actions ===")
             
         self._raw_actions[:] = leg_actions

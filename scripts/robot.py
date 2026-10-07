@@ -67,7 +67,7 @@ from bosdyn.client.robot_state import RobotStateStreamingClient
 import torch
 from PIL import Image
 
-from constants import DEFAULT_K_Q_P, DEFAULT_K_QD_P, DOF
+from constants import DEFAULT_K_Q_P, DEFAULT_K_QD_P, DOF, ORDERED_DOF_NAMES
 from joint_api_helper import JointAPIInterface
 
 from SuperQ_ALORE.assets.spot.constants import SPOT_DEFAULT_JOINT_POS
@@ -89,6 +89,36 @@ ROTATION_ANGLE = {
 # Hyperparameters for RL for SPOT
 DEFAULT_X = 2.0
 DEFAULT_ANGLE = np.pi
+
+# IsaacLab evaluates ReLIC at 100 Hz: 200 Hz physics with a low-level
+# decimation of two.  Preserve that cadence on the physical robot.
+RELIC_CONTROL_PERIOD_S = 0.010
+RELIC_LEG_ACTION_SCALE = 0.2
+RELIC_ACTION_DIM = 12
+RELIC_ARM_ACTION_DIM = 7
+RELIC_LEG_ACTION_DIM = 12
+RELIC_BASE_HEIGHT_COMMAND = 0.55
+
+# Names and ordering used by the pretrained ReLIC policy.  The 19-D state
+# fields use IsaacLab's articulation order, whereas ReLIC's 12-D output is
+# grouped by joint type (four hx, four hy, then four knees).
+RELIC_OBSERVATION_JOINT_NAMES = (
+    "arm_sh0",
+    "fl_hx", "fr_hx", "hl_hx", "hr_hx",
+    "arm_sh1",
+    "fl_hy", "fr_hy", "hl_hy", "hr_hy",
+    "arm_el0",
+    "fl_kn", "fr_kn", "hl_kn", "hr_kn",
+    "arm_el1", "arm_wr0", "arm_wr1", "arm_f1x",
+)
+RELIC_ARM_JOINT_NAMES = (
+    "arm_sh0", "arm_sh1", "arm_el0", "arm_el1", "arm_wr0", "arm_wr1", "arm_f1x",
+)
+RELIC_LEG_ACTION_JOINT_NAMES = (
+    "fl_hx", "fr_hx", "hl_hx", "hr_hx",
+    "fl_hy", "fr_hy", "hl_hy", "hr_hy",
+    "fl_kn", "fr_kn", "hl_kn", "hr_kn",
+)
 
 """
 Helper functions
@@ -183,6 +213,17 @@ class SPOT:
         # Handle sim-real gap
         self.real2sim_mapped = False
         self.sim2real_mapped = False
+        self.state_thread = None
+        self.activate_thread = None
+
+        # State streaming may run in a dry run, but moving hardware through
+        # joint control must be an explicit choice at the command line.
+        self.enable_joint_commands = getattr(options, "enable_joint_commands", False)
+        if not self.enable_joint_commands:
+            self.robot.logger.warning(
+                "ReLIC joint command transmission is disabled. "
+                "Use --enable-joint-commands only after verifying the dry run."
+            )
     """Section I: Fundamental functionalities"""
     def estop(self):
         # Emergency stop handling => Self-right the robot
@@ -1032,19 +1073,43 @@ class SPOT:
 
     """Extra session: RL"""
     def joint_level_control_start(self):
+        if self.state_thread is not None:
+            return
+
         self.state_thread = Thread(target=self.joint_api_interface.handle_state_streaming,
                                   args=(self.robot_state_streaming_client,))
         self.state_thread.start()
 
-        # Activate joint control mode
-        self.activate_thread = Thread(target=self.joint_api_interface.activate, args=(self.command_client,))
-        self.activate_thread.start()
+        # Joint-control activation is not needed to collect observations in a
+        # dry run, and changes the robot's control mode, so only do it for an
+        # explicitly enabled live test.
+        if self.enable_joint_commands:
+            self.activate_thread = Thread(
+                target=self.joint_api_interface.activate, args=(self.command_client,)
+            )
+            self.activate_thread.start()
+
     def joint_level_control_stop(self):
         self.joint_api_interface.set_should_stop(True)
         if self.state_thread:
             self.state_thread.join()
         if self.activate_thread:
             self.activate_thread.join()
+
+    def get_current_arm_joint_positions(self):
+        """Return the current seven arm positions in ReLIC command order."""
+        state, _ = self.joint_api_interface.get_latest_state_with_receive_time()
+        positions = torch.tensor(state.joint_states.position, dtype=torch.float32)
+        arm_joint_ids = [
+            DOF.A0_SH0,
+            DOF.A0_SH1,
+            DOF.A0_EL0,
+            DOF.A0_EL1,
+            DOF.A0_WR0,
+            DOF.A0_WR1,
+            DOF.A0_F1X,
+        ]
+        return positions[arm_joint_ids]
     def ensure_sim2real_mapping(self):
         # [1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 14]
         # [0, 5, 10, 15, 16, 17, 18]
@@ -1152,10 +1217,18 @@ class SPOT:
         return vec
         
         
-    def get_ReLIC_obs(self):
-        # Obtain the current streaming states of the robot
-        curr_pose, curr_vel, curr_load = self.joint_api_interface.get_latest_pos_vel_and_load_state()
-        curr_kinematic_state = self.joint_api_interface.get_latest_kinematic_state()
+    def get_ReLIC_obs(self, return_joint_sample_receive_time=False):
+        """Build a ReLIC observation from one streamed robot-state snapshot.
+
+        When requested, also return the local monotonic timestamp at which the
+        state containing the joint angles arrived from the robot.
+        """
+        # Obtain the joint and kinematic data from the same streamed state. This
+        # also provides the timestamp needed to measure joint-sample freshness.
+        state, joint_sample_receive_time = self.joint_api_interface.get_latest_state_with_receive_time()
+        curr_pose = state.joint_states.position
+        curr_vel = state.joint_states.velocity
+        curr_kinematic_state = state.kinematic_state
 
         # Find the transformation between vision & body frame
         vision_T_body = bdSE3Pose.from_proto(curr_kinematic_state.vision_tform_body)
@@ -1176,44 +1249,53 @@ class SPOT:
                 curr_body_velocity_vision.angular.z),
             dtype=torch.float32)
         
-        # Part 2: Current projected_gravity (directly use the gravity vector in body frame)
-        projected_gravity = torch.tensor([0, 0, -1.0], dtype=torch.float32)
+        # Part 2: Project world/vision gravity into the body frame.  This
+        # matches IsaacLab's projected_gravity observation even when Spot is
+        # slightly pitched or rolled.
+        projected_gravity = torch.tensor(
+            body_T_vision.rot.transform_point(0.0, 0.0, -1.0), dtype=torch.float32
+        )
         
         # Part 3: Current joint positions & velocities
         joint_pos_default = torch.tensor(curr_pose).clone()
         joint_pos_default = self.build_joint_pos_default(joint_pos_default)
         joint_pos_default = self.real2sim_reorder(joint_pos_default)
         
-        curr_pose = torch.tensor(curr_pose)
-        curr_vel = torch.tensor(curr_vel)
+        curr_pose = torch.tensor(curr_pose, dtype=torch.float32)
+        curr_vel = torch.tensor(curr_vel, dtype=torch.float32)
         joint_pos_rel = self.real2sim_reorder(curr_pose) - joint_pos_default
         joint_vel_rel = self.real2sim_reorder(curr_vel) # zero velocities by default
         
-        return torch.cat([curr_body_lin_vel, curr_body_ang_vel, projected_gravity, joint_pos_rel, joint_vel_rel], dim=0)
+        obs = torch.cat(
+            [curr_body_lin_vel, curr_body_ang_vel, projected_gravity, joint_pos_rel, joint_vel_rel], dim=0
+        )
+        if return_joint_sample_receive_time:
+            return obs, joint_sample_receive_time
+        return obs
 
     def check_joint_limits(self, target_cmd_poses):
         """Final guard to make sure that the joints are acceptable"""
-        # Manually measured limits for each joint of SPOT
+        # Position limits from assets/spot/spot_with_arm.urdf.
         joint_limits = {
-            "fl_hx": (DOF.FL_HX, -0.79, 0.79),
-            "fr_hx": (DOF.FR_HX, -0.79, 0.79),
-            "hl_hx": (DOF.HL_HX, -0.79, 0.79),
-            "hr_hx": (DOF.HR_HX, -0.79, 0.79),
-            "fl_hy": (DOF.FL_HY, -0.9, 0.9),
-            "fr_hy": (DOF.FR_HY, -0.9, 0.9),
-            "hl_hy": (DOF.HL_HY, -0.9, 0.9),
-            "hr_hy": (DOF.HR_HY, -0.9, 0.9),
-            "fl_kn": (DOF.FL_KN, -2.35, -0.25),
-            "fr_kn": (DOF.FR_KN, -2.35, -0.25),
-            "hl_kn": (DOF.HL_KN, -2.35, -0.25),
-            "hr_kn": (DOF.HR_KN, -2.35, -0.25),
-            "a0_sh0": (DOF.A0_SH0, -1.57, 1.57),
-            "a0_sh1": (DOF.A0_SH1, -2, 0.52),
-            "a0_el0": (DOF.A0_EL0, 0, 3.14),
-            "a0_el1": (DOF.A0_EL1, -2.79, 2.79),
-            "a0_wr0": (DOF.A0_WR0, -1.83, 1.83),
-            "a0_wr1": (DOF.A0_WR1, -2.88, 2.88),
-            "a0_f1x": (DOF.A0_F1X, -1.2, 0.0),
+            "fl_hx": (DOF.FL_HX, -0.785398, 0.785398),
+            "fr_hx": (DOF.FR_HX, -0.785398, 0.785398),
+            "hl_hx": (DOF.HL_HX, -0.785398, 0.785398),
+            "hr_hx": (DOF.HR_HX, -0.785398, 0.785398),
+            "fl_hy": (DOF.FL_HY, -0.898845, 2.295108),
+            "fr_hy": (DOF.FR_HY, -0.898845, 2.295108),
+            "hl_hy": (DOF.HL_HY, -0.898845, 2.295108),
+            "hr_hy": (DOF.HR_HY, -0.898845, 2.295108),
+            "fl_kn": (DOF.FL_KN, -2.7929, -0.2471),
+            "fr_kn": (DOF.FR_KN, -2.7929, -0.2471),
+            "hl_kn": (DOF.HL_KN, -2.7929, -0.2471),
+            "hr_kn": (DOF.HR_KN, -2.7929, -0.2471),
+            "arm_sh0": (DOF.A0_SH0, -2.61799, 3.14159),
+            "arm_sh1": (DOF.A0_SH1, -3.14159, 0.523599),
+            "arm_el0": (DOF.A0_EL0, 0.0, 3.14159),
+            "arm_el1": (DOF.A0_EL1, -2.792530, 2.792530),
+            "arm_wr0": (DOF.A0_WR0, -1.8326, 1.8326),
+            "arm_wr1": (DOF.A0_WR1, -2.87989, 2.87979),
+            "arm_f1x": (DOF.A0_F1X, -1.5708, 0.0),
         }
         # Check each joint against its limits
         for joint, (joint_idx, lower, upper) in joint_limits.items():
@@ -1225,34 +1307,129 @@ class SPOT:
                 # target_cmd_poses[joint_idx] = max(min(target_cmd_poses[joint_idx], upper), lower)
         return True
     
-    def execute_actions(self, leg_actions, arm_actions, scale = 0.2):
-        """Execute the leg actions on the robot"""
-        leg_actions = leg_actions.squeeze()
-        arm_actions = arm_actions.squeeze()
-        # Obtain the current loads
-        cmd_poses, _, curr_load  = self.joint_api_interface.get_latest_pos_vel_and_load_state()
-        
-        # Map the order of each joint in leg_actions to the ones in real command
-        current_cmd_poses = torch.tensor(cmd_poses, dtype=torch.float32).clone()
-        target_cmd_poses = current_cmd_poses.clone()
-        offset = self.build_joint_pos_default(target_cmd_poses.clone()) # Use the default joints as offset
-        
-        # Correct the order
-        for idx, value in enumerate([DOF.FL_HX, DOF.FR_HX, DOF.HL_HX, DOF.HR_HX, DOF.FL_HY, DOF.FR_HY,
-                                     DOF.HL_HY, DOF.HR_HY, DOF.FL_KN, DOF.FR_KN, DOF.HL_KN, DOF.HR_KN]):
-            target_cmd_poses[value] = leg_actions[idx] * scale + offset[value]
-        for idx, value in enumerate([DOF.A0_SH0, DOF.A0_SH1, DOF.A0_EL0, DOF.A0_EL1, DOF.A0_WR0, DOF.A0_WR1, DOF.A0_F1X]):
-            target_cmd_poses[value] = target_cmd_poses[value] + arm_actions[idx]
+    def execute_actions(
+        self,
+        leg_actions,
+        arm_joint_targets,
+        scale=RELIC_LEG_ACTION_SCALE,
+        joint_pose_visualizer=None,
+        high_level_action=None,
+        policy_env_obs=None,
+        relic_update_count=None,
+    ):
+        """Execute one ReLIC leg command and absolute arm joint targets.
 
+        This is the physical equivalent of IsaacLab's low-level action path:
+        ``leg_target = policy_action * 0.2 + default_joint_position``.  The
+        arm command is absolute because the high-level action is a delta from
+        the latched standing reference, exactly as it is in IsaacLab.
+        """
+        leg_actions = leg_actions.detach().reshape(-1).cpu()
+        arm_joint_targets = arm_joint_targets.detach().reshape(-1).cpu()
+        if leg_actions.numel() != RELIC_LEG_ACTION_DIM:
+            raise ValueError(
+                f"ReLIC must produce {RELIC_LEG_ACTION_DIM} leg actions; "
+                f"got {leg_actions.numel()}."
+            )
+        if arm_joint_targets.numel() != RELIC_ARM_ACTION_DIM:
+            raise ValueError(
+                f"Expected {RELIC_ARM_ACTION_DIM} absolute arm targets; "
+                f"got {arm_joint_targets.numel()}."
+            )
+
+        # Build a single target in Boston Dynamics' native 19-DOF order.
+        cmd_poses, _, _ = self.joint_api_interface.get_latest_pos_vel_and_load_state()
+        current_cmd_poses = torch.tensor(cmd_poses, dtype=torch.float32)
+        target_cmd_poses = current_cmd_poses.clone()
+        default_joint_poses = self.build_joint_pos_default(target_cmd_poses.clone())
+
+        # ReLIC action order is the IsaacLab order used by the original
+        # deployment logic: four hx, four hy, then four knee joints.
+        leg_joint_ids = [
+            DOF.FL_HX,
+            DOF.FR_HX,
+            DOF.HL_HX,
+            DOF.HR_HX,
+            DOF.FL_HY,
+            DOF.FR_HY,
+            DOF.HL_HY,
+            DOF.HR_HY,
+            DOF.FL_KN,
+            DOF.FR_KN,
+            DOF.HL_KN,
+            DOF.HR_KN,
+        ]
+        for action_index, joint_id in enumerate(leg_joint_ids):
+            target_cmd_poses[joint_id] = (
+                leg_actions[action_index] * scale + default_joint_poses[joint_id]
+            )
+
+        arm_joint_ids = [
+            DOF.A0_SH0,
+            DOF.A0_SH1,
+            DOF.A0_EL0,
+            DOF.A0_EL1,
+            DOF.A0_WR0,
+            DOF.A0_WR1,
+            DOF.A0_F1X,
+        ]
+        for action_index, joint_id in enumerate(arm_joint_ids):
+            target_cmd_poses[joint_id] = arm_joint_targets[action_index]
+
+        # The visualizer is observational only: it receives the measured pose
+        # and the exact target derived from the latest policy prediction.
+        if joint_pose_visualizer is not None:
+            try:
+                joint_pose_visualizer.update(
+                    current_cmd_poses,
+                    target_cmd_poses,
+                    high_level_action=high_level_action,
+                    policy_env_obs=policy_env_obs,
+                    leg_actions=leg_actions,
+                    arm_joint_names=RELIC_ARM_JOINT_NAMES,
+                    observation_joint_names=RELIC_OBSERVATION_JOINT_NAMES,
+                    leg_action_joint_names=RELIC_LEG_ACTION_JOINT_NAMES,
+                    relic_update_count=relic_update_count,
+                )
+            except Exception as error:
+                print(f"ReLIC pose visualizer update failed: {error}")
+
+        if not self.enable_joint_commands:
+            print("**************************")
+            print("Joint angles in degrees [name: current -> target]:")
+            for joint_name, current_angle, target_angle in zip(
+                ORDERED_DOF_NAMES,
+                current_cmd_poses.tolist(),
+                target_cmd_poses.tolist(),
+            ):
+                print(
+                    f"  {joint_name:10s}: {np.degrees(current_angle):+.2f} -> "
+                    f"{np.degrees(target_angle):+.2f}"
+                )
+            print("**************************")
+            return target_cmd_poses
+
+        # Keep the pre-existing, manually measured limits as the final guard
+        # before transmitting a physical command.  A dry run must never invoke
+        # the guard's emergency-stop behavior.
         self.check_joint_limits(target_cmd_poses)
-        start_cmd_poses = current_cmd_poses
-        print(current_cmd_poses)
-        print(target_cmd_poses)
-        
-        # Send the joint commands to the robot
+
+        # Match IsaacLab's explicit PD actuator: q_des is the policy target,
+        # qdot_des is zero, and there is no feedforward effort/load.  In
+        # particular, do not interpolate from the measured pose (which creates
+        # a nonzero desired velocity) or reuse the measured joint load.
+        # The 10 ms streaming window preserves ReLIC's 100 Hz update cadence.
         self.command_streaming_client.send_joint_control_commands(
-                self.joint_api_interface.generate_joint_pos_interp_commands(
-                    [start_cmd_poses, target_cmd_poses], curr_load, 0.02, DEFAULT_K_Q_P, DEFAULT_K_QD_P))
+            self.joint_api_interface.generate_joint_pure_pd_commands(
+                target_cmd_poses.tolist(),
+                RELIC_CONTROL_PERIOD_S,
+                DEFAULT_K_Q_P,
+                DEFAULT_K_QD_P,
+            )
+        )
+        return target_cmd_poses
+
+
 
 ## Environment to deploy pretrained policy on SPOT
 
@@ -1294,34 +1471,181 @@ class SpotRLEnvPLAY():
 class SpotReLICEnvPLAY():
     
     # Initialize the necessary attributes
-    def __init__(self, robot):
+    def __init__(
+        self,
+        robot,
+        enable_latency_reporting=True,
+        enable_observation_logging=False,
+        observation_log_path="relic_observations.pt",
+        enable_policy_trace_logging=False,
+        policy_trace_log_path="relic_policy_trace.txt",
+        joint_pose_visualizer=None,
+    ):
         self.robot = robot
-        self.locomotion_policy_path = "./source/SuperQ_ALORE/SuperQ_ALORE/assets/spot/pretrained_relic/policy.pt"
+        self.enable_latency_reporting = enable_latency_reporting
+        self.enable_observation_logging = enable_observation_logging
+        self.observation_log_path = observation_log_path
+        self.enable_policy_trace_logging = enable_policy_trace_logging
+        self.policy_trace_log_path = policy_trace_log_path
+        self.joint_pose_visualizer = joint_pose_visualizer
+        self._relic_update_count = 0
+        self.control_period_s = RELIC_CONTROL_PERIOD_S
+        self.locomotion_policy_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "source",
+            "SuperQ_ALORE",
+            "SuperQ_ALORE",
+            "assets",
+            "spot",
+            "pretrained_relic",
+            "policy.pt",
+        )
         self.locomotion_policy = load_torchscript_model(self.locomotion_policy_path)
+        self.locomotion_policy.eval()
         
         # Start the thread for state streaming
         self.robot.joint_level_control_start()
         
         # Initialize the buffer
-        self.leg_actions_buf = torch.zeros((1, 12))
+        self.leg_actions_buf = torch.zeros((1, RELIC_LEG_ACTION_DIM))
+        # The simulation uses an active grasp-pose reference.  For this
+        # standing smoke test we latch the real arm's current pose instead,
+        # then interpret high-level arm actions as deltas from it.
+        self.arm_joint_reference = None
+        self._dry_run_target_reported = False
+        self._obs_history = []
+        self._policy_env_obs_history = []
+        self._policy_trace_file = None
+        if self.enable_policy_trace_logging:
+            trace_directory = os.path.dirname(self.policy_trace_log_path)
+            if trace_directory:
+                os.makedirs(trace_directory, exist_ok=True)
+            self._policy_trace_file = open(
+                self.policy_trace_log_path, "w", encoding="utf-8", buffering=64 * 1024
+            )
+            self._policy_trace_file.write(
+                "# ReLIC policy trace: exact 84-D input and raw 12-D output.\n"
+                "# joint_pos_rel and joint_vel_rel use the IsaacLab articulation order.\n"
+            )
+        self._latency_sample_count = 0
+        self._max_latency_ms = {
+            "joint_sample_age_on_read": 0.0,
+            "joint_observation_build": 0.0,
+            "policy_inference": 0.0,
+            "joint_sample_to_policy_action": 0.0,
+            "observation_request_to_policy_action": 0.0,
+        }
     def reset(self):
         """TODO: figure out how to write reset on policy deployment..."""
         pass
-    
+
+    @staticmethod
+    def _synchronize_for_latency_measurement(device):
+        """Wait for CUDA work before taking a latency timestamp, when needed."""
+        if device.type == "cuda":
+            torch.cuda.synchronize(device)
+
+    @staticmethod
+    def _format_named_trace_values(names, values, first_index, unit):
+        """Format one named vector using its exact index in the 84-D input."""
+        return "\n".join(
+            f"  [{first_index + index:02d}] {name:<8} = {float(value):+.6f} {unit}"
+            for index, (name, value) in enumerate(zip(names, values))
+        )
+
+    def _record_policy_trace(self, policy_env_obs, leg_actions):
+        """Append one grouped SuperQ_ALORE ReLIC input/output record."""
+        if self._policy_trace_file is None:
+            return
+
+        obs = policy_env_obs.detach().reshape(-1).cpu().tolist()
+        output = leg_actions.detach().reshape(-1).cpu().tolist()
+        if len(obs) != 84 or len(output) != RELIC_LEG_ACTION_DIM:
+            raise RuntimeError("Cannot record malformed ReLIC policy input or output.")
+
+        arm_targets = self._format_named_trace_values(
+            RELIC_ARM_JOINT_NAMES, obs[12:19], 12, "rad"
+        )
+        leg_command = self._format_named_trace_values(
+            RELIC_LEG_ACTION_JOINT_NAMES, obs[19:31], 19, "raw command"
+        )
+        joint_pos = self._format_named_trace_values(
+            RELIC_OBSERVATION_JOINT_NAMES, obs[34:53], 34, "rad"
+        )
+        joint_vel = self._format_named_trace_values(
+            RELIC_OBSERVATION_JOINT_NAMES, obs[53:72], 53, "rad/s"
+        )
+        previous_action = self._format_named_trace_values(
+            RELIC_LEG_ACTION_JOINT_NAMES, obs[72:84], 72, "raw action"
+        )
+        policy_output = self._format_named_trace_values(
+            RELIC_LEG_ACTION_JOINT_NAMES, output, 0, "raw action"
+        )
+        self._policy_trace_file.write(
+            f"\n=== ReLIC update {self._relic_update_count} ===\n"
+            "-- LocomotionPolicyCfg: base state --\n"
+            f"base_lin_vel       [ 0: 3] (m/s): {obs[0:3]}\n"
+            f"base_ang_vel       [ 3: 6] (rad/s): {obs[3:6]}\n"
+            f"projected_gravity  [ 6: 9] (unit): {obs[6:9]}\n"
+            "-- action-term insertion into the ReLIC input --\n"
+            f"base_velocity      [ 9:12] (vx, vy, yaw rad/s): {obs[9:12]}\n"
+            "arm_joint_target   [12:19] (rad):\n"
+            f"{arm_targets}\n"
+            "leg_joint_command  [19:31]:\n"
+            f"{leg_command}\n"
+            f"base_pose          [31:34] (roll rad, pitch rad, height m): {obs[31:34]}\n"
+            "-- LocomotionPolicyCfg: joint state and previous action --\n"
+            "joint_pos_rel      [34:53] (rad):\n"
+            f"{joint_pos}\n"
+            "joint_vel_rel      [53:72] (rad/s):\n"
+            f"{joint_vel}\n"
+            "actions            [72:84] (previous raw leg action):\n"
+            f"{previous_action}\n"
+            "-- ReLIC policy output --\n"
+            "leg_actions         [ 0:12] (raw):\n"
+            f"{policy_output}\n"
+            "===============================\n"
+        )
+
     def step(self, action):
-        """TODO: Command the robot according to the action (high-level command)"""
+        """Run one 100 Hz ReLIC update for a 12-D high-level command."""
+        action = action.detach().to(device="cpu", dtype=torch.float32)
+        if action.ndim != 2 or action.shape != (1, RELIC_ACTION_DIM):
+            raise ValueError(
+                "Physical ReLIC deployment accepts exactly one 12-D action "
+                f"[vx, vy, yaw, 7 arm deltas, pitch, height]; got {tuple(action.shape)}."
+            )
+        self._relic_update_count += 1
+
         # Step 1: Wrap up the observations from the robot
-        print("Start to obtain ReLIC obs")
-        obs = self.robot.get_ReLIC_obs().unsqueeze(0).to(action.device)
+        if self.enable_latency_reporting:
+            joint_read_start_time = time.perf_counter()
+            obs, joint_sample_receive_time = self.robot.get_ReLIC_obs(
+                return_joint_sample_receive_time=True
+            )
+            joint_obs_ready_time = time.perf_counter()
+        else:
+            obs = self.robot.get_ReLIC_obs()
+        obs = obs.unsqueeze(0)
         
-        # Step 2: Wrap up the command
-        arm_actions = action[:, 3:10]
+        # Step 2: Reproduce the IsaacLab command construction.  In simulation
+        # this reference is the active grasp pose.  On the real robot we latch
+        # the pose at the start of this standing test, so zero arm action holds
+        # the arm instead of commanding it toward a simulator default.
+        arm_actions_delta = action[:, 3:10]
+        if self.arm_joint_reference is None:
+            self.arm_joint_reference = self.robot.get_current_arm_joint_positions().unsqueeze(0)
+        arm_joint_targets = self.arm_joint_reference + arm_actions_delta
         base_velocity = action[:, 0:3]
         
-        base_pose = torch.tensor([[0, 0.55]], device=arm_actions.device)
-        arm_joints = arm_actions
-        leg_joints = torch.zeros(arm_joints.shape[0], 12, device=arm_joints.device)
-        roll_target = torch.zeros(arm_joints.shape[0], 1, device=arm_joints.device)
+        # IsaacLab fixes roll and height for this action term.  The remaining
+        # input is [pitch, height], producing [roll, pitch, height] below.
+        base_pose = torch.tensor(
+            [[0.0, RELIC_BASE_HEIGHT_COMMAND]], dtype=torch.float32
+        )
+        arm_joints = arm_joint_targets
+        leg_joints = torch.zeros(arm_joints.shape[0], RELIC_LEG_ACTION_DIM)
+        roll_target = torch.zeros(arm_joints.shape[0], 1)
         arm_leg_joint_base_pose_command = torch.cat(
             [
                 arm_joints,
@@ -1342,24 +1666,153 @@ class SpotReLICEnvPLAY():
                 dim=1,
             )
         
-        # Attach the last leg command 
+        # The last leg action is part of IsaacLab's locomotion observation.
         policy_env_obs = torch.cat([policy_env_obs, self.leg_actions_buf[-1, :].unsqueeze(0)], dim=1)
+        
+        # Temporarily, only attache zero
+        # policy_env_obs = torch.cat([policy_env_obs, torch.zeros(1, RELIC_LEG_ACTION_DIM)], dim=1)
+        
+        if policy_env_obs.shape != (1, 84):
+            raise RuntimeError(
+                f"ReLIC policy input must be shape (1, 84); got {tuple(policy_env_obs.shape)}."
+            )
+        if self.enable_observation_logging:
+            # Store CPU copies so the saved values are independent of future tensor updates.
+            self._obs_history.append(obs.detach().cpu().clone())
+            self._policy_env_obs_history.append(policy_env_obs.detach().cpu().clone())
         # Step 3: Obtain & Execute the leg actions from the locomotion policy
-        leg_actions = self.locomotion_policy(policy_env_obs)
-        print(leg_actions)
+        if self.enable_latency_reporting:
+            self._synchronize_for_latency_measurement(policy_env_obs.device)
+            policy_start_time = time.perf_counter()
+        with torch.inference_mode():
+            leg_actions = self.locomotion_policy(policy_env_obs)
+        if leg_actions.shape != (1, RELIC_LEG_ACTION_DIM):
+            raise RuntimeError(
+                f"ReLIC policy output must be shape (1, 12); got {tuple(leg_actions.shape)}."
+            )
+        if self.enable_latency_reporting:
+            self._synchronize_for_latency_measurement(leg_actions.device)
+            policy_action_ready_time = time.perf_counter()
+
+            joint_sample_age_ms = (joint_read_start_time - joint_sample_receive_time) * 1000
+            joint_observation_build_ms = (joint_obs_ready_time - joint_read_start_time) * 1000
+            policy_inference_ms = (policy_action_ready_time - policy_start_time) * 1000
+            joint_to_policy_action_ms = (policy_action_ready_time - joint_sample_receive_time) * 1000
+            observation_request_to_policy_action_ms = (policy_action_ready_time - joint_read_start_time) * 1000
+            latency_ms = {
+                "joint_sample_age_on_read": joint_sample_age_ms,
+                "joint_observation_build": joint_observation_build_ms,
+                "policy_inference": policy_inference_ms,
+                "joint_sample_to_policy_action": joint_to_policy_action_ms,
+                "observation_request_to_policy_action": observation_request_to_policy_action_ms,
+            }
+            for name, value in latency_ms.items():
+                self._max_latency_ms[name] = max(self._max_latency_ms[name], value)
+            self._latency_sample_count += 1
+
+            print(
+                "ReLIC latency | joint_sample_age_on_read={joint_sample_age_on_read:.3f} ms | "
+                "joint_observation_build={joint_observation_build:.3f} ms | policy_inference={policy_inference:.3f} ms | "
+                "joint_sample_to_policy_action={joint_sample_to_policy_action:.3f} ms | "
+                "observation_request_to_policy_action_ms={observation_request_to_policy_action_ms:.3f} ms".format(
+                    joint_sample_age_on_read=joint_sample_age_ms,
+                    joint_observation_build=joint_observation_build_ms,
+                    policy_inference=policy_inference_ms,
+                    joint_sample_to_policy_action=joint_to_policy_action_ms,
+                    observation_request_to_policy_action_ms=observation_request_to_policy_action_ms,
+                )
+            )
+
+        self._record_policy_trace(policy_env_obs, leg_actions)
+
         # update the buffer
         self.leg_actions_buf[-1, :] = leg_actions.squeeze()
         
         
-        self.robot.execute_actions(leg_actions, arm_actions)
+        target_cmd_poses = self.robot.execute_actions(
+            leg_actions,
+            arm_joint_targets,
+            joint_pose_visualizer=self.joint_pose_visualizer,
+            high_level_action=action.squeeze(0).tolist(),
+            policy_env_obs=policy_env_obs.squeeze(0).tolist(),
+            relic_update_count=self._relic_update_count,
+        )
+        if not self.robot.enable_joint_commands and not self._dry_run_target_reported:
+            print(
+                "ReLIC dry run | no joint commands sent | first 19-DOF target: "
+                f"{target_cmd_poses.tolist()}"
+            )
+            self._dry_run_target_reported = True
+        return target_cmd_poses
         
-        
+    def report_max_latency(self):
+        """Print the largest latency seen across all ReLIC policy steps."""
+        if not self.enable_latency_reporting:
+            return
+        if self._latency_sample_count == 0:
+            print("ReLIC maximum latency | no policy actions were generated.")
+            return
+
+        max_latency = self._max_latency_ms
+        print(
+            "ReLIC maximum latency over {count} policy steps | "
+            "joint_sample_age_on_read={joint_sample_age_on_read:.3f} ms | "
+            "joint_observation_build={joint_observation_build:.3f} ms | "
+            "policy_inference={policy_inference:.3f} ms | "
+            "joint_sample_to_policy_action={joint_sample_to_policy_action:.3f} ms | "
+            "observation_request_to_policy_action={observation_request_to_policy_action:.3f} ms".format(
+                count=self._latency_sample_count,
+                **max_latency,
+            )
+        )
+
+    def save_observation_log(self):
+        """Save the collected proprioceptive and policy-input observations."""
+        if not self.enable_observation_logging:
+            return
+        if not self._obs_history:
+            print("ReLIC observation log | no observations were collected.")
+            return
+
+        log_directory = os.path.dirname(self.observation_log_path)
+        if log_directory:
+            os.makedirs(log_directory, exist_ok=True)
+        torch.save(
+            {
+                "obs": torch.cat(self._obs_history, dim=0),
+                "policy_env_obs": torch.cat(self._policy_env_obs_history, dim=0),
+            },
+            self.observation_log_path,
+        )
+        print(
+            f"Saved {len(self._obs_history)} ReLIC observations to {self.observation_log_path}"
+        )
+
     def update_robot(self, robot):
         # Update the robot to use
         self.robot = robot
+
+    def set_joint_pose_visualizer(self, visualizer):
+        """Attach or remove the optional browser pose visualizer."""
+        self.joint_pose_visualizer = visualizer
         
     def close(self):
-        # Close the possible joint-level control
-        self.robot.joint_level_control_stop()
-        # Close the robot connection
-        self.robot.power_off()
+        # `zero_agent_ReLIC_spot.py` calls close after its rollout, making this
+        # summary the final latency output of a normal program execution.
+        try:
+            self.report_max_latency()
+            self.save_observation_log()
+        finally:
+            try:
+                if self.joint_pose_visualizer is not None:
+                    self.joint_pose_visualizer.close()
+                    self.joint_pose_visualizer = None
+            finally:
+                try:
+                    if self._policy_trace_file is not None:
+                        self._policy_trace_file.close()
+                        self._policy_trace_file = None
+                finally:
+                    # A dashboard failure must never keep the robot in joint control.
+                    self.robot.joint_level_control_stop()
+                    self.robot.power_off()

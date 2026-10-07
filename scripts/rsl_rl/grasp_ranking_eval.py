@@ -16,9 +16,14 @@ from isaaclab.app import AppLauncher
 import cli_args # isort: skip
 
 # add argparse arguments
-parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
-parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=200, help="Length of the recorded video (in steps).")
+parser = argparse.ArgumentParser(description="Evaluate grasp-ranking and fixed-grasp RSL-RL policies.")
+parser.add_argument(
+    "--video",
+    action="store_true",
+    default=False,
+    help="Export a rendered video for each evaluation rollout.",
+)
+parser.add_argument("--video_length", type=int, default=200, help="Frames to export from the start of each rollout.")
 parser.add_argument(
     "--video_fps",
     type=int,
@@ -29,13 +34,13 @@ parser.add_argument(
     "--video_folder",
     type=str,
     default=None,
-    help="Optional output folder for videos. Defaults to '<checkpoint_dir>/videos/play'.",
+    help="Optional output folder for videos. Defaults to '<checkpoint_dir>/videos/eval'.",
 )
 parser.add_argument(
     "--video_name_prefix",
     type=str,
-    default="play",
-    help="Filename prefix for exported video files.",
+    default="",
+    help="Optional filename prefix for exported videos; omitted by default.",
 )
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
@@ -63,6 +68,18 @@ parser.add_argument(
     type=str,
     default="chair-lab",
     help="Object name used in checkpoint directory naming (e.g., '<object_name>-grasp-pose-1').",
+)
+parser.add_argument(
+    "--target_set_id",
+    type=int,
+    default=None,
+    help="Optional 1-based target-pose-set identifier included in exported video filenames.",
+)
+parser.add_argument(
+    "--rollout_steps",
+    type=int,
+    default=750,
+    help="Evaluation horizon in control steps. Each video records up to video_length frames from this rollout.",
 )
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
@@ -118,6 +135,7 @@ from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.event import reset_object
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.observations import quat_inverse_safe, quat_mul, _euler_from_quat, quat_apply
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.object_management import ARM_JOINT_NAMES_IN_ORDER
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp import object_management as om
+
 def _estimate_step_dt_from_cfg(env_cfg) -> float:
     """Estimate environment step time from sim dt and decimation."""
     sim_dt = float(getattr(getattr(env_cfg, "sim", None), "dt", 1.0 / 60.0))
@@ -140,7 +158,7 @@ def _build_env(env_cfg, log_dir: str):
     video_folder = None
     # wrap for video recording
     if args_cli.video:
-        video_folder = args_cli.video_folder or os.path.join(log_dir, "videos", "play")
+        video_folder = args_cli.video_folder or os.path.join(log_dir, "videos", "eval")
         video_folder = os.path.abspath(video_folder)
         os.makedirs(video_folder, exist_ok=True)
 
@@ -160,9 +178,13 @@ def _build_env(env_cfg, log_dir: str):
 
         video_kwargs = {
             "video_folder": video_folder,
-            "step_trigger": lambda step: step == 0,
+            # Videos are explicitly started for each policy/mode rollout below. A
+            # never-true trigger prevents the wrapper from also recording an
+            # unlabeled global-step video during the initial environment reset.
+            "step_trigger": lambda _step: False,
             "video_length": args_cli.video_length,
             "name_prefix": args_cli.video_name_prefix,
+            "fps": render_fps,
             "disable_logger": True,
         }
         print(f"[INFO] Video FPS set to: {render_fps}")
@@ -173,6 +195,34 @@ def _build_env(env_cfg, log_dir: str):
         env = gym.wrappers.RecordVideo(env, **video_kwargs)
 
     return env, video_folder
+
+
+def _filename_component(value: str) -> str:
+    """Convert a user-supplied label into a portable filename component."""
+    return "".join(char if char.isalnum() or char in "-_" else "_" for char in value)
+
+
+def _video_rollout_name(policy_test_type: str, mode: str, pose_idx, rollout_idx: int) -> str:
+    """Build a descriptive, filesystem-safe name for one recorded evaluation rollout."""
+    if isinstance(pose_idx, torch.Tensor):
+        pose_values = torch.unique(pose_idx).detach().cpu().tolist()
+        pose_label = f"pose-{int(pose_values[0])}" if len(pose_values) == 1 else "mixed-poses"
+    else:
+        pose_label = f"pose-{int(pose_idx)}"
+    target_set_label = (
+        f"target-set-{args_cli.target_set_id:02d}" if args_cli.target_set_id is not None else "target-set-unspecified"
+    )
+    filename_parts = [
+        target_set_label,
+        _filename_component(args_cli.object_name),
+        f"rollout-{rollout_idx:02d}",
+        policy_test_type,
+        mode,
+        pose_label,
+    ]
+    if args_cli.video_name_prefix:
+        filename_parts.insert(0, _filename_component(args_cli.video_name_prefix))
+    return "-".join(filename_parts)
 
 
 def _build_policy_agent(vec_env, task_name: str, agent_name: str = None,agent_cfg = None, checkpoint: str = None):
@@ -363,6 +413,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg.seed
     env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
+    env_cfg.sim.use_fabric = not args_cli.disable_fabric
 
     # specify directory for logging experiments
     log_root_path = os.path.join("logs", "rsl_rl", agent_cfg.experiment_name)
@@ -389,6 +440,12 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     if args_cli.num_grasp_poses <= 0:
         raise ValueError(f"num_grasp_poses must be > 0, got {args_cli.num_grasp_poses}.")
+    if args_cli.video and args_cli.video_length <= 0:
+        raise ValueError(f"video_length must be > 0 when --video is set, got {args_cli.video_length}.")
+    if args_cli.target_set_id is not None and args_cli.target_set_id <= 0:
+        raise ValueError(f"target_set_id must be > 0 when provided, got {args_cli.target_set_id}.")
+    if args_cli.rollout_steps <= 0:
+        raise ValueError(f"rollout_steps must be > 0, got {args_cli.rollout_steps}.")
 
     base_path = "./logs/rsl_rl/"
     policy_test_list = ["grasp_ranking"] + [f"ppo{pose_idx}" for pose_idx in range(args_cli.num_grasp_poses)]
@@ -419,13 +476,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
 
     dt = vec_env.unwrapped.step_dt
-    rollout_steps = 750  # 1000 during training, but I want to test more on model's robustness
+    rollout_steps = args_cli.rollout_steps
     env_ids = torch.arange(vec_env.unwrapped.num_envs, device=vec_env.unwrapped.device, dtype=torch.long)
     object_idx = 0
 
     # Reset through the wrapper once so wrappers/video are initialized correctly.
     vec_env.reset()
 
+    rollout_idx = 0
+    video_recorder = env if args_cli.video else None
     for policy_test_type, policy, policy_nn in zip(policy_test_list, policy_list, policy_nn_list):
         # Make up the evaluation plan for each policy
         eval_plan = _make_eval_plan(policy_test_type, vec_env, return_agent, env_ids, args_cli.num_grasp_poses)
@@ -446,6 +505,14 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 )
             obs = vec_env.get_observations()
 
+            # Use RecordVideo's explicit recording API so every comparison has
+            # a separate, descriptive video instead of one global-step clip.
+            # The wrapper captures frames during vec_env.step().
+            if video_recorder is not None:
+                video_name = _video_rollout_name(policy_test_type, mode, pose_idx, rollout_idx)
+                video_recorder.start_recording(video_name)
+                print(f"[INFO] Recording rollout video: {video_name}.mp4")
+
             for step in range(rollout_steps):
                 if not simulation_app.is_running():
                     break
@@ -456,14 +523,19 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     obs, _, dones, _ = vec_env.step(actions)
                     policy_nn.reset(dones)
 
+                # Save exactly the requested prefix of the rollout, but keep
+                # stepping afterward so evaluation metrics use the full horizon.
+                if (
+                    video_recorder is not None
+                    and video_recorder.recording
+                    and step + 1 >= args_cli.video_length
+                ):
+                    video_recorder.stop_recording()
+
                 if args_cli.real_time:
                     sleep_time = dt - (time.time() - start_time)
                     if sleep_time > 0:
                         time.sleep(sleep_time)
-
-                # Keep video export behavior bounded by video_length when recording.
-                if args_cli.video and step + 1 >= args_cli.video_length:
-                    break
 
             metric_summary = _read_goal_pose_metrics(vec_env)
             success_rate = metric_summary.get("success_rate", float("nan"))
@@ -485,6 +557,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 f"object_to_goal_yaw_diff={yaw_diff:.4f} "
                 f"keypoint_angle_error_degree={kp_err:.4f}"
             )
+            # A rollout can stop early when the simulator closes. Flush any
+            # partial recording so it remains usable instead of being lost.
+            if video_recorder is not None and video_recorder.recording:
+                video_recorder.stop_recording()
+            rollout_idx += 1
 
     # close the simulator
     vec_env.close()

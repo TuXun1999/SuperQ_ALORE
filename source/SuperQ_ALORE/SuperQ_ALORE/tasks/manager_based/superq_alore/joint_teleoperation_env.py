@@ -135,6 +135,7 @@ class ActionsCfg:
         arm_joint_names=ARM_JOINT_NAMES,
         leg_joint_names=LEG_JOINT_NAMES,
         scale=0.2,
+        low_level_update_decimation=4,
     )
 
 @configclass

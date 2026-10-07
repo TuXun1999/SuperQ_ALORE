@@ -36,6 +36,27 @@ import SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene as scene
 ##
 
 
+def recolor_ground_grid(env, env_ids, color: tuple[float, float, float] = (0.7, 0.7, 0.7)) -> None:
+    """Desaturate and tint Isaac Sim's built-in grid ground material."""
+    del env_ids
+
+    from pxr import Gf, Sdf
+
+    shader = env.sim.stage.GetPrimAtPath("/World/ground/terrain/Looks/theGrid/Shader")
+    if not shader.IsValid():
+        return
+
+    tint_attr = shader.GetAttribute("inputs:diffuse_tint")
+    if not tint_attr.IsValid():
+        tint_attr = shader.CreateAttribute("inputs:diffuse_tint", Sdf.ValueTypeNames.Color3f)
+    tint_attr.Set(Gf.Vec3f(*color))
+
+    desaturation_attr = shader.GetAttribute("inputs:albedo_desaturation")
+    if not desaturation_attr.IsValid():
+        desaturation_attr = shader.CreateAttribute("inputs:albedo_desaturation", Sdf.ValueTypeNames.Float)
+    desaturation_attr.Set(1.0)
+
+
 @configclass
 class SuperqAloreSceneCfg(InteractiveSceneCfg):
     """Configuration for a cart-pole scene."""
@@ -58,11 +79,17 @@ class SuperqAloreSceneCfg(InteractiveSceneCfg):
             dynamic_friction=1.0,
             restitution=0.0,
         ),
+        
+        # The previous grid-like background (consistency in previous training episodes)
         visual_material=sim_utils.MdlFileCfg(
             mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
             project_uvw=True,
             texture_scale=(0.25, 0.25),
         ),
+        # visual_material=sim_utils.PreviewSurfaceCfg(
+        #     diffuse_color=(0.7, 0.7, 0.7),
+        #     roughness=1.0,
+        # ),
         debug_vis=False,
     )
 
@@ -567,6 +594,11 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
+    # recolor_ground_grid = EventTerm(
+    #     func=recolor_ground_grid,
+    #     mode="startup",
+    # )
+
     configure_physx_scene_gpu_buffers = EventTerm(
         func=mdp.configure_physx_scene_gpu_buffers,
         mode="startup",
@@ -635,12 +667,12 @@ class EventCfg:
         func=mdp.reset_object_physical_properties,
         mode="reset",
         params={
-            "mass_range": (2, 4),
-            "friction_range": (0.15, 0.35),
+            "mass_range": (5, 8),
+            "friction_range": (0.02, 0.05), #(0.15, 0.35)
             "com_range": {
-                "x": (-0.15, 0.15),
+                "x": (-0.05, 0.05),
                 "y": (-0.0, 0.0),
-                "z": (-0.15, 0.15),
+                "z": (-0.05, 0.05),
             },
         },
     )
@@ -824,6 +856,7 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
         self.episode_length_s = 20.0
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
+        
         # simulation settings
         self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation
@@ -910,4 +943,3 @@ class SuperqAloreEnvPlayCfg(SuperqAloreEnvCfg):
             "y": (0.0, 0.0),
             "z": (0.0, 0.0),
         }
-

@@ -5,6 +5,7 @@
 # Development Kit License (20191101-BDSDK-SL).
 
 import time
+from threading import Lock
 
 from constants import DOF
 
@@ -22,6 +23,9 @@ class LinearInterpolator:
         self.target_pos = target_pos
 
     def calculate_command(self, time):
+        # The final streaming update can arrive just after the requested plan
+        # duration.  Clamp it so timing jitter cannot overshoot the target.
+        time = min(max(time, 0.0), self.duration)
         pos = self.init_pos + (self.target_pos - self.init_pos) * time / self.duration
         vel = (self.target_pos - self.init_pos) / self.duration
         return pos, vel
@@ -34,6 +38,10 @@ class JointAPIInterface:
     def __init__(self, robot, n_dofs):
         self.robot = robot
         self.latest_state_stream_data = None
+        # Timestamp the arrival of each streamed state so consumers can measure
+        # how old the joint sample is when it is used.
+        self.latest_state_stream_receive_time = None
+        self._state_lock = Lock()
         self.should_stop = False
         self.started_streaming = False
         self.cmd_history = {}
@@ -72,7 +80,9 @@ class JointAPIInterface:
         for state in robot_state_streaming_client.get_robot_state_stream():
             receive_time = time.time()
 
-            self.latest_state_stream_data = state
+            with self._state_lock:
+                self.latest_state_stream_data = state
+                self.latest_state_stream_receive_time = time.perf_counter()
 
             if self.should_stop:
                 return
@@ -90,26 +100,32 @@ class JointAPIInterface:
             else:
                 self.robot.logger.info(f"No key: {state.last_command.user_command_key}")
 
+    def get_latest_state_with_receive_time(self):
+        """Return one consistent streamed-state snapshot and its local arrival time."""
+        while True:
+            with self._state_lock:
+                state = self.latest_state_stream_data
+                receive_time = self.latest_state_stream_receive_time
+
+            if state is not None:
+                return state, receive_time
+
+            time.sleep(0.001)
+
     # get_latest_joints_state function is to get a latest joint state
     def get_latest_pos_vel_and_load_state(self):
-        # Wait for first data to cache. This should happened synchronously in normal stand before
-        # joint control is activated.
-        while not self.latest_state_stream_data:
-            time.sleep(0.1)
-
-        kin_pos_state = self.latest_state_stream_data.joint_states.position
-        kin_vel_state = self.latest_state_stream_data.joint_states.velocity
-        kin_load_state = self.latest_state_stream_data.joint_states.load
+        """Return position, velocity, and load from one streamed-state snapshot."""
+        state, _ = self.get_latest_state_with_receive_time()
+        kin_pos_state = state.joint_states.position
+        kin_vel_state = state.joint_states.velocity
+        kin_load_state = state.joint_states.load
         return kin_pos_state, kin_vel_state, kin_load_state
 
     # get_latest_kinematic_state function is to get a latest kinematic state
     def get_latest_kinematic_state(self):
-        # Wait for first data to cache. This should happened synchronously in normal stand before
-        # joint control is activated.
-        while not self.latest_state_stream_data:
-            time.sleep(0.1)
-
-        kin_state = self.latest_state_stream_data.kinematic_state
+        """Return kinematics from one streamed-state snapshot."""
+        state, _ = self.get_latest_state_with_receive_time()
+        kin_state = state.kinematic_state
         return kin_state
     
     # generate_joint_pos_interp_commands functions is an example function to send the joint
@@ -143,8 +159,14 @@ class JointAPIInterface:
                 if self.should_stop:
                     return
 
-                # Want to send next command no sooner than `dt` after the previous one
-                this_dt_time_d = max(previous_dt_time + dt, time.time())
+                # Want to send the next command no sooner than ``dt`` after
+                # the previous one, but never schedule the final update beyond
+                # the requested trajectory duration.  This matters for ReLIC's
+                # 10 ms physical control period: 333 Hz otherwise produces a
+                # fourth update at 12 ms and silently lowers the control rate.
+                this_dt_time_d = min(
+                    max(previous_dt_time + dt, time.time()), starting_time + duration
+                )
                 sleep_time = max(0, this_dt_time_d - time.time())
                 time.sleep(sleep_time)
 
@@ -194,3 +216,30 @@ class JointAPIInterface:
 
                 self.started_streaming = True
                 previous_dt_time = this_dt_time_d
+
+    def generate_joint_pure_pd_commands(self, target_pose, duration, k_q_p, k_qd_p):
+        """Stream an IsaacLab-equivalent explicit PD position command.
+
+        IsaacLab's position actuator evaluates ``Kp * (q_des - q) +
+        Kd * (qdot_des - qdot) + tau_ff``.  Its ReLIC action path supplies a
+        position target only, so ``qdot_des`` and ``tau_ff`` are both zero.
+        Reuse the streaming scheduler with identical start/end positions to
+        produce that same constant setpoint without a trajectory velocity or
+        load feedforward term.
+        """
+        if len(target_pose) != self.n_dofs:
+            raise ValueError(
+                f"Expected {self.n_dofs} joint targets, got {len(target_pose)}."
+            )
+        if duration <= 0.0:
+            raise ValueError(f"PD command duration must be positive, got {duration}.")
+
+        target_pose = list(target_pose)
+        zero_load = [0.0] * self.n_dofs
+        yield from self.generate_joint_pos_interp_commands(
+            [target_pose, target_pose],
+            zero_load,
+            duration,
+            k_q_p,
+            k_qd_p,
+        )

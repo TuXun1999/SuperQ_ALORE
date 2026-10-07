@@ -18,7 +18,7 @@ import cli_args  # isort: skip
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
-parser.add_argument("--video_length", type=int, default=20, help="Length of the recorded video (in steps).")
+parser.add_argument("--video_length", type=int, default=200, help="Number of rollout frames to export.")
 parser.add_argument(
     "--video_fps",
     type=int,
@@ -109,6 +109,9 @@ def _estimate_step_dt_from_cfg(env_cfg) -> float:
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Play with RSL-RL agent."""
+    if args_cli.video and args_cli.video_length <= 0:
+        raise ValueError(f"--video_length must be positive when --video is set, got {args_cli.video_length}.")
+
     # grab task name for checkpoint path
     task_name = args_cli.task.split(":")[-1]
     train_task_name = task_name.replace("-Play", "")
@@ -174,6 +177,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             "step_trigger": lambda step: step == 0,
             "video_length": args_cli.video_length,
             "name_prefix": args_cli.video_name_prefix,
+            "fps": render_fps,
             "disable_logger": True,
         }
         print(f"[INFO] Video FPS set to: {render_fps}")
