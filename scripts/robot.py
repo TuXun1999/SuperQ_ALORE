@@ -1084,6 +1084,12 @@ class SPOT:
         # dry run, and changes the robot's control mode, so only do it for an
         # explicitly enabled live test.
         if self.enable_joint_commands:
+            # Keep one gRPC request stream open for the entire rollout.  The
+            # 100 Hz ReLIC loop publishes target snapshots into this stream;
+            # it no longer performs a blocking RPC for every policy action.
+            self.joint_api_interface.start_joint_pure_pd_command_stream(
+                self.command_streaming_client
+            )
             self.activate_thread = Thread(
                 target=self.joint_api_interface.activate, args=(self.command_client,)
             )
@@ -1091,6 +1097,9 @@ class SPOT:
 
     def joint_level_control_stop(self):
         self.joint_api_interface.set_should_stop(True)
+        # Closing the request generator first lets the persistent gRPC call
+        # return before clients and the robot are shut down.
+        self.joint_api_interface.join_joint_pure_pd_command_stream()
         if self.state_thread:
             self.state_thread.join()
         if self.activate_thread:
@@ -1414,18 +1423,13 @@ class SPOT:
         # the guard's emergency-stop behavior.
         self.check_joint_limits(target_cmd_poses)
 
-        # Match IsaacLab's explicit PD actuator: q_des is the policy target,
-        # qdot_des is zero, and there is no feedforward effort/load.  In
-        # particular, do not interpolate from the measured pose (which creates
-        # a nonzero desired velocity) or reuse the measured joint load.
-        # The 10 ms streaming window preserves ReLIC's 100 Hz update cadence.
-        self.command_streaming_client.send_joint_control_commands(
-            self.joint_api_interface.generate_joint_pure_pd_commands(
-                target_cmd_poses.tolist(),
-                RELIC_CONTROL_PERIOD_S,
-                DEFAULT_K_Q_P,
-                DEFAULT_K_QD_P,
-            )
+        # Queue a snapshot for the one persistent Spot streaming RPC.  Each
+        # request still has q_des from the policy, qdot_des = 0, and no
+        # feedforward load; publishing never interpolates or blocks on gRPC.
+        self.joint_api_interface.publish_joint_pure_pd_target(
+            target_cmd_poses.tolist(),
+            DEFAULT_K_Q_P,
+            DEFAULT_K_QD_P,
         )
         return target_cmd_poses
 

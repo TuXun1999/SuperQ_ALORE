@@ -118,9 +118,10 @@ def main():
                 env.step(actions)
                 steps += 1
 
-                # ``env.step`` streams a 10 ms joint trajectory.  Schedule
-                # against an absolute deadline so this does not accidentally
-                # add another 10 ms sleep and reduce ReLIC to 50 Hz.
+                # ``env.step`` publishes one target into the persistent
+                # pure-PD stream.
+                # Schedule against an absolute deadline to preserve ReLIC's
+                # 100 Hz update cadence.
                 next_step_time += env.control_period_s
                 remaining_time = next_step_time - time.perf_counter()
                 if remaining_time > 0:

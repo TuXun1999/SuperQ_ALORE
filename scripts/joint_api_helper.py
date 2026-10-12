@@ -5,7 +5,7 @@
 # Development Kit License (20191101-BDSDK-SL).
 
 import time
-from threading import Lock
+from threading import Condition, Lock, Thread
 
 from constants import DOF
 
@@ -34,7 +34,7 @@ class LinearInterpolator:
 class JointAPIInterface:
     # JointAPIInterface is a helper class to help to use joint control API.
     # This class contains the way of activating joint control mode, getting lightweight
-    # robot state, and sending joint pos by interpolating commanded poses as an example.
+    # robot state, and streaming either interpolated or direct position commands.
     def __init__(self, robot, n_dofs):
         self.robot = robot
         self.latest_state_stream_data = None
@@ -45,6 +45,18 @@ class JointAPIInterface:
         self.should_stop = False
         self.started_streaming = False
         self.cmd_history = {}
+        self._next_command_key = 1
+
+        # ReLIC publishes a new target at 100 Hz, while Spot expects all of
+        # those updates to belong to one long-lived streaming RPC.  Keep the
+        # most recent target behind a condition variable so that the policy
+        # loop never opens a new RPC or blocks on network latency.
+        self._command_target_condition = Condition()
+        self._latest_pd_target = None
+        self._latest_pd_gains = None
+        self._target_generation = 0
+        self._command_stream_thread = None
+        self._command_stream_error = None
 
         if n_dofs != DOF.N_DOF_LEGS and n_dofs != DOF.N_DOF:
             # DOF error
@@ -54,7 +66,149 @@ class JointAPIInterface:
 
     # should_stop is a flag to enable/disable sending/receiving command
     def set_should_stop(self, flag):
-        self.should_stop = flag
+        with self._command_target_condition:
+            self.should_stop = flag
+            # Wake a command generator that is waiting for its first or next
+            # ReLIC target, so the gRPC request iterator can close promptly.
+            self._command_target_condition.notify_all()
+
+    def start_joint_pure_pd_command_stream(self, command_streaming_client):
+        """Start one persistent Spot joint-command RPC for ReLIC targets.
+
+        The stream does not emit a command until ``publish_joint_pure_pd_target``
+        supplies the first policy result.  This retains the old command-watchdog
+        behavior: if ReLIC stops publishing, no stale pose is replayed and the
+        final request expires after its 100 ms ``end_time``.
+        """
+        with self._command_target_condition:
+            if self.should_stop:
+                raise RuntimeError("Cannot start a joint command stream after it has been stopped.")
+            if self._command_stream_thread is not None and self._command_stream_thread.is_alive():
+                return
+            if self._command_stream_error is not None:
+                raise RuntimeError("The previous joint command stream failed.") from self._command_stream_error
+
+            self._command_stream_thread = Thread(
+                target=self._run_joint_pure_pd_command_stream,
+                args=(command_streaming_client,),
+                name="relic_joint_command_stream",
+            )
+            self._command_stream_thread.start()
+
+    def join_joint_pure_pd_command_stream(self):
+        """Wait for the persistent command RPC to finish after ``set_should_stop``."""
+        command_stream_thread = self._command_stream_thread
+        if command_stream_thread is not None:
+            command_stream_thread.join()
+
+    def _run_joint_pure_pd_command_stream(self, command_streaming_client):
+        """Own the one blocking gRPC call used throughout a ReLIC rollout."""
+        try:
+            command_streaming_client.send_joint_control_commands(
+                self.generate_joint_pure_pd_command_stream()
+            )
+            with self._command_target_condition:
+                stopped = self.should_stop
+            if not stopped:
+                raise RuntimeError("Spot joint command stream ended unexpectedly.")
+        except Exception as error:
+            with self._command_target_condition:
+                self._command_stream_error = error
+                self._command_target_condition.notify_all()
+            self.robot.logger.error(f"ReLIC joint command stream failed: {error}")
+
+    def publish_joint_pure_pd_target(self, target_pose, k_q_p, k_qd_p):
+        """Publish the next direct position-PD target to the persistent stream.
+
+        Publishing is intentionally non-blocking with respect to the Spot RPC.
+        If the RPC is temporarily slower than the 100 Hz ReLIC loop, the stream
+        receives the latest safe target rather than an old queue of commands.
+        """
+        if len(target_pose) != self.n_dofs:
+            raise ValueError(
+                f"Expected {self.n_dofs} joint targets, got {len(target_pose)}."
+            )
+        if len(k_q_p) != self.n_dofs or len(k_qd_p) != self.n_dofs:
+            raise ValueError(
+                "Position and velocity gain vectors must match the controlled DOF count."
+            )
+
+        with self._command_target_condition:
+            if self.should_stop:
+                raise RuntimeError("Cannot publish a target after joint control has been stopped.")
+            if self._command_stream_error is not None:
+                raise RuntimeError("The ReLIC joint command stream failed.") from self._command_stream_error
+            if self._command_stream_thread is None:
+                raise RuntimeError("Joint command stream has not been started.")
+
+            self._latest_pd_target = [float(value) for value in target_pose]
+            self._latest_pd_gains = (
+                [float(value) for value in k_q_p],
+                [float(value) for value in k_qd_p],
+            )
+            self._target_generation += 1
+            self._command_target_condition.notify_all()
+
+    def _create_joint_pure_pd_request(self, target_pose, k_q_p, k_qd_p, include_gains):
+        """Create one absolute-position PD request in Boston Dynamics joint order."""
+        update_proto = robot_command_pb2.JointControlStreamRequest()
+        set_timestamp_from_now(update_proto.header.request_timestamp)
+        update_proto.header.client_name = "relic_pd_controller"
+
+        if include_gains:
+            update_proto.joint_command.gains.k_q_p.extend(k_q_p)
+            update_proto.joint_command.gains.k_qd_p.extend(k_qd_p)
+
+        update_proto.joint_command.position.extend(target_pose)
+        update_proto.joint_command.velocity.extend([0.0] * self.n_dofs)
+        update_proto.joint_command.load.extend([0.0] * self.n_dofs)
+
+        # Match spot_rl_inference's 100 ms command validity and 5 ms
+        # extrapolation allowance.  New ReLIC targets arrive at 100 Hz, but a
+        # stopped policy must not make the stream replay a stale target.
+        update_proto.joint_command.end_time.CopyFrom(
+            self.robot.time_sync.robot_timestamp_from_local_secs(time.time() + 0.1)
+        )
+        update_proto.joint_command.extrapolation_duration.CopyFrom(seconds_to_duration(0.005))
+
+        command_key = self._next_command_key
+        self._next_command_key += 1
+        update_proto.joint_command.user_command_key = command_key
+        self.cmd_history[command_key] = time.time()
+        return update_proto
+
+    def generate_joint_pure_pd_command_stream(self):
+        """Yield each newly-published ReLIC target through one persistent RPC.
+
+        Gains appear only in the first request, as in Spot's reference joint
+        streaming examples.  Waiting for a new generation instead of repeatedly
+        yielding the last target preserves the 100 ms command watchdog.
+        """
+        last_generation = 0
+        gains_sent = False
+        while True:
+            with self._command_target_condition:
+                while self._target_generation == last_generation and not self.should_stop:
+                    self._command_target_condition.wait()
+
+                if self.should_stop:
+                    return
+
+                target_pose = self._latest_pd_target.copy()
+                k_q_p, k_qd_p = self._latest_pd_gains
+                last_generation = self._target_generation
+
+            update_proto = self._create_joint_pure_pd_request(
+                target_pose=target_pose,
+                k_q_p=k_q_p,
+                k_qd_p=k_qd_p,
+                include_gains=not gains_sent,
+            )
+            gains_sent = True
+            # The activation helper waits for this transition before it asks
+            # Spot to enter full-body joint-control mode.
+            self.started_streaming = True
+            yield update_proto
 
     # activate function is to activate joint control mode
     def activate(self, command_client):
@@ -70,10 +224,10 @@ class JointAPIInterface:
         joint_command = RobotCommandBuilder.joint_command()
 
         try:
-            cmd_id = command_client.robot_command(joint_command)
-        except:
+            command_client.robot_command(joint_command)
+        except Exception:
             # Signal everything else to stop too
-            self.should_stop = True
+            self.set_should_stop(True)
 
     # handle_state_streaming function is to get lightweight robot state streaming message.
     def handle_state_streaming(self, robot_state_streaming_client):
@@ -217,29 +371,20 @@ class JointAPIInterface:
                 self.started_streaming = True
                 previous_dt_time = this_dt_time_d
 
-    def generate_joint_pure_pd_commands(self, target_pose, duration, k_q_p, k_qd_p):
-        """Stream an IsaacLab-equivalent explicit PD position command.
+    def generate_joint_pure_pd_commands(self, target_pose, k_q_p, k_qd_p):
+        """Yield one standalone direct pure-PD command for compatibility.
 
-        IsaacLab's position actuator evaluates ``Kp * (q_des - q) +
-        Kd * (qdot_des - qdot) + tau_ff``.  Its ReLIC action path supplies a
-        position target only, so ``qdot_des`` and ``tau_ff`` are both zero.
-        Reuse the streaming scheduler with identical start/end positions to
-        produce that same constant setpoint without a trajectory velocity or
-        load feedforward term.
+        ReLIC uses the persistent stream above.  Retain this one-request
+        generator for other callers that explicitly need a short-lived stream.
         """
         if len(target_pose) != self.n_dofs:
             raise ValueError(
                 f"Expected {self.n_dofs} joint targets, got {len(target_pose)}."
             )
-        if duration <= 0.0:
-            raise ValueError(f"PD command duration must be positive, got {duration}.")
-
-        target_pose = list(target_pose)
-        zero_load = [0.0] * self.n_dofs
-        yield from self.generate_joint_pos_interp_commands(
-            [target_pose, target_pose],
-            zero_load,
-            duration,
-            k_q_p,
-            k_qd_p,
+        self.started_streaming = True
+        yield self._create_joint_pure_pd_request(
+            target_pose=target_pose,
+            k_q_p=k_q_p,
+            k_qd_p=k_qd_p,
+            include_gains=True,
         )

@@ -135,7 +135,7 @@ class ActionsCfg:
         arm_joint_names=ARM_JOINT_NAMES,
         leg_joint_names=LEG_JOINT_NAMES,
         scale=0.2,
-        low_level_update_decimation=4,
+        low_level_update_decimation=2,
     )
 
 @configclass
@@ -296,7 +296,7 @@ class JointTeleoperationEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 4
         self.episode_length_s = 20
         # viewer settings
-        self.viewer.eye = (8.0, 0.0, 5.0)
+        self.viewer.eye = (6.0, 0.0, 4.0)
         # simulation settings
         self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation

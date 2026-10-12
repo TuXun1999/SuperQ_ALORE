@@ -18,6 +18,7 @@ Buttons: Reset (arm to init), Print, Quit.
 """
 
 import argparse
+import os
 import tkinter as tk
 
 
@@ -35,11 +36,45 @@ parser.add_argument(
     default=0.5,
     help="Base speed magnitude (m/s or rad/s) applied while a velocity key is held.",
 )
+parser.add_argument(
+    "--video",
+    action="store_true",
+    default=False,
+    help="Record the first teleoperation rollout as an MP4 video.",
+)
+parser.add_argument(
+    "--video_length",
+    type=int,
+    default=500,
+    help="Number of teleoperation control frames to record when --video is set.",
+)
+parser.add_argument(
+    "--video_fps",
+    type=int,
+    default=None,
+    help="Output video FPS. Defaults to the environment control frequency.",
+)
+parser.add_argument(
+    "--video_folder",
+    type=str,
+    default=None,
+    help="Output folder for videos. Defaults to './logs/videos/teleoperation'.",
+)
+parser.add_argument(
+    "--video_name_prefix",
+    type=str,
+    default="teleoperation",
+    help="Filename prefix for the recorded video.",
+)
 
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
 args_cli = parser.parse_args()
+
+# RGB-array recording requires cameras to be enabled before Isaac Sim starts.
+if args_cli.video:
+    args_cli.enable_cameras = True
 
 # launch omniverse app
 app_launcher = AppLauncher(args_cli)
@@ -51,12 +86,31 @@ import gymnasium as gym
 import isaaclab_tasks  # noqa: F401
 import SuperQ_ALORE.tasks  # noqa: F401
 import torch
+from isaaclab.utils.dict import print_dict
 from isaaclab.utils.math import quat_apply, quat_mul
 from isaaclab_tasks.utils import parse_env_cfg
 
 from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, GRASP_POSE_1_JOINT_POS
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.scene import OBJECT_TELEOPERATION_INFO
 from SuperQ_ALORE.tasks.manager_based.superq_alore.mdp.object_management import ARM_JOINT_NAMES_IN_ORDER
+
+
+def _estimate_step_dt_from_cfg(env_cfg) -> float:
+    """Estimate the control period used to select a sensible video FPS."""
+    sim_dt = float(getattr(getattr(env_cfg, "sim", None), "dt", 1.0 / 60.0))
+    decimation = int(getattr(env_cfg, "decimation", 1) or 1)
+    return sim_dt * decimation
+
+
+def _filename_component(value: str) -> str:
+    """Convert a user-provided filename component into a portable form."""
+    return "".join(char if char.isalnum() or char in "-_" else "_" for char in value)
+
+
+def _build_video_name() -> str:
+    """Return the descriptive filename used for this Tk teleoperation rollout."""
+    prefix = _filename_component(args_cli.video_name_prefix)
+    return f"{prefix}-spot-joint-teleoperation" if prefix else "spot-joint-teleoperation"
 
 
 def quat_inverse_safe(q: torch.Tensor) -> torch.Tensor:
@@ -286,13 +340,68 @@ def main():
         num_envs=args_cli.num_envs,
         use_fabric=not args_cli.disable_fabric,
     )
+    if args_cli.video and args_cli.video_length <= 0:
+        raise ValueError(
+            f"--video_length must be positive when --video is set, got {args_cli.video_length}."
+        )
 
-    env = gym.make(args_cli.task, cfg=env_cfg)
+    # ``rgb_array`` lets Gymnasium obtain the IsaacLab render buffer.  It is
+    # only requested while recording so ordinary teleoperation is unaffected.
+    env = gym.make(
+        args_cli.task,
+        cfg=env_cfg,
+        render_mode="rgb_array" if args_cli.video else None,
+    )
+
+    video_recorder = None
+    if args_cli.video:
+        video_folder = os.path.abspath(args_cli.video_folder or "./logs/videos/teleoperation")
+        os.makedirs(video_folder, exist_ok=True)
+        estimated_step_dt = _estimate_step_dt_from_cfg(env_cfg)
+        render_fps = (
+            int(args_cli.video_fps)
+            if args_cli.video_fps is not None and int(args_cli.video_fps) > 0
+            else max(1, int(round(1.0 / max(1.0e-4, estimated_step_dt))))
+        )
+        try:
+            if hasattr(env, "metadata") and isinstance(env.metadata, dict):
+                env.metadata["render_fps"] = render_fps
+            if (
+                hasattr(env, "unwrapped")
+                and hasattr(env.unwrapped, "metadata")
+                and isinstance(env.unwrapped.metadata, dict)
+            ):
+                env.unwrapped.metadata["render_fps"] = render_fps
+        except Exception:
+            # Rendering metadata is advisory; the video wrapper can still use
+            # its explicit ``fps`` argument when a gym environment lacks it.
+            pass
+
+        video_kwargs = {
+            "video_folder": video_folder,
+            # Start explicitly after reset so the output has a useful,
+            # teleoperation-specific name instead of an implicit reset clip.
+            "step_trigger": lambda _step: False,
+            "video_length": args_cli.video_length,
+            "name_prefix": "",
+            "fps": render_fps,
+            "disable_logger": True,
+        }
+        print(f"[INFO] Video FPS set to: {render_fps}")
+        print(f"[INFO] Video output folder: {video_folder}")
+        print_dict(video_kwargs, nesting=4)
+        env = gym.wrappers.RecordVideo(env, **video_kwargs)
+        video_recorder = env
 
     print(f"[INFO] Gym observation space: {env.observation_space}")
     print(f"[INFO] Gym action space: {env.action_space}")
 
     env.reset()
+    recorded_steps = 0
+    if video_recorder is not None:
+        video_name = _build_video_name()
+        video_recorder.start_recording(video_name)
+        print(f"[INFO] Recording teleoperation video: {video_name}.mp4")
 
     arm_joint_names = _build_arm_joint_names()
     if len(arm_joint_names) != 7:
@@ -321,6 +430,9 @@ def main():
             if gui.should_quit():
                 print("[TELEOP] quitting teleoperation...")
                 gui.close()
+                if video_recorder is not None and video_recorder.recording:
+                    video_recorder.stop_recording()
+                    print(f"[INFO] Video export completed after {recorded_steps} frames.")
                 env.close()
                 return
 
@@ -355,8 +467,16 @@ def main():
             actions[:, 3:10] = torch.tensor(arm_vals, device=env.unwrapped.device, dtype=torch.float32)
 
             env.step(actions)
+            if video_recorder is not None and video_recorder.recording:
+                recorded_steps += 1
+                if recorded_steps >= args_cli.video_length:
+                    video_recorder.stop_recording()
+                    print(f"[INFO] Video export completed after {recorded_steps} frames.")
 
     gui.close()
+    if video_recorder is not None and video_recorder.recording:
+        video_recorder.stop_recording()
+        print(f"[INFO] Video export completed after {recorded_steps} frames.")
     env.close()
 
 
