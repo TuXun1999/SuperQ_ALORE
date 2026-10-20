@@ -24,6 +24,20 @@ gym.register(
     },
 )
 
+# Articulated QiVi-chair training environment.  This is intentionally a
+# separate registration so existing rigid-object training runs are unchanged.
+gym.register(
+    id="Template-Superq-Alore-Articulated-Chair-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.articulated_chair_env_cfg:ArticulatedChairEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:ArticulatedChairPPORunnerCfg",
+        "rsl_rl_grasp_ranking_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerGraspRankingCfg",
+        "rsl_rl_superqalore_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPOSuperQALORERunnerCfg",
+    },
+)
+
 gym.register(
     id="Template-Superq-Alore-Play-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",

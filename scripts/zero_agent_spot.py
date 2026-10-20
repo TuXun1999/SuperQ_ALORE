@@ -3,78 +3,107 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Script to run an environment with zero action agent."""
-
-"""Launch Isaac Sim Simulator first."""
+"""Approach and grasp a chair, then pull backward using Spot MPC or ReLIC."""
 
 import argparse
 import time
-from robot import SPOT, SpotRLEnvPLAY
-import bosdyn
-import torch
-# add argparse arguments
-parser = argparse.ArgumentParser(description="Zero agent for RL policy deployment on SPOT")
-bosdyn.client.util.add_base_arguments(parser)
-parser.add_argument(
-    "--hostname", type=str, default="192.168.80.3", help="Hostname of the robot."
-)
-
-# parse the arguments
-args_cli = parser.parse_args()
 
 
+def build_parser():
+    parser = argparse.ArgumentParser(description=__doc__)
+    # Accept the SDK's positional hostname as well as the existing --hostname
+    # spelling, without registering two arguments with the same destination.
+    parser.add_argument("robot_hostname", nargs="?", help="Robot address; alternatively use --hostname.")
+    parser.add_argument("--hostname", help="Robot address (default: 192.168.80.3).")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Print debug-level messages.")
+    parser.add_argument(
+        "--use-relic", action="store_true",
+        help="Use ReLIC after grasping. On exit: release, stow, self-right, then power off.",
+    )
+    parser.add_argument(
+        "--steps", type=int, default=100,
+        help="Number of backward-command updates. ReLIC runs at 100 Hz (100 steps is about 1 s).",
+    )
+    return parser
 
-def main():
-    """Zero actions agent to deploy the pretrained RL policy."""
-    # Connect to SPOT
+
+def main(args_cli):
+    if args_cli.steps <= 0:
+        raise ValueError("--steps must be positive.")
+    if args_cli.hostname and args_cli.robot_hostname and args_cli.hostname != args_cli.robot_hostname:
+        raise ValueError("Specify the same robot address when using both hostname arguments.")
+    args_cli.hostname = args_cli.hostname or args_cli.robot_hostname or "192.168.80.3"
+    # This flag authorizes joint commands, but streaming starts only when the
+    # ReLIC environment is created AFTER the grasp sequence below.
+    args_cli.enable_joint_commands = args_cli.use_relic
+
+    from robot import SPOT, SpotRLEnvPLAY, SpotReLICEnvPLAY
+    import torch
+
     robot = SPOT(args_cli)
-    robot.lease_alive()
-    robot.power_on_stand()
-    
-    # Create environment
-    env = SpotRLEnvPLAY(robot)
+    lease = env = None
+    power_requested = False
+    try:
+        lease = robot.lease_alive()
+        power_requested = True
+        robot.power_on_stand()
 
-    # Approach the chair & grasp the chair
-    # 1. Detect the AprilTag
-    # 2. Move to the position ahead of the AprilTag (labeled on the chair)
-    robot.robot.logger.info("Moving to pregrasp location based on AprilTag detection.")
-    robot.pregrasp_location_apriltag(option="world_object_service")
-    robot.robot.logger.info("Reached pregrasp location.")
-    robot.robot.logger.info("Moving to grasp location.")
-    robot.open_gripper()
-    # 3. Move the arm to the desired joint angle configuration
-    robot.arm_joint_control([0.00, -1.64, 1.87, 0.0, 1.04, 0.0, -0.9])
-    time.sleep(1)
-    robot.close_gripper()
-    robot.robot.logger.info("Grasped the chair.")
-    steps = 0
-    max_steps = 100  # Define the maximum number of steps
-    while steps < max_steps:
-        with torch.inference_mode():
-            # compute zero actions
-            actions = torch.zeros((1, 12))
-            """
-            actions: base velocity (3) + arm joint (7) + base pose (2: pitch, height)
-            (Forced to match 12D action space of the pretrained locomotion policy)
-            """
+        # Keep the existing SDK/MPC approach and grasp sequence in both modes.
+        robot.robot.logger.info("Moving to pregrasp location based on AprilTag detection.")
+        robot.pregrasp_location_apriltag(option="world_object_service")
+        robot.robot.logger.info("Reached pregrasp location.")
+        robot.robot.logger.info("Moving to grasp location.")
+        robot.open_gripper()
+        robot.arm_joint_control([0.00, -1.64, 1.87, 0.0, 1.04, 0.0, -0.9])
+        time.sleep(1)
+        robot.close_gripper()  # Includes the existing 0.5-second closing wait.
+        robot.robot.logger.info("Gripper closing wait completed; starting backward motion.")
 
-            # set the active arm joints to the reference joint positions for the active pose, 
-            # so that the arm will hold the desired pose with zero actions
-            # also notice that we now use relative action, so we send zero delta.
-            actions[:, 3:10] = torch.zeros_like(actions[:, 3:10]) # command zero delta for the arm joints to hold the arm at the desired pose defined by the active arm joint reference
+        if args_cli.use_relic:
+            # Same controller as zero_agent_ReLIC_spot.py, with no bridge,
+            # visualizer, latency reporting, or policy/observation recording.
+            # The first step latches the measured arm AND closed gripper pose.
+            env = SpotReLICEnvPLAY(
+                robot,
+                enable_latency_reporting=False,
+                enable_observation_logging=False,
+                enable_policy_trace_logging=False,
+            )
+        else:
+            env = SpotRLEnvPLAY(robot)
 
-            # Only command the base to be at a suitable height & pitch 
-            # (roll action not desired)
-            actions[:, :3] = torch.tensor([-0.2, 0.0, 0.0]) # command a base velocity to move forward after chair reset, to avoid the disturbance from chair reset and keep the grasping pose stable
-
-            env.step(actions)
-            steps += 1
-
-
-    # # close the simulator
-    # env.close()
+        # [vx, vy, yaw rate, seven arm deltas, pitch, height]. Zero arm
+        # deltas hold the grasp pose; the action term handles torso commands.
+        actions = torch.zeros((1, 12))
+        actions[:, 0] = -0.2
+        next_step_time = time.perf_counter()
+        for i in range(args_cli.steps):
+            with torch.inference_mode():
+                env.step(actions)
+            if args_cli.use_relic:
+                # ReLIC needs continuous 100 Hz observations/inference/targets,
+                # not a single SDK velocity request. Do not burst late updates.
+                next_step_time += env.control_period_s
+                remaining = next_step_time - time.perf_counter()
+                if remaining > 0:
+                    time.sleep(remaining)
+                else:
+                    next_step_time = time.perf_counter()
+    finally:
+        try:
+            if args_cli.use_relic and power_requested:
+                if env is not None:
+                    # Same shutdown as the existing ReLIC deployment script,
+                    # including on Ctrl-C or an inference error.
+                    env.close(relic = True)
+                else:
+                    # Construction/approach can fail before env is assigned.
+                    robot.shutdown_smooth()
+            # Preserve MPC's existing behavior: leave Spot powered on.
+        finally:
+            if lease is not None:
+                robot.lease_return()
 
 
 if __name__ == "__main__":
-    # run the main function
-    main()
+    main(build_parser().parse_args())

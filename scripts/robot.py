@@ -226,7 +226,11 @@ class SPOT:
             )
     """Section I: Fundamental functionalities"""
     def estop(self):
-        # Emergency stop handling => Self-right the robot
+        # Legacy name: this requests self-right, NOT an emergency stop.
+        self.self_right()
+
+    def self_right(self):
+        """Request the SDK's full-body recovery and wait for completion."""
         blocking_selfright(self.command_client, timeout_sec=10)
         
     def lease_alive(self):
@@ -368,12 +372,13 @@ class SPOT:
         # The function to send the se2 synchro velocity command to the robot
         move_cmd = RobotCommandBuilder.synchro_velocity_command(\
             v_x=vx, v_y=vy, v_rot=vtheta,\
-            params=self.get_walking_params(0.6, 1), \
+            #params=self.get_walking_params(0.6, 1), \
+            locomotion_hint=spot_command_pb2.LocomotionHint.HINT_TROT,
             build_on_command=build_on_command)
         cmd_id = self.command_client.robot_command(command=move_cmd,\
                             end_time_secs=time.time() + exec_time)
         # Wait until the robot reports that it is at the goal.
-        block_for_trajectory_cmd(self.command_client, cmd_id, timeout_sec=exec_time + 0.5)
+        # block_for_trajectory_cmd(self.command_client, cmd_id, timeout_sec=exec_time + 0.5)
     
     def send_pose_command_se2(self, x, y, theta, exec_time = 1.5, frame_name = ODOM_FRAME_NAME):
         # The function to send the pose command to move the robot to the desired pose
@@ -424,7 +429,6 @@ class SPOT:
         # Get the current arm joint angles
         robot_state = self.state_client.get_robot_state()
         joint_angles = robot_state.kinematic_state.joint_states
-        print(joint_angles)
         arm_joint_angles = []
         joint_name_list = ["arm0.sh0", "arm0.sh1", "arm0.el0", "arm0.el1", "arm0.wr0", "arm0.wr1", "arm0.f1x"]
         for joint_angle in joint_angles:
@@ -523,13 +527,13 @@ class SPOT:
             self._rotate_minus_rz()
         elif event.keysym == 'g':
             self._arm_stow()
-    def _arm_stow(self):
+    def _arm_stow(self, timeout_sec=3.0):
         stow = RobotCommandBuilder.arm_stow_command()
 
         # Issue the command via the RobotCommandClient
         stow_command_id = self.command_client.robot_command(stow)
 
-        block_until_arm_arrives(self.command_client, stow_command_id, 3.0)
+        return block_until_arm_arrives(self.command_client, stow_command_id, timeout_sec)
         
     def _move_out(self):
         self._arm_cylindrical_velocity_cmd_helper('move_out', v_r=VELOCITY_HAND_NORMALIZED)
@@ -1031,7 +1035,6 @@ class SPOT:
                                     logger=None)
 
 
-
     def move_base_arc(self, obj_pose_hand:SE3Pose, angle):
         # Find the object pose in body frame
         robot_state = self.state_client.get_robot_state()
@@ -1104,6 +1107,31 @@ class SPOT:
             self.state_thread.join()
         if self.activate_thread:
             self.activate_thread.join()
+
+    def shutdown_smooth(self, relic = True):
+        """Stop ReLIC, release/stow, self-right, then request motor power-off.
+
+        Recovery is physical motion, not an E-stop. Never enable motors or
+        clear an E-stop to perform it, and do not add recovery to a dry run.
+        """
+        try:
+            if relic: 
+                # No policy targets may compete with the SDK recovery commands.
+                self.joint_level_control_stop()
+            if (self.enable_joint_commands and self.robot.is_powered_on()
+                    and not self.robot.is_estopped()):
+                self.robot.logger.info("ReLIC shutdown: releasing gripper, stowing arm, then self-righting.")
+                # Release the chair BEFORE arm/body recovery. A synchronized
+                # gripper command replaces full-body joint control; omitted
+                # mobility/arm commands default to SDK safe-stop behavior.
+                self.open_gripper()
+                if not self._arm_stow(timeout_sec=10.0):
+                    raise RuntimeError("Arm stow did not complete; skipping self-right and requesting power-off.")
+                self.self_right()
+                time.sleep(5) # Give sufficient time for the self-right operation to complete
+        finally:
+            # Recovery failure/timeout must not bypass the power-off attempt.
+            self.power_off()
 
     def get_current_arm_joint_positions(self):
         """Return the current seven arm positions in ReLIC command order."""
@@ -1224,7 +1252,216 @@ class SPOT:
         vec[DOF.HR_KN] = SPOT_DEFAULT_JOINT_POS["hr_kn"]
         
         return vec
+    
+    # The helper functions to find the spot's body frame in 
+    # camera frame
+    def get_apriltag_pose_hand(
+        self, tag_id, tag_size_m, timeout_sec=5.0, max_age_sec=0.5,
+        return_observation=False,
+    ):
+        """Return camera_T_tag (SE3Pose), NOT hand_T_tag, without moving Spot.
+
+        Only accept a new, unambiguous raw detection from the hand color sensor.
+        World Object Service's built-in detections are documented for the base
+        cameras: this requires a hand-camera detector publishing to that service.
+        Otherwise it times out; it does not silently use a base-camera detection.
+        tag_size_m is the measured black-square side, checked against the service.
+        With return_observation=True, also return the detection WorldObject so
+        callers can compose transforms from the SAME acquisition-time snapshot.
+        """
+        if isinstance(tag_id, bool) or not isinstance(tag_id, (int, np.integer)) or tag_id < 0:
+            raise ValueError("tag_id must be a nonnegative integer.")
+        if not all(math.isfinite(v) and v > 0 for v in (tag_size_m, timeout_sec, max_age_sec)):
+            raise ValueError("Tag size, timeout and maximum age must be finite and positive.")
+        deadline = time.monotonic() + timeout_sec
+        # Resolve the optical sensor name from the SDK, not the 'hand' link name.
+        images = self.image_client.get_image_from_sources(["hand_color_image"], timeout=timeout_sec)
+        if len(images) != 1 or not images[0].shot.frame_name_image_sensor:
+            raise RuntimeError("Hand camera did not supply its optical sensor frame name.")
+        camera_frame = images[0].shot.frame_name_image_sensor
+        requested_after = time.time()
+        converter = self.robot.time_sync.get_robot_time_converter()
+        while time.monotonic() < deadline:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            objects = self.world_object_client.list_world_objects(
+                object_type=[world_object_pb2.WORLD_OBJECT_APRILTAG],
+                time_start_point=max(requested_after, time.time() - max_age_sec),
+                timeout=remaining,
+            ).world_objects
+            candidates = []
+            for obj in objects:
+                props = obj.apriltag_properties
+                if (props.tag_id != tag_id or props.frame_name_camera != camera_frame
+                        or props.fiducial_pose_status != world_object_pb2.AprilTagProperties.STATUS_OK
+                        or not props.frame_name_fiducial or not obj.HasField("acquisition_time")):
+                    continue
+                acquired = converter.local_seconds_from_robot_timestamp(obj.acquisition_time)
+                age = time.time() - acquired
+                if acquired < requested_after or not 0 <= age <= max_age_sec:
+                    continue
+                if not np.allclose([props.dimensions.x, props.dimensions.y], tag_size_m,
+                                   rtol=0, atol=0.001):
+                    raise ValueError("World Object tag dimensions do not match tag_size_m; "
+                                     "correct the detector's size before metric calibration.")
+                camera_T_tag = get_a_tform_b(
+                    obj.transforms_snapshot, camera_frame, props.frame_name_fiducial
+                )
+                if camera_T_tag is not None and np.isfinite(camera_T_tag.to_matrix()).all():
+                    candidates.append((acquired, camera_T_tag, obj))
+            if candidates:
+                _, camera_T_tag, observation = max(candidates, key=lambda item: item[0])
+                return (camera_T_tag, observation) if return_observation else camera_T_tag
+            time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+        raise TimeoutError(
+            f"No fresh, valid tag {tag_id} from {camera_frame}. World Object Service may "
+            "not detect hand-camera tags; a hand_color_image detector/pose publisher is needed."
+        )
+
+    def gripper_camera_look_down_on_back(
+        self, joint_positions, timeout_sec=10.0, max_velocity=0.4, max_acceleration=0.8,
+    ):
+        """Move to a caller-tested viewing pose and wait; return the command ID.
+
+        joint_positions: six radians [sh0, sh1, el0, el1, wr0, wr1]. There is
+        deliberately no guessed default pose near the body/payload. The caller
+        must check the entire path, not only the final pose, for clearance.
+        Requires a lease and powered, standing Spot; call BEFORE starting ReLIC.
+        Does not change gripper opening, power, lease, or E-stop configuration.
+        """
+        joints = np.asarray(joint_positions, dtype=float)
+        if joints.shape != (6,) or not np.isfinite(joints).all():
+            raise ValueError("Provide six finite arm joint angles in radians.")
+        # Same conservative arm limits as check_joint_limits, without its
+        # self-right side effect on invalid input.
+        limits = np.array([[-2.61799, 3.14159], [-3.14159, 0.523599], [0, 3.14159],
+                           [-2.792530, 2.792530], [-1.8326, 1.8326], [-2.87989, 2.87979]])
+        if np.any(joints < limits[:, 0]) or np.any(joints > limits[:, 1]):
+            raise ValueError("Viewing pose exceeds the configured arm joint limits.")
+        if not all(math.isfinite(v) and v > 0 for v in (timeout_sec, max_velocity, max_acceleration)):
+            raise ValueError("Timeout, velocity and acceleration must be finite and positive.")
+        if self.activate_thread is not None or self.joint_api_interface.started_streaming:
+            raise RuntimeError("Perform arm/tag calibration before starting ReLIC joint control.")
+        if not self.robot.is_powered_on() or self.robot.is_estopped():
+            raise RuntimeError("Arm calibration requires powered, non-E-stopped Spot.")
+        arm_command = RobotCommandBuilder.arm_joint_command(
+            *joints, max_vel=max_velocity, max_accel=max_acceleration,
+        )
+        command = RobotCommandBuilder.build_synchro_command(
+            RobotCommandBuilder.synchro_stand_command(), arm_command,
+        )
+        try:
+            command_id = self.command_client.robot_command(command, timeout=timeout_sec)
+            if not block_until_arm_arrives(self.command_client, command_id, timeout_sec):
+                raise RuntimeError("Arm did not reach the viewing pose; calibration aborted.")
+        except BaseException:
+            # A wait timeout/Ctrl-C must not leave the arm pursuing the target.
+            stop = robot_command_pb2.RobotCommand()
+            stop.synchronized_command.arm_command.arm_stop_command.SetInParent()
+            try:
+                self.command_client.robot_command(stop, timeout=2.0)
+            except Exception as exc:
+                self.robot.logger.warning("Could not stop calibration arm motion: %s", exc)
+            raise
+        return command_id
+
+    def get_body_T_AprilTag(
+        self, tag_id, tag_size_m, timeout_sec=5.0, max_age_sec=0.5,
+    ):
+        """Measure and cache body_T_tag after the viewing motion has completed.
+
+        The tag must be rigidly attached to the body. Both factors come from
+        the detection snapshot, never from a later robot-state request. Returns
+        an SDK SE3Pose in metres, using the service's RAW fiducial axes. External
+        detectors must use the same tag axes before composing camera_T_body =
+        camera_T_tag * body_T_tag.inverse(). Recalibrate after remounting the tag.
+        """
+        self.body_T_AprilTag = None  # A failed recalibration must not reuse an old result.
+        self.body_apriltag_id = None
+        camera_T_tag, observation = self.get_apriltag_pose_hand(
+            tag_id, tag_size_m, timeout_sec=timeout_sec, max_age_sec=max_age_sec,
+            return_observation=True,
+        )
+        body_T_camera = get_a_tform_b(
+            observation.transforms_snapshot, BODY_FRAME_NAME,
+            observation.apriltag_properties.frame_name_camera,
+        )
+        if body_T_camera is None or not np.isfinite(body_T_camera.to_matrix()).all():
+            raise RuntimeError("Detection snapshot lacks a valid body-to-camera transform.")
+        self.body_T_AprilTag = body_T_camera * camera_T_tag
+        self.body_apriltag_id = tag_id
+        return self.body_T_AprilTag
+
+    def get_high_level_obs(self):
+        """Build a high-level observation for the robot."""
+        # Placeholder implementation, replace with actual high-level observation logic
+        high_level_obs = {}
         
+        # Obtain the proprioceptive data from the robot state streaming
+        state, joint_sample_receive_time = self.joint_api_interface.get_latest_state_with_receive_time()
+        curr_pose = state.joint_states.position
+        curr_vel = state.joint_states.velocity
+        curr_kinematic_state = state.kinematic_state
+        # The lightweight streamed state has no frame tree. Fetch a full state
+        # snapshot for hand/body transforms; its timestamp differs from the stream.
+        frame_state = self.state_client.get_robot_state()
+        curr_frame_transforms = frame_state.kinematic_state.transforms_snapshot
+
+        # a_T_b is the pose of b in a: it maps points from frame b into a.
+        # flat_body shares the body origin but is gravity-aligned (no roll/pitch).
+        body_T_hand = get_a_tform_b(
+            curr_frame_transforms, BODY_FRAME_NAME, HAND_FRAME_NAME
+        )
+        vision_T_body = bdSE3Pose.from_proto(curr_kinematic_state.vision_tform_body)
+
+        
+        # Joint velocities & positions
+        curr_pose = torch.tensor(curr_pose, dtype=torch.float32)
+        curr_vel = torch.tensor(curr_vel, dtype=torch.float32)
+        joint_pos = self.real2sim_reorder(curr_pose)
+        joint_vel = self.real2sim_reorder(curr_vel) * 0.05
+
+                
+        # TODO: Body orientation data => body orientation in world frame
+        # body_orientation
+
+        
+        # Find the transformation between vision & body frame
+        body_T_vision = vision_T_body.inverse()
+        curr_body_velocity_vision = curr_kinematic_state.velocity_of_body_in_vision
+        
+        # Find the root angular velocity
+        curr_body_ang_vel = torch.tensor(
+            body_T_vision.rot.transform_point(
+                curr_body_velocity_vision.angular.x,
+                curr_body_velocity_vision.angular.y,
+                curr_body_velocity_vision.angular.z),
+            dtype=torch.float32) * 0.25
+        
+        # NOTE: The last action comes from the buffer provided in the RL environment
+                
+        # End-effector in robot frame
+        ee_pose_in_robot_frame = torch.tensor([
+            body_T_hand.position.x,
+            body_T_hand.position.y,
+            body_T_hand.position.z,
+            body_T_hand.rot.w,
+            body_T_hand.rot.x,
+            body_T_hand.rot.y,
+            body_T_hand.rot.z
+        ], dtype=torch.float32) # dim: 7 (position + quat) for the end-effector link
+        
+        
+        # TODO: Find the object-centric data
+        # (including object to goal transformation and object pose in robot frame)  
+        
+        
+        high_level_obs["joint_pos"] = joint_pos
+        high_level_obs["joint_vel"] = joint_vel
+        high_level_obs["base_ang_vel"] = curr_body_ang_vel
+        high_level_obs["ee_pose_in_robot_frame"] = ee_pose_in_robot_frame
+        return high_level_obs
         
     def get_ReLIC_obs(self, return_joint_sample_receive_time=False):
         """Build a ReLIC observation from one streamed robot-state snapshot.
@@ -1471,6 +1708,146 @@ class SpotRLEnvPLAY():
     def close(self):
         # Close the robot connection
         self.robot.power_off()
+
+# PolicyCfg order; scaling and joint selection belong to get_high_level_obs().
+OBS_TERMS = (
+    ("joint_pos", 18),
+    ("joint_vel", 18),
+    ("body_orientation", 2),
+    ("base_ang_vel", 3),
+    ("last_action", 9),
+    ("ee_pose_in_robot_frame", 7),
+    ("obj_pose_in_robot_frame", 3),
+    ("obj_to_goal_pos_local", 2),
+    ("obj_to_goal_rot_local", 1),
+)
+
+
+def vector(value, size, name):
+    value = torch.as_tensor(value, dtype=torch.float32, device="cpu").reshape(1, -1)
+    if value.shape != (1, size) or not torch.isfinite(value).all():
+        raise ValueError(f"{name} must contain {size} finite values; got {value.shape}.")
+    return value
+
+
+class HighLevelSpotEnv:
+    """50 Hz high-level actions with a configurable ReLIC update frequency."""
+
+    HIGH_LEVEL_FREQUENCY_HZ = 50.0
+
+    def __init__(self, robot, low_level_env, goal_pose_world, low_level_frequency_hz=100.0,
+                 camera_pose_reader=None):
+        ratio = low_level_frequency_hz / self.HIGH_LEVEL_FREQUENCY_HZ
+        if not math.isfinite(ratio) or ratio < 1 or not math.isclose(ratio, round(ratio), abs_tol=1e-9):
+            raise ValueError("low_level_frequency_hz must be a positive integer multiple of 50 Hz.")
+        self.low_level_updates_per_action = round(ratio)
+        self.low_level_frequency_hz = float(low_level_frequency_hz)
+        self.robot = robot
+        # Optional CameraTagPoseReader; requires only NumPy and the JSON file,
+        # not the camera's Python/Aravis environment.
+        self.camera_pose_reader = camera_pose_reader
+        self.camera_tag_pose = None
+        self.low_level_env = low_level_env
+        # Policy/target update cadence only; the SDK joint-stream rate is unchanged.
+        self.low_level_env.control_period_s = 1.0 / self.low_level_frequency_hz
+        self.goal_pose_world = vector(goal_pose_world, 3, "goal_pose_world")
+        self.last_action = torch.zeros((1, 12))
+        self._deadline = time.perf_counter()
+
+    def get_camera_tag_pose(self):
+        """Read a fresh camera-frame tag pose; do NOT interpret it as world/object pose.
+
+        Returns CameraTagPose, or None if no reader is configured. Invalid or
+        stale configured input raises CameraPoseUnavailable and clears the cache.
+        The retained camera_tag_pose is only the last read, not a live sensor.
+        """
+        self.camera_tag_pose = None
+        if self.camera_pose_reader is not None:
+            self.camera_tag_pose = self.camera_pose_reader.read()
+        return self.camera_tag_pose
+
+    def get_observations(self):
+        # Expose the raw camera measurement for the upcoming frame-calibration
+        # code. Keep it OUT of the trained 63-D policy vector until transformed.
+        self.get_camera_tag_pose()
+        # Black-box hardware boundary: no estimated/fabricated sensor values.
+        measured = self.robot.get_high_level_obs()
+        if not isinstance(measured, dict):
+            raise TypeError("get_high_level_obs() must return the documented observation dictionary.")
+        terms = dict(measured)
+        if "object_pose_world" not in terms:
+            raise ValueError("get_high_level_obs() must provide object_pose_world [x, y, yaw].")
+        
+        # TODO: Find the robot's rpy pose in world frame
+        # body_orientation = ObsTerm(
+        #             func = mdp.get_body_orientation,
+        #             noise=Unoise(n_min=-0.1, n_max=0.1),
+        #             scale = 1.0
+        #         ) # dim: 2 (no yaw information)
+        # TODO: Find the object-centric information
+        # # Object pose in robot frame
+        # obj_pose_in_robot_frame = ObsTerm(
+        #     func = mdp.obj_pose_in_robot_frame_SE2,
+        #     scale = 1.0,
+        # ) # dim: 3 (position + yaw) for the target object, SE2
+
+        # # Vector from active object to goal in active object frame.
+        # obj_to_goal_pos_local = ObsTerm(
+        #     func=mdp.obj_to_goal_pos_local,
+        #     params={"goal_term_name": "goal_pose"},
+        #     noise=Unoise(n_min=-0.02, n_max=0.02),
+        #     scale = 1.0,
+        # ) # dim: 2 (only xy components in active object frame, since we want to encourage the agent to align the object to the goal along the ground plane)
+
+        # # Goal orientation represented in active object frame as a yaw angle.
+        # obj_to_goal_rot_local = ObsTerm(
+        #     func=mdp.obj_to_goal_rot_local,
+        #     params={"goal_term_name": "goal_pose"},
+        #     noise=Unoise(n_min=-0.01, n_max=0.01),
+        #     scale = 1.0,
+        # ) # dim: 1 (Yaw error in active object frame)
+        # terms["obj_pose_in_robot_frame"] = obj_pose_in_robot_frame
+        # terms["obj_to_goal_pos_local"] = obj_to_goal_pos_local
+        # terms["obj_to_goal_rot_local"] = obj_to_goal_rot_local
+        # obj = vector(terms["object_pose_world"], 3, "object_pose_world")
+        # delta = self.goal_pose_world - obj
+        # c, s = torch.cos(obj[:, 2]), torch.sin(obj[:, 2])
+        # terms["obj_to_goal_pos_local"] = torch.stack(
+        #     (c * delta[:, 0] + s * delta[:, 1],
+        #      -s * delta[:, 0] + c * delta[:, 1]), dim=1,
+        # )
+        # terms["obj_to_goal_rot_local"] = torch.atan2(
+        #     torch.sin(delta[:, 2]), torch.cos(delta[:, 2]),
+        # )
+        
+        
+        # Same first nine elements and clipping as mdp.last_high_level_action.
+        terms["last_action"] = self.last_action[:, :9].clamp(-100, 100)
+        missing = [name for name, _ in OBS_TERMS if name not in terms]
+        if missing:
+            raise ValueError(f"get_high_level_obs() is missing policy terms: {missing}")
+        
+        
+        return torch.cat([vector(terms[name], size, name) for name, size in OBS_TERMS], dim=1)
+
+    def step(self, action):
+        # [vx, vy, yaw rate, 7 arm deltas, pitch, height], as in the simulation.
+        # The existing ReLIC env fixes torso pitch/height and references arm
+        # deltas to the measured startup grasp pose. Do not scale these twice.
+        action = vector(action, 12, "high-level action").detach().clone()
+        # Recheck before publishing actions, not only after the control step.
+        self.get_camera_tag_pose()
+        for _ in range(self.low_level_updates_per_action):
+            self.low_level_env.step(action)
+            self._deadline += self.low_level_env.control_period_s
+            remaining = self._deadline - time.perf_counter()
+            if remaining > 0:
+                time.sleep(remaining)
+            else:
+                self._deadline = time.perf_counter()  # Never burst updates to catch up.
+        self.last_action = action
+        return self.get_observations()
+
 
 class SpotReLICEnvPLAY():
     
@@ -1800,7 +2177,7 @@ class SpotReLICEnvPLAY():
         """Attach or remove the optional browser pose visualizer."""
         self.joint_pose_visualizer = visualizer
         
-    def close(self):
+    def close(self, relic = True):
         # `zero_agent_ReLIC_spot.py` calls close after its rollout, making this
         # summary the final latency output of a normal program execution.
         try:
@@ -1818,5 +2195,8 @@ class SpotReLICEnvPLAY():
                         self._policy_trace_file = None
                 finally:
                     # A dashboard failure must never keep the robot in joint control.
-                    self.robot.joint_level_control_stop()
-                    self.robot.power_off()
+                    self.robot.shutdown_smooth(relic=relic)
+                    
+class SpotHighLevelEnvPLAY():
+    def __init__(self):
+        pass

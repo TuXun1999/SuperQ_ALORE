@@ -18,7 +18,7 @@ from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES
+from SuperQ_ALORE.assets.spot.constants import ARM_JOINT_NAMES, LEG_JOINT_NAMES
 from SuperQ_ALORE.assets.spot.spot import SPOT_ARM_CFG
 from . import mdp
 from .mdp.scene import OBJECT_TELEOPERATION_INFO
@@ -70,12 +70,15 @@ class SpotWASDSceneCfg(InteractiveSceneCfg):
 
 @configclass
 class ActionsCfg:
-    """Expose ReLIC's base-velocity command; the term executes joint targets."""
+    """Expose the 12-D base/arm/torso command; the term executes joint targets."""
 
     relic_joint_position = mdp.ReLICWASDJointPositionActionCfg(
         asset_name="robot",
+        joint_names=["[fh].*"],
         arm_joint_names=tuple(ARM_JOINT_NAMES),
+        leg_joint_names=LEG_JOINT_NAMES,
         arm_joint_position=_WASD_ARM_JOINT_POS,
+        scale = 0.2,
         low_level_update_decimation=2,
     )
 
@@ -163,6 +166,6 @@ class SpotWASDEnvCfg(ManagerBasedRLEnvCfg):
         self.episode_length_s = 120.0
         self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation
-        self.viewer.eye = (5.0, -5.0, 3.0)
+        self.viewer.eye = (5.0, 5.0, 3.0)
         self.scene.robot = SPOT_ARM_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
         self.scene.robot.spawn.joint_drive.gains.stiffness = None

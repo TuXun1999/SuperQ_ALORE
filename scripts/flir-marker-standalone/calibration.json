@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "model": "opencv_fisheye",
+  "K": [
+    [
+      1662.8038059109756,
+      0.0,
+      1234.1443406600401
+    ],
+    [
+      0.0,
+      1661.8740690160619,
+      1037.0959152869525
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "distortion": [
+    -0.02771160915969527,
+    0.0074839789396358705,
+    -0.015966147122509433,
+    0.009226522951131504
+  ],
+  "image_size": [
+    2448,
+    2048
+  ],
+  "distortion_order": [
+    "k1",
+    "k2",
+    "k3",
+    "k4"
+  ],
+  "rms_px": 0.18831407931798255,
+  "accepted": true,
+  "quality_checks": {
+    "at_least_5_held_out_views": true,
+    "training_rms_le_1px": true,
+    "worst_training_view_le_2px": true,
+    "worst_held_out_view_le_1_5px": true,
+    "target_normal_spread_ge_15deg": true,
+    "horizontal_span_ge_65pct": true,
+    "vertical_span_ge_50pct": true,
+    "at_least_8_of_12_image_cells": true,
+    "positive_reasonable_focal_lengths": true,
+    "principal_point_in_image": true,
+    "board_poses_in_front": true,
+    "finite_errors": true
+  },
+  "serial": "19476401",
+  "camera_model": "BFS-PGE-50S5C",
+  "source_sha256": "133b541dbb048ef3d02c97aa5eb14a3c427a833f35e54b662971eccdfb8d3d98",
+  "scope": "Only camera serial 19476401 with the unchanged 2026-10-16 calibrated lens/focus/zoom. NOT the proposed Canon EF-S lens. Pixel-fit acceptance does not establish independent metric pose accuracy."
+}

@@ -41,6 +41,26 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         max_grad_norm=1.0,
     )
 
+
+@configclass
+class ArticulatedChairPPORunnerCfg(PPORunnerCfg):
+    """PPO settings for the articulated-chair task.
+
+    Use a log-parameterized action-noise standard deviation.  Unlike the
+    legacy scalar parameter, it cannot become negative during PPO updates.
+    """
+
+    experiment_name = "SuperQ_ALORE_ArticulatedChair"
+    policy = RslRlPpoActorCriticCfg(
+        class_name="ActorCritic",
+        init_noise_std=1.0,
+        noise_std_type="log",
+        actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[512, 256, 128],
+        activation="elu",
+    )
+
+
 @configclass
 class PPORunnerGraspRankingCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 24

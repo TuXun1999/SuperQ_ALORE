@@ -145,4 +145,3 @@ class ObjectUniformVelocityRobotFrameCommandCfg(CommandTermCfg):
     # Set the scale of the visualization markers to (0.5, 0.5, 0.5)
     goal_vel_visualizer_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
     current_vel_visualizer_cfg.markers["arrow"].scale = (0.5, 0.5, 0.5)
-

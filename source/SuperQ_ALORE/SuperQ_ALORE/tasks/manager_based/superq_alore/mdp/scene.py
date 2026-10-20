@@ -1,7 +1,9 @@
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.assets import ArticulationCfg
+from isaaclab.actuators import ImplicitActuatorCfg
 import isaaclab.utils.math as math_utils
+from pathlib import Path
 from SuperQ_ALORE.assets.object_catalog import ARM_JOINT_NAMES_IN_ORDER, OBJECT_CATALOG
 import numpy as np
 # Default configurations for the object
@@ -67,6 +69,82 @@ def create_target_object_cfg():
     return target_obj_cfgs
 CATALOG_OBJECT_CFGS = create_target_object_cfg()
 
+
+# -----------------------------------------------------------------------------
+# Articulated-chair scene asset
+# -----------------------------------------------------------------------------
+# Keep this configuration separate from ``CATALOG_OBJECT_CFGS``.  The rigid-body
+# environments intentionally continue to spawn the full catalog of
+# ``RigidObjectCfg`` instances above.
+ARTICULATED_CHAIR_USD_PATH = str(
+    Path(__file__).resolve().parents[4] / "assets" / "objects" / "articulated-chair" / "qivi.usdc"
+)
+
+# ``frame`` is the common parent of the QiVi seat and back.  It is the stable
+# upper-assembly reference used by the articulated-chair environment for
+# object-pose observations, commands, rewards, and success checks.
+ARTICULATED_CHAIR_UPPER_BODY_NAME = "frame"
+
+# The authored QiVi frame pose at zero joint configuration, expressed in the
+# articulation-root frame.  This is only used to form the fixed pre-grasp
+# observation; live tracking always reads the simulated ``frame`` link pose.
+ARTICULATED_CHAIR_UPPER_BODY_INITIAL_POS_B = (0.0, 0.0, 0.3897)
+
+
+def create_articulated_target_object_cfg() -> ArticulationCfg:
+    """Create the free-base QiVi chair articulation used by the chair task.
+
+    The USD supplies the collision shapes, masses, and joint limits.  The
+    joints are deliberately passive in this task while a copied instance is
+    spawned for every vectorized environment.
+    """
+
+    return ArticulationCfg(
+        prim_path="{ENV_REGEX_NS}/target_object",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=ARTICULATED_CHAIR_USD_PATH,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                rigid_body_enabled=True,
+                disable_gravity=False,
+                linear_damping=0.0,
+                angular_damping=0.0,
+                max_depenetration_velocity=2.0,
+            ),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+                enabled_self_collisions=False,
+                fix_root_link=False,
+                # Benchmark configuration for the intact 20-body, 19-joint
+                # chair at 200 Hz: 12 position / 4 velocity iterations.
+                solver_position_iteration_count=12,
+                solver_velocity_iteration_count=4,
+                sleep_threshold=0.0,
+            ),
+            # Required when the same USD is instantiated under every
+            # environment namespace.
+            copy_from_source=True,
+        ),
+        # The wheel geometry reaches slightly below the authored root frame;
+        # this offset matches the supplied chair reference configuration.
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=(0.0, 0.0, 0.02),
+            joint_pos={".*": 0.0},
+            joint_vel={".*": 0.0},
+        ),
+        soft_joint_pos_limit_factor=1.0,
+        # ArticulationCfg requires every joint to be assigned to an actuator
+        # group, even though this task never commands chair joints.  This
+        # all-joint, zero-gain implicit actuator fulfils that requirement
+        # without applying any drive force/torque: the chair remains a fully
+        # passive articulated object whose joints move only through contact,
+        # gravity, and the joint properties authored in the USD.
+        actuators={
+            "passive_joints": ImplicitActuatorCfg(
+                joint_names_expr=[".*"],
+                stiffness=0.0,
+                damping=0.0,
+            ),
+        },
+    )
 
 # Only for the teleoperation environment, where only one object is used
 def create_target_obj_teleoperation_cfg(object_idx = 0, pose_idx = 0):

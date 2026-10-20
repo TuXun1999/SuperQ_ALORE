@@ -3,9 +3,9 @@
 
 """Object-free joint-position action for the ReLIC Spot policy.
 
-The user input is a base-velocity command ``[vx, vy, yaw_rate]``. ReLIC turns
-that command into its 12 leg-joint position targets, which this term applies to
-the articulation. The policy continues to receive its native 84-D observation.
+The 12-D input contains base velocity (3), arm deltas (7), and torso commands
+(2). This term builds ReLIC's native 84-D observation, scales its 12 leg
+outputs into joint-position targets, and applies the arm targets separately.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from isaaclab.managers import ActionTerm, ActionTermCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.io.torchscript import load_torchscript_model
 from isaaclab.envs.mdp.actions import JointAction
+from isaaclab.envs.mdp.actions import JointActionCfg
 
 from SuperQ_ALORE.assets import ASSET_DIR
 import os
@@ -158,13 +159,16 @@ class ReLICWASDJointPositionAction(JointAction):
         # Extract the base pose command (pitch and height, roll is set to be zero)
         base_pose = actions[:, 10:12] # dim: 2 (pitch, height)
         base_pose[:, 0] = 0.0 # zero roll command, which is not desired for the task
-        base_pose[:, 1] = 0.55 # force the height
+        base_pose[:, 1] = self.cfg.base_height # force the height
+        
         # The joint angles to command for the arm
         arm_actions = torch.zeros_like(arm_actions_delta, device=arm_actions_delta.device) # dim: 7, which is the target joint position for the arm joints
 
         # assign per-env active arm joint reference
-        default_arm_ref = [OBJECT_TELEOPERATION_INFO[1][key] for key in ARM_JOINT_NAMES_IN_ORDER]
-        arm_reference = torch.tensor(default_arm_ref, device=actions.device).unsqueeze(0).expand(self.num_envs, -1)
+        default_arm_ref = [self.cfg.arm_joint_position[name] for name in self._arm_joint_names]
+        arm_reference = torch.tensor(
+            default_arm_ref, device=actions.device, dtype=actions.dtype
+        ).unsqueeze(0).expand(self.num_envs, -1)
         
         
         # Gripper joint set as constantly open so gripper can stay open
@@ -196,6 +200,8 @@ class ReLICWASDJointPositionAction(JointAction):
         # Execute the action directly (according to ALORE)
         self._arm_raw_actions[:] = arm_actions
         self._arm_processed_actions[:] = self._arm_raw_actions.clone()
+    
+    
     @property
     def arm_raw_actions(self) -> torch.Tensor:
         """Get the raw arm actions."""
@@ -207,16 +213,19 @@ class ReLICWASDJointPositionAction(JointAction):
         return self._arm_processed_actions
 
 @configclass
-class ReLICWASDJointPositionActionCfg(ActionTermCfg):
+class ReLICWASDJointPositionActionCfg(JointActionCfg):
     """Configuration for object-free ReLIC leg-joint position control."""
 
     class_type: type[ActionTerm] = ReLICWASDJointPositionAction
 
     arm_joint_names: tuple[str, ...] = MISSING
+    leg_joint_names: dict[str, list[str]] = MISSING
     arm_joint_position: dict[str, float] = MISSING
     """Absolute arm targets in radians, also used in ReLIC's pose command."""
     locomotion_policy_path: str = f"{ASSET_DIR}/spot/pretrained_relic/policy.pt"
     locomotion_obs_group: str = "locomotion_policy"
     low_level_update_decimation: int = 2
-    leg_action_scale: float = 0.2
-    base_height_m: float = 0.55
+    
+    use_default_offset: bool = True
+    
+    base_height: float = 0.55
