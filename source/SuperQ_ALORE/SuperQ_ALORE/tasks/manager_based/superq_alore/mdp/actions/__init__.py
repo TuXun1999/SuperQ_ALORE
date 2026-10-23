@@ -4,4 +4,3 @@
 
 from .spot_joint_actions import *  # noqa: F403
 from .spot_actions_cfg import *  # noqa: F403
-from .spot_wasd_actions import *  # noqa: F403

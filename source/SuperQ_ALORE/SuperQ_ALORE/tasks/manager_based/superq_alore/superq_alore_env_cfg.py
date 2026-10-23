@@ -157,10 +157,10 @@ class CommandsCfg:
         # Instead, the curriculum will control the yaw range for sampling the goal pose, and 
         # the actual yaw value in the command will be reset in the constructor.
         ranges=mdp.GoalPoseCommandCfg.Ranges(
-            pos_x=(-1.0, 1.0),
-            pos_y=(-1.0, 1.0),
+            pos_x=(0.2, 0.2),
+            pos_y=(-0.0, 0.0),
             pos_z=(0.0, 0.0),
-            yaw=(-math.pi/2, math.pi/2),
+            yaw=(0, 0),
         ),
     )
 
@@ -667,12 +667,12 @@ class EventCfg:
         func=mdp.reset_object_physical_properties,
         mode="reset",
         params={
-            "mass_range": (5, 8),
-            "friction_range": (0.02, 0.05), #(0.15, 0.35),
+            "mass_range": (11, 12),
+            "friction_range": (0.15, 0.35),
             "com_range": {
-                "x": (-0.05, 0.05),
+                "x": (-0.15, 0.15),
                 "y": (-0.0, 0.0),
-                "z": (-0.05, 0.05),
+                "z": (-0.15, 0.15),
             },
         },
     )
