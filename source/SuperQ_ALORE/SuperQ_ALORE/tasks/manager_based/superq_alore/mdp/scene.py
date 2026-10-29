@@ -85,10 +85,10 @@ ARTICULATED_CHAIR_USD_PATH = str(
 # object-pose observations, commands, rewards, and success checks.
 ARTICULATED_CHAIR_UPPER_BODY_NAME = "frame"
 
-# The authored QiVi frame pose at zero joint configuration, expressed in the
-# articulation-root frame.  This is only used to form the fixed pre-grasp
+# The authored QiVi frame pose with the gas lift fixed at its lowest setting,
+# expressed in the articulation-root frame. This forms the fixed pre-grasp
 # observation; live tracking always reads the simulated ``frame`` link pose.
-ARTICULATED_CHAIR_UPPER_BODY_INITIAL_POS_B = (0.0, 0.0, 0.3897)
+ARTICULATED_CHAIR_UPPER_BODY_INITIAL_POS_B = (0.0, 0.0, 0.3512)
 
 
 def create_articulated_target_object_cfg() -> ArticulationCfg:
@@ -113,8 +113,8 @@ def create_articulated_target_object_cfg() -> ArticulationCfg:
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(
                 enabled_self_collisions=False,
                 fix_root_link=False,
-                # Benchmark configuration for the intact 20-body, 19-joint
-                # chair at 200 Hz: 12 position / 4 velocity iterations.
+                # 20-body chair with 18 movable joints and a fixed gas lift,
+                # simulated at 200 Hz: 12 position / 4 velocity iterations.
                 solver_position_iteration_count=12,
                 solver_velocity_iteration_count=4,
                 sleep_threshold=0.0,
@@ -131,17 +131,17 @@ def create_articulated_target_object_cfg() -> ArticulationCfg:
             joint_vel={".*": 0.0},
         ),
         soft_joint_pos_limit_factor=1.0,
-        # ArticulationCfg requires every joint to be assigned to an actuator
-        # group, even though this task never commands chair joints.  This
-        # all-joint, zero-gain implicit actuator fulfils that requirement
-        # without applying any drive force/torque: the chair remains a fully
-        # passive articulated object whose joints move only through contact,
-        # gravity, and the joint properties authored in the USD.
+        # Preserve the physical springs and damping authored in the USD:
+        # the seat/back return springs and caster resistance. The gas lift
+        # is a fixed joint at minimum height and has no actuator target.
+        # None imports the USD gains; zero would disable those mechanisms.
+        # Reset events restore the USD spring rest positions. The policy
+        # commands only the robot, never these passive chair joints.
         actuators={
             "passive_joints": ImplicitActuatorCfg(
                 joint_names_expr=[".*"],
-                stiffness=0.0,
-                damping=0.0,
+                stiffness=None,
+                damping=None,
             ),
         },
     )

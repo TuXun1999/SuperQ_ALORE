@@ -52,6 +52,12 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument(
+    "--visualize-base-command",
+    action="store_true",
+    help="Show env 0's vx (m/s) and vtheta (rad/s) commands sent to ReLIC in a Tk window, "
+    "with 10 seconds of simulation-time history. Requires a desktop display.",
+)
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -232,42 +238,71 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     dt = env.unwrapped.step_dt
 
-    # Reset through the wrapper so video recording is initialized correctly.
-    obs, _ = env.reset()
-    timestep = 0
-    # simulate environment
-    while simulation_app.is_running():
-        start_time = time.time()
-        # run everything in inference mode
-        with torch.inference_mode():
-            # agent stepping
-            actions = policy(obs)
-            actions = torch.clamp(actions, -action_clip, action_clip)
-            # env stepping
-            
-            obs, _, dones, _ = env.step(actions)
-            # reset recurrent states for episodes that have terminated
-            policy_nn.reset(dones)
-        if args_cli.video:
-            timestep += 1
-            print("[INFO] Recording video step: {}/{}".format(timestep, args_cli.video_length))
-            # Exit the play loop after recording one video
-            if timestep >= args_cli.video_length:
-                break
+    base_command_visualizer = None
+    try:
+        if args_cli.visualize_base_command:
+            from base_command_visualizer import BaseCommandVisualizer
 
-        # time delay for real-time evaluation
-        sleep_time = dt - (time.time() - start_time)
-        if args_cli.real_time and sleep_time > 0:
-            time.sleep(sleep_time)
+            base_command_term = env.unwrapped.action_manager.get_term("high_level_action")
+            # Read the actual ReLIC input, including the initial gripper-closing
+            # hold, rather than the unprocessed policy output or measured motion.
+            if not hasattr(base_command_term, "_cached_base_velocity"):
+                raise ValueError("--visualize-base-command requires a high_level_action with ReLIC base commands.")
+            base_command_visualizer = BaseCommandVisualizer()
 
-    # close the simulator
-    env.close()
+        # Reset through the wrapper so video recording is initialized correctly.
+        obs, _ = env.reset()
+        timestep = 0
+        simulation_time = 0.0
+        # simulate environment
+        while simulation_app.is_running():
+            start_time = time.time()
+            # run everything in inference mode
+            with torch.inference_mode():
+                # agent stepping
+                actions = policy(obs)
+                actions = torch.clamp(actions, -action_clip, action_clip)
+                # env stepping
+                obs, _, dones, _ = env.step(actions)
+                # reset recurrent states for episodes that have terminated
+                policy_nn.reset(dones)
+                simulation_time += dt
+                if base_command_visualizer is not None:
+                    try:
+                        # Transfer only env 0's forward speed and yaw rate.
+                        vx, vtheta = base_command_term._cached_base_velocity[0, [0, 2]].detach().cpu().tolist()
+                        if not base_command_visualizer.update(vx=vx, vtheta=vtheta, simulation_time=simulation_time):
+                            base_command_visualizer = None
+                    except Exception as error:
+                        print(f"[WARN] Base command visualization disabled: {error}")
+                        base_command_visualizer.close()
+                        base_command_visualizer = None
+            if args_cli.video:
+                timestep += 1
+                print("[INFO] Recording video step: {}/{}".format(timestep, args_cli.video_length))
+                # Exit the play loop after recording one video
+                if timestep >= args_cli.video_length:
+                    break
+
+            # time delay for real-time evaluation
+            sleep_time = dt - (time.time() - start_time)
+            if args_cli.real_time and sleep_time > 0:
+                time.sleep(sleep_time)
+    finally:
+        try:
+            if base_command_visualizer is not None:
+                base_command_visualizer.close()
+        finally:
+            env.close()
+
     if args_cli.video:
         print(f"[INFO] Video export completed. Check folder: {video_folder}")
 
 
 if __name__ == "__main__":
     # run the main function
-    main()
-    # close sim app
-    simulation_app.close()
+    try:
+        main()
+    finally:
+        # close sim app even if playback or display initialization fails
+        simulation_app.close()

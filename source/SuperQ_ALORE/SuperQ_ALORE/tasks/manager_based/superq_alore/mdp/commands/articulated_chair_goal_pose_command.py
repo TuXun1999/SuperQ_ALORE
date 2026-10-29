@@ -13,7 +13,6 @@ import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.managers import CommandTerm, CommandTermCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
-from isaaclab.markers.config import GREEN_ARROW_X_MARKER_CFG
 from isaaclab.utils import configclass
 
 from ..articulated_chair import upper_body_pose_w
@@ -29,8 +28,8 @@ class ArticulatedChairGoalPoseCommand(CommandTerm):
     never reads the rigid-object catalog.  Consequently the goal quaternion is
     based on the upper assembly's live orientation rather than the free base.
 
-    When debug visualization is enabled, a hollow ground square and heading
-    arrow show the target pose of the ``frame`` link.  This intentionally
+    When debug visualization is enabled, a hollow ground square joined to an
+    outlined heading arrow shows the target pose of the ``frame`` link.  This
     represents the tracked upper assembly rather than spawning a second,
     physically misleading copy of the whole articulated chair.
     """
@@ -39,7 +38,6 @@ class ArticulatedChairGoalPoseCommand(CommandTerm):
         # This must exist before ``CommandTerm.__init__`` calls
         # ``_set_debug_vis_impl``.
         self._goal_outline_vis: VisualizationMarkers | None = None
-        self._goal_heading_vis: VisualizationMarkers | None = None
         super().__init__(cfg, env)
         self.goal_w = torch.zeros((self.num_envs, 3), device=self.device)
         self.goal_quat_w = torch.zeros((self.num_envs, 4), device=self.device)
@@ -50,14 +48,40 @@ class ArticulatedChairGoalPoseCommand(CommandTerm):
                 getattr(self.cfg, "curriculum_initial_yaw_range", self.cfg.ranges.yaw)
             )
         half_extent = self.cfg.goal_outline_size * 0.5
-        self._goal_outline_local_offsets = torch.tensor(
-            # Two x-aligned edges followed by two y-aligned edges.
-            ((0.0, half_extent, 0.0), (0.0, -half_extent, 0.0),
-             (half_extent, 0.0, 0.0), (-half_extent, 0.0, 0.0)),
+        shaft_half_width = self.cfg.goal_heading_shaft_width * 0.5
+        head_half_width = self.cfg.goal_heading_head_width * 0.5
+        head_base_x = half_extent + self.cfg.goal_heading_shaft_length
+        tip_x = head_base_x + self.cfg.goal_heading_head_length
+        # One closed outline: leave a gap in the square's forward (+x) edge
+        # where the open arrow shaft joins it.  The arrow has no fill or base
+        # line, matching the continuous square-and-arrow silhouette.
+        outline_vertices = torch.tensor(
+            ((-half_extent, -half_extent, 0.0),
+             (half_extent, -half_extent, 0.0),
+             (half_extent, -shaft_half_width, 0.0),
+             (head_base_x, -shaft_half_width, 0.0),
+             (head_base_x, -head_half_width, 0.0),
+             (tip_x, 0.0, 0.0),
+             (head_base_x, head_half_width, 0.0),
+             (head_base_x, shaft_half_width, 0.0),
+             (half_extent, shaft_half_width, 0.0),
+             (half_extent, half_extent, 0.0),
+             (-half_extent, half_extent, 0.0)),
             dtype=self.goal_w.dtype,
             device=self.device,
         )
-        self._goal_outline_marker_indices = torch.tensor((0, 0, 1, 1), dtype=torch.int64, device=self.device)
+        next_vertices = torch.roll(outline_vertices, shifts=-1, dims=0)
+        edge_vectors = next_vertices - outline_vertices
+        self._goal_outline_local_offsets = (outline_vertices + next_vertices) * 0.5
+        edge_yaw = torch.atan2(edge_vectors[:, 1], edge_vectors[:, 0])
+        zeros = torch.zeros_like(edge_yaw)
+        self._goal_outline_local_quats = math_utils.quat_from_euler_xyz(zeros, zeros, edge_yaw)
+        edge_scales = torch.empty_like(edge_vectors)
+        # Slightly overlap adjoining stroke ends so corners have no gaps.
+        edge_scales[:, 0] = torch.linalg.vector_norm(edge_vectors, dim=-1) + self.cfg.goal_outline_line_width
+        edge_scales[:, 1] = self.cfg.goal_outline_line_width
+        edge_scales[:, 2] = self.cfg.goal_outline_height
+        self._goal_outline_scales = edge_scales.repeat(self.num_envs, 1)
         self._resample_command(torch.arange(self.num_envs, device=self.device, dtype=torch.long))
 
     @property
@@ -131,20 +155,17 @@ class ArticulatedChairGoalPoseCommand(CommandTerm):
         if debug_vis:
             if self._goal_outline_vis is None:
                 self._goal_outline_vis = VisualizationMarkers(self.cfg.goal_outline_visualizer_cfg)
-                self._goal_heading_vis = VisualizationMarkers(self.cfg.goal_heading_visualizer_cfg)
             self._goal_outline_vis.set_visibility(True)
-            self._goal_heading_vis.set_visibility(True)
         else:
             if self._goal_outline_vis is not None:
                 self._goal_outline_vis.set_visibility(False)
-            if self._goal_heading_vis is not None:
-                self._goal_heading_vis.set_visibility(False)
 
     def _debug_vis_callback(self, event) -> None:
         """Show the target location and yaw of the chair's tracked ``frame`` link."""
 
         del event
-        if self._goal_outline_vis is None or self._goal_heading_vis is None:
+        # A queued render callback can run after the environment closes.
+        if self._goal_outline_vis is None or not hasattr(self._env, "scene"):
             return
 
         # The command is expressed at the elevated upper assembly.  The debug
@@ -157,30 +178,23 @@ class ArticulatedChairGoalPoseCommand(CommandTerm):
         zeros = torch.zeros_like(goal_yaw)
         goal_yaw_quat_w = math_utils.quat_from_euler_xyz(zeros, zeros, goal_yaw)
 
-        # A two-prototype marker makes the four thin cuboid edges.  Transform
-        # the local edge centers by the yaw-only target orientation so their
-        # outline rotates with the desired chair heading.
+        # Thin, flat strokes form both the square and the hollow arrow.
+        # Rotate their centers and local edge orientations with the goal yaw.
         num_edges = self._goal_outline_local_offsets.shape[0]
-        outline_quat_w = goal_yaw_quat_w.repeat_interleave(num_edges, dim=0)
+        goal_quat_per_edge = goal_yaw_quat_w.repeat_interleave(num_edges, dim=0)
         outline_offsets_w = math_utils.quat_apply(
-            outline_quat_w,
+            goal_quat_per_edge,
             self._goal_outline_local_offsets.repeat(self.num_envs, 1),
         )
         outline_pos_w = goal_ground_w.repeat_interleave(num_edges, dim=0) + outline_offsets_w
+        outline_quat_w = math_utils.quat_mul(
+            goal_quat_per_edge, self._goal_outline_local_quats.repeat(self.num_envs, 1)
+        )
         self._goal_outline_vis.visualize(
             outline_pos_w,
             outline_quat_w,
-            marker_indices=self._goal_outline_marker_indices.repeat(self.num_envs),
+            scales=self._goal_outline_scales,
         )
-
-        # Put the arrow directly on the forward (+x) edge.  It shares the
-        # outline's green material and ground height, so it reads as part of
-        # the square rather than as a separate floating marker.
-        heading_offset_b = torch.zeros_like(goal_ground_w)
-        heading_offset_b[:, 0] = self.cfg.goal_outline_size * 0.5 + self.cfg.goal_heading_edge_offset
-        goal_heading_w = goal_ground_w + math_utils.quat_apply(goal_yaw_quat_w, heading_offset_b)
-        goal_heading_w[:, 2] += self.cfg.goal_heading_height_offset
-        self._goal_heading_vis.visualize(goal_heading_w, goal_yaw_quat_w)
 
 
 @configclass
@@ -207,22 +221,22 @@ class ArticulatedChairGoalPoseCommandCfg(CommandTermCfg):
     debug_vis_keypoints: bool = False
     debug_vis_keypoint_radius: float = 0.04
 
-    # This marker lies on the ground rather than at the elevated ``frame``
-    # link.  Four green bars form a hollow square; the arrow gives its yaw.
+    # A continuous green outline lies on the ground.  Its hollow arrow joins
+    # the square's forward edge and indicates the desired upper-body yaw.
     goal_outline_size: float = 0.70
+    goal_outline_line_width: float = 0.012
+    goal_outline_height: float = 0.008
+    goal_heading_shaft_length: float = 0.30
+    goal_heading_shaft_width: float = 0.12
+    goal_heading_head_length: float = 0.25
+    goal_heading_head_width: float = 0.36
     goal_outline_visualizer_cfg: VisualizationMarkersCfg = VisualizationMarkersCfg(
         prim_path="/Visuals/Command/articulated_chair_goal_outline",
         markers={
-            "edge_x": sim_utils.CuboidCfg(
-                size=(goal_outline_size, 0.022, 0.025),
-                rigid_props=None,
-                collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-                visual_material=sim_utils.PreviewSurfaceCfg(
-                    diffuse_color=(0.0, 0.9, 0.18), emissive_color=(0.0, 0.12, 0.02), roughness=0.6
-                ),
-            ),
-            "edge_y": sim_utils.CuboidCfg(
-                size=(0.022, goal_outline_size, 0.025),
+            "edge": sim_utils.CuboidCfg(
+                # Each instance is scaled to the length, width and height of
+                # its outline segment by the command's visualizer.
+                size=(1.0, 1.0, 1.0),
                 rigid_props=None,
                 collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
                 visual_material=sim_utils.PreviewSurfaceCfg(
@@ -231,13 +245,4 @@ class ArticulatedChairGoalPoseCommandCfg(CommandTermCfg):
             ),
         },
     )
-    goal_heading_visualizer_cfg: VisualizationMarkersCfg = GREEN_ARROW_X_MARKER_CFG.replace(
-        prim_path="/Visuals/Command/articulated_chair_goal_heading"
-    )
-    goal_heading_visualizer_cfg.markers["arrow"].scale = (0.55, 0.09, 0.025)
-    goal_heading_visualizer_cfg.markers["arrow"].visual_material = sim_utils.PreviewSurfaceCfg(
-        diffuse_color=(0.0, 0.9, 0.18), emissive_color=(0.0, 0.12, 0.02), roughness=0.6
-    )
-    goal_marker_ground_offset: float = 0.012
-    goal_heading_height_offset: float = 0.0
-    goal_heading_edge_offset: float = 0.0
+    goal_marker_ground_offset: float = 0.015

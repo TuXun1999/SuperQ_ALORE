@@ -7,6 +7,7 @@ the seat/back assembly moves.  The task tracks the ``frame`` link instead.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import torch
@@ -176,8 +177,8 @@ def articulated_chair_outlier_detected(
 
     This is the articulated counterpart to :func:`mdp.outlier_detected`.
     The rigid-task detector only observes the robot root, whereas a numerical
-    failure can originate in any of the chair's 20 physical links or 19 joint
-    states.  Checking those tensors before rewards and observations are
+    failure can originate in any of the chair's 20 physical links or 18
+    movable joint states. Checking those tensors before rewards and observations are
     computed prevents a single failed chair from propagating non-finite data
     into the PPO rollout.
     """
@@ -324,7 +325,7 @@ def upper_body_init_pose_in_robot_frame_se2(
     robot_name: str = "robot",
     asset_name: str = "target_object",
 ) -> torch.Tensor:
-    """Return the zero-joint upper-body pose relative to the catalog pre-grasp robot pose."""
+    """Return the initial, lowest-height upper-body pose relative to the catalog pre-grasp robot pose."""
 
     object_management.ensure_catalog_state(env)
     chair = env.scene[asset_name]
@@ -352,6 +353,30 @@ def articulated_chair_object_idx(env: ManagerBasedRLEnv) -> torch.Tensor:
     """The chair environment has one spawned object asset per sub-environment."""
 
     return torch.zeros((env.num_envs, 1), dtype=torch.long, device=env.device)
+
+
+def _passive_joint_position_targets(chair) -> torch.Tensor:
+    """Read and cache the USD spring rest positions in Isaac Lab's SI units.
+
+    USD angular drive targets use degrees; Isaac Lab's tensor targets use
+    radians. In particular, the backrest preload must survive episode resets
+    instead of being replaced with a zero target.
+    """
+
+    targets = getattr(chair, "_qivi_passive_joint_position_targets", None)
+    if targets is None:
+        from pxr import UsdPhysics
+
+        values = []
+        for joint_path in chair.root_physx_view.dof_paths[0]:
+            prim = chair.stage.GetPrimAtPath(joint_path)
+            angular = prim.IsA(UsdPhysics.RevoluteJoint)
+            drive = UsdPhysics.DriveAPI(prim, "angular" if angular else "linear")
+            value = float(drive.GetTargetPositionAttr().Get() or 0.0) if drive else 0.0
+            values.append(math.radians(value) if angular else value)
+        targets = torch.tensor(values, dtype=chair.data.joint_pos.dtype, device=chair.device).unsqueeze(0)
+        chair._qivi_passive_joint_position_targets = targets
+    return targets
 
 
 def reset_articulated_chair_and_robot_from_catalog_pose(
@@ -382,6 +407,10 @@ def reset_articulated_chair_and_robot_from_catalog_pose(
         chair.data.default_joint_vel[env_ids].clone(),
         env_ids=env_ids,
     )
+    chair.set_joint_position_target(
+        _passive_joint_position_targets(chair).expand(env_ids.numel(), -1), env_ids=env_ids
+    )
+    chair.set_joint_velocity_target(torch.zeros_like(chair.data.joint_vel[env_ids]), env_ids=env_ids)
 
     robot = env.scene["robot"]
     robot_state = robot.data.default_root_state[env_ids].clone()

@@ -79,10 +79,16 @@ class GraspRankingSceneCfg(InteractiveSceneCfg):
             dynamic_friction=1.0,
             restitution=0.0,
         ),
-        visual_material=sim_utils.PreviewSurfaceCfg(
-            diffuse_color=(0.7, 0.7, 0.7),
-            roughness=1.0,
+        # The previous grid-like background (consistency in previous training episodes)
+        visual_material=sim_utils.MdlFileCfg(
+            mdl_path="{NVIDIA_NUCLEUS_DIR}/Materials/Base/Architecture/Shingles_01.mdl",
+            project_uvw=True,
+            texture_scale=(0.25, 0.25),
         ),
+        # visual_material=sim_utils.PreviewSurfaceCfg(
+        #     diffuse_color=(0.7, 0.7, 0.7),
+        #     roughness=1.0,
+        # ),
         debug_vis=False,
     )
 
@@ -409,10 +415,10 @@ class EventCfg:
     """Configuration for events."""
 
     # Only for media purpose: recolor the ground
-    recolor_ground_grid = EventTerm(
-        func=recolor_ground_grid,
-        mode="startup",
-    )
+    # recolor_ground_grid = EventTerm(
+    #     func=recolor_ground_grid,
+    #     mode="startup",
+    # )
 
     # Reset the object pose and the robot pose
     reset_object_robot_pose = EventTerm(
@@ -429,12 +435,12 @@ class EventCfg:
         func=mdp.reset_object_physical_properties_grasp_ranking,
         mode="reset",
         params={
-            "mass_range": (11, 12),
-            "friction_range": (0.15, 0.35),
+            "mass_range": (5, 8),
+            "friction_range": (0.02, 0.05), #(0.15, 0.35),
             "com_range": {
-                "x": (-0.15, 0.15),
+                "x": (-0.05, 0.05),
                 "y": (-0.0, 0.0),
-                "z": (-0.15, 0.15),
+                "z": (-0.05, 0.05),
             },
         },
     )

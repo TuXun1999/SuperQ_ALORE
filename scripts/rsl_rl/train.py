@@ -224,7 +224,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # Wrap the runner's act method to apply action clipping
     # This ensures stock RSL-RL PPO actions are clipped to safe bounds from PhysicActorCritic
     action_clip = torch.tensor(
-        [0.6, 0.0, 0.6, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0],
+        [0.6, 0.3, 0.6, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0, 0, 0],
         device=agent_cfg.device
     )
     original_act = runner.alg.act

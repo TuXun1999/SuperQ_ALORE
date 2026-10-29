@@ -92,14 +92,14 @@ class ArticulatedChairCommandsCfg(CommandsCfg):
         # ground square plus a heading arrow at the target ``frame``-link pose.
         # Keep it off during vectorized training; enable it for an interactive,
         # small-env debug run.
-        debug_vis=True,
+        debug_vis=False,
         debug_vis_keypoints=False,
         debug_vis_keypoint_radius=0.04,
         ranges=ArticulatedChairGoalPoseCommandCfg.Ranges(
             pos_x=(-1.0, 1.0),
             pos_y=(-1.0, 1.0),
             pos_z=(0.0, 0.0),
-            yaw=(-math.pi / 2.0, math.pi / 2.0),
+            yaw=(-math.pi/2, math.pi/2),
         ),
     )
 
@@ -187,9 +187,11 @@ class ArticulatedChairEventCfg(EventCfg):
             "velocity_range": (0.0, 0.0),
         },
     )
-    # Mass, CoM, and materials are authored individually for all 19 links in
-    # the chair USD.  The rigid-object randomizer assumes one rigid body and is
-    # deliberately not registered for this environment.
+    # Nominal mass, inertias, contact materials and passive mechanisms are
+    # authored in the chair USD (20 bodies, 18 movable joints and a fixed
+    # height connection); see its PHYSICS.md.
+    # The rigid-object randomizer assumes one rigid body and is deliberately
+    # not registered for this environment.
     reset_object_physical_properties = None
 
 

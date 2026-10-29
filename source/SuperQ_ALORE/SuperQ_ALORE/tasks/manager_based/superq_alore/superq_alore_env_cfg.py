@@ -157,10 +157,10 @@ class CommandsCfg:
         # Instead, the curriculum will control the yaw range for sampling the goal pose, and 
         # the actual yaw value in the command will be reset in the constructor.
         ranges=mdp.GoalPoseCommandCfg.Ranges(
-            pos_x=(0.2, 0.2),
+            pos_x=(0.5, 0.50),
             pos_y=(-0.0, 0.0),
             pos_z=(0.0, 0.0),
-            yaw=(0, 0),
+            yaw=(0.523, 0.523),
         ),
     )
 
@@ -211,7 +211,7 @@ class ActionsCfg:
         leg_joint_names=LEG_JOINT_NAMES,
         scale=0.2,
         low_level_update_decimation=2, 
-        # Setting Low-level frequency: 100 Hz
+        # Setting Low-level frequency: 100 Hz / 50 Hz
     )
 
 @configclass
@@ -668,7 +668,7 @@ class EventCfg:
         mode="reset",
         params={
             "mass_range": (11, 12),
-            "friction_range": (0.15, 0.35),
+            "friction_range": (0.02, 0.05),
             "com_range": {
                 "x": (-0.15, 0.15),
                 "y": (-0.0, 0.0),
@@ -852,7 +852,7 @@ class SuperqAloreEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         """Post initialization."""
         # general settings
-        self.decimation = 4 # NOTE: High-level frequency: 50 Hz
+        self.decimation = 4 # NOTE: High-level frequency: 25 Hz
         self.episode_length_s = 20.0
         # viewer settings
         self.viewer.eye = (8.0, 0.0, 5.0)
